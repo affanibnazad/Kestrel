@@ -71,3 +71,7 @@ next-env.d.ts
 !kestrel-audit-docs.zip
 /public/*.zip
 
+# database backups
+backups/
+*.dump
+
