@@ -44,7 +44,9 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const authHeader = request.headers.get("authorization") ?? "";
+  const bearerToken = /^Bearer\s+([A-Za-z0-9._-]{20,4096})$/.exec(authHeader)?.[1];
+  const { data: { user } } = bearerToken ? await supabase.auth.getUser(bearerToken) : await supabase.auth.getUser();
 
   // If user is already authenticated and visits /login, redirect straight to /app
   if (path === "/login") {
@@ -58,6 +60,17 @@ export async function proxy(request: NextRequest) {
 
   // Protected /app routes
   if (path === "/app" || path.startsWith("/app/")) {
+    // Paid downloads strictly require an authenticated Supabase session. Demo mode is never allowed.
+    if (path.startsWith("/app/download")) {
+      if (!user) {
+        const loginUrl = new URL("/login", request.nextUrl.origin);
+        const returnUrl = request.nextUrl.pathname + request.nextUrl.search;
+        loginUrl.searchParams.set("next", returnUrl);
+        return NextResponse.redirect(loginUrl);
+      }
+      return response;
+    }
+
     const isDemoAllowed = process.env.KESTREL_ALLOW_DEMO === "true";
     const isExplicitDemo = isDemoAllowed && (
       request.nextUrl.searchParams.get("demo") === "true" ||

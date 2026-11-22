@@ -67,9 +67,16 @@ next-env.d.ts
 
 # generated export archives
 /*.zip
-!kestrel-source-code.zip
-!kestrel-audit-docs.zip
 /public/*.zip
+
+# private paid packages and downloads
+downloads-private/
+
+# private audit and internal security docs
+kestrel-source-code.zip
+kestrel-audit-docs.zip
+docs/KESTREL_SECURITY_BACKLOG.md
+docs/independent-audit/
 
 # database backups
 backups/
