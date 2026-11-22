@@ -1,0 +1,81 @@
+import "server-only";
+import type { supabaseServer } from "./supabase/server";
+import type { Provider } from "./ai";
+import { AUTO, assistantModel } from "./ai-models";
+
+// The Kestrel Assistant's settings for the App's server: Kestrel's Claude key, model and on/off switch, set by a
+// Kestrel admin in the Owner panel (database 023, encrypted in Supabase Vault). Read with the server secret, so only
+// the server can get the key. ANTHROPIC_API_KEY on Vercel is used only when no key is saved in the Owner panel.
+type Sb = Awaited<ReturnType<typeof supabaseServer>>;
+export type AssistantConfig = { key: string; model: string; enabled: boolean };
+export const ASSISTANT_MODELS = [
+  ["auto", "Auto: Sonnet 5.5 for normal questions, Opus 5.5 for big tasks"],
+  ["claude-opus-5-5", "Claude Opus 5.5 (best answers)"],
+  ["claude-sonnet-5-5", "Claude Sonnet 5.5 (balanced)"],
+  ["claude-haiku-5-5", "Claude Haiku 5.5 (cheapest)"],
+] as const;
+
+export const serverSecret = () => process.env.MAIL_SERVER_SECRET || "";
+// What people see for Kestrel's included AI, whichever company runs it: each model's Kestrel name from Owner → Assistant
+// (database 057), or this when none is set. The Owner panel still shows the real company and model. A team's own key
+// keeps its company's name.
+export const KESTREL_AI_NAME = "Kestrel AI";
+
+export async function assistantConfig(sb: Sb): Promise<AssistantConfig | { error: string }> {
+  const secret = serverSecret();
+  if (secret.length >= 32) {
+    const { data, error } = await sb.rpc("assistant_config", { server_secret: secret });
+    if (!error && data) {
+      const c = data as { key: string | null; model: string; enabled: boolean };
+      if (!c.enabled) return { error: "Kestrel AI is turned off for now. Try again later." };
+      if (c.key) return { key: c.key, model: c.model, enabled: true };
+    }
+  }
+  const env = process.env.ANTHROPIC_API_KEY;
+  if (env) return { key: env, model: "auto", enabled: true };
+  return { error: "Kestrel AI is not switched on yet. The Kestrel owner adds its Claude key in the Owner panel." };
+}
+
+// ---- Any AI (database 027): which company, model and key answer this person's question.
+// "included" = Kestrel's own AI (Kestrel pays; counts against the team's daily messages).
+// "team" = the person chose their team's own key from Connections (the team pays; no daily limit from Kestrel).
+export type Resolved = { provider: Provider; key: string; model: string; effort: "low" | "medium" | "high"; included: boolean; label: string };
+export type Prefs = { source: "included" | "team"; provider: Provider | null; model: string | null; about: string; style: string };
+const COMPANY: Record<Provider, string> = { anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini", openrouter: "OpenRouter", groq: "Groq", nvidia: "NVIDIA" };
+
+export async function resolveAssistant(sb: Sb, prefs: Prefs | null, question: string, turns: number): Promise<Resolved | { error: string }> {
+  const secret = serverSecret();
+  if (prefs?.source === "team" && prefs.provider) {
+    if (secret.length < 32) return { error: "The server secret is missing on Vercel (MAIL_SERVER_SECRET)." };
+    const { data, error } = await sb.rpc("assistant_team_key", { server_secret: secret, service: prefs.provider });
+    if (error) return { error: /plan has ended/.test(error.message) ? "Your plan has ended, so your team key can't be used here. Switch to Kestrel's own AI in Kestrel AI → Personalize." : "Your role can't use the team's AI keys. Switch to Kestrel's own AI in Kestrel AI → Personalize." };
+    if (!data) return { error: `Your team has no ${COMPANY[prefs.provider]} key yet. Add it in Connections, or switch to Kestrel's AI in Kestrel AI → Personalize.` };
+    if (prefs.provider === "anthropic") { const p = assistantModel(prefs.model || AUTO, question, turns); return { provider: "anthropic", key: data as string, ...p, included: false, label: `Claude (your team's key)` }; }
+    if (!prefs.model) return { error: `Choose a ${COMPANY[prefs.provider]} model in Kestrel AI → Personalize.` };
+    return { provider: prefs.provider, key: data as string, model: prefs.model, effort: "low", included: false, label: `${COMPANY[prefs.provider]} (your team's key)` };
+  }
+  // A Kestrel model the person picked above the chat (database 060): only names the Owner gave, with Kestrel's key.
+  if (prefs?.source !== "team" && prefs?.model && secret.length >= 32) {
+    const { data } = await sb.rpc("assistant_included_pick", { server_secret: secret, model: prefs.model });
+    const pk = data as { provider: Provider; model: string; name: string; key: string } | null;
+    if (pk?.key) return pk.provider === "anthropic" ? { provider: "anthropic", key: pk.key, ...assistantModel(pk.model, question, turns), included: true, label: pk.name }
+      : { provider: pk.provider, key: pk.key, model: pk.model, effort: "low", included: true, label: pk.name };
+    // A pick that can't be used any more (renamed, key removed): fall back to Kestrel's default below.
+  }
+  // Kestrel's included AI: the company and model chosen in the Owner panel (027); before 027, Claude from 023.
+  if (secret.length >= 32) {
+    const { data, error } = await sb.rpc("assistant_included", { server_secret: secret });
+    if (!error && data) {
+      const c = data as { provider: Provider; model: string; enabled: boolean; key: string | null; name?: string | null };
+      const label = c.name || KESTREL_AI_NAME;   // the model's Kestrel name from the Owner panel (057)
+      if (!c.enabled) return { error: "Kestrel AI is turned off for now. Try again later." };
+      if (!c.key && c.provider !== "anthropic") return { error: "Kestrel AI is not switched on yet. The Kestrel owner adds its AI key in the Owner panel." };
+      // Claude without a saved key: fall through to the older path, which can use ANTHROPIC_API_KEY on Vercel.
+      if (c.provider === "anthropic" && c.key) return { provider: "anthropic", key: c.key, ...assistantModel(c.model, question, turns), included: true, label };
+      if (c.provider !== "anthropic" && c.key) return { provider: c.provider, key: c.key, model: c.model, effort: "low", included: true, label };
+    }
+  }
+  const old = await assistantConfig(sb);
+  if ("error" in old) return old;
+  return { provider: "anthropic", key: old.key, ...assistantModel(old.model, question, turns), included: true, label: KESTREL_AI_NAME };
+}

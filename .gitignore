@@ -1,0 +1,73 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/.next-local/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+**/.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Vercel sign-in token (private, pasted by Affan)
+.vercel-token
+
+# Supabase access token and Resend key (private, pasted by Affan)
+.supabase-token
+.resend-key
+
+# payments and contact (private)
+.lemon-key
+.contact-inbox
+
+# Kestrel Mail server secret (scripts/setup-mail.mjs)
+.mail-secret
+
+# Kestrel Assistant: Kestrel's Claude key (private, pasted by Affan)
+.anthropic-key
+.verifier-secret
+.verifier-url
+
+# Kestrel Connect update signing key (private; mcp/build.mjs signs each connector build with it)
+.connect-signing-key
+
+# generated export archives
+/*.zip
+!kestrel-source-code.zip
+!kestrel-audit-docs.zip
+/public/*.zip
+

@@ -1,0 +1,44 @@
+{
+  "name": "quarry-cloud",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3333",
+    "build": "next build",
+    "start": "next start -p 3333",
+    "lint": "eslint",
+    "test:auth": "node scripts/verify-auth-and-demo.mjs",
+    "test:multitenant": "node scripts/verify-multitenant-isolation.mjs",
+    "test:errors": "node scripts/verify-error-boundaries.mjs",
+    "test:all": "node scripts/verify-all.mjs",
+    "test:navigation": "node scripts/verify-client-state-navigation.mjs",
+    "test:readiness": "node scripts/verify-production-readiness.mjs",
+    "test:full": "node scripts/verify-auth-and-demo.mjs && node scripts/verify-multitenant-isolation.mjs && node scripts/verify-error-boundaries.mjs && node scripts/verify-all.mjs && node scripts/verify-client-state-navigation.mjs && node scripts/verify-production-readiness.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@sentry/nextjs": "11.16.0",
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "2.118.0",
+    "imapflow": "2.9.1",
+    "lenis": "1.3.26",
+    "lucide-react": "1.65.0",
+    "next": "16.4.6",
+    "nodemailer": "10.2.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "simple-icons": "^16.37.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "^20",
+    "@types/nodemailer": "8.0.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "playwright": "^1.65.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5"
+  }
+}
