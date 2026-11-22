@@ -18,6 +18,10 @@ const TENANT_A = {
   campaignId: "a0000000-0000-0000-0000-000000000021",
   sequenceId: "a0000000-0000-0000-0000-000000000031",
   webhookId: "a0000000-0000-0000-0000-000000000051",
+  replyId: "a0000000-0000-0000-0000-000000000061",
+  mailboxId: "a0000000-0000-0000-0000-000000000071",
+  listId: "a0000000-0000-0000-0000-000000000081",
+  offerId: "a0000000-0000-0000-0000-000000000091",
 };
 
 const TENANT_B = {
@@ -29,6 +33,10 @@ const TENANT_B = {
   campaignId: "b0000000-0000-0000-0000-000000000021",
   sequenceId: "b0000000-0000-0000-0000-000000000031",
   webhookId: "b0000000-0000-0000-0000-000000000051",
+  replyId: "b0000000-0000-0000-0000-000000000061",
+  mailboxId: "b0000000-0000-0000-0000-000000000071",
+  listId: "b0000000-0000-0000-0000-000000000081",
+  offerId: "b0000000-0000-0000-0000-000000000091",
 };
 
 function runQuery(asUser, sql) {
@@ -214,6 +222,82 @@ async function runAllTests() {
   const removedUserRead = runQuery(VIEWER_A, `SELECT count(*) FROM leads;`);
   const countRemovedRead = getResultLine(removedUserRead);
   record("TEST-25", "Removed member access revocation immediate effect", VIEWER_A, TENANT_A, "0 rows immediately on membership removal", `${countRemovedRead} rows returned`, countRemovedRead === "0");
+
+  // --- 16. CROSS-TENANT MAILBOX ISOLATION ---
+  const readBoxBA = runQuery(TENANT_A, `SELECT count(*) FROM mailboxes WHERE id = '${TENANT_B.mailboxId}';`);
+  const countBoxBA = getResultLine(readBoxBA);
+  record("TEST-26", "Tenant A attempts to read Tenant B mailbox", TENANT_A, TENANT_B, "0 rows", `${countBoxBA} rows`, countBoxBA === "0");
+
+  const updateBoxBA = runQuery(TENANT_A, `UPDATE mailboxes SET from_name = 'HACKED_BOX' WHERE id = '${TENANT_B.mailboxId}';`);
+  const passUpdateBox = updateBoxBA.stdout.includes("UPDATE 0") || !updateBoxBA.ok || updateBoxBA.stderr.includes("permission denied");
+  record("TEST-27", "Tenant A attempts to update Tenant B mailbox", TENANT_A, TENANT_B, "UPDATE 0 or Permission Denied", passUpdateBox ? "Blocked (UPDATE 0 or Permission Denied)" : "Update Succeeded", passUpdateBox, updateBoxBA.stderr);
+
+  const deleteBoxBA = runQuery(TENANT_A, `DELETE FROM mailboxes WHERE id = '${TENANT_B.mailboxId}';`);
+  const passDeleteBox = deleteBoxBA.stdout.includes("DELETE 0") || !deleteBoxBA.ok || deleteBoxBA.stderr.includes("permission denied");
+  record("TEST-28", "Tenant A attempts to delete Tenant B mailbox", TENANT_A, TENANT_B, "DELETE 0 or Permission Denied", passDeleteBox ? "Blocked (DELETE 0 or Permission Denied)" : "Delete Succeeded", passDeleteBox, deleteBoxBA.stderr);
+
+  // --- 17. CROSS-TENANT INBOX & MAIL REPLIES ISOLATION ---
+  const readReplyBA = runQuery(TENANT_A, `SELECT count(*) FROM mail_replies WHERE id = '${TENANT_B.replyId}';`);
+  const countReplyBA = getResultLine(readReplyBA);
+  record("TEST-29", "Tenant A attempts to read Tenant B mail reply", TENANT_A, TENANT_B, "0 rows", `${countReplyBA} rows`, countReplyBA === "0");
+
+  const updateReplyBA = runQuery(TENANT_A, `UPDATE mail_replies SET subject = 'HACKED_REPLY' WHERE id = '${TENANT_B.replyId}';`);
+  const passUpdateReply = updateReplyBA.stdout.includes("UPDATE 0") || !updateReplyBA.ok || updateReplyBA.stderr.includes("permission denied");
+  record("TEST-30", "Tenant A attempts to update Tenant B mail reply", TENANT_A, TENANT_B, "UPDATE 0 or Permission Denied", passUpdateReply ? "Blocked (UPDATE 0 or Permission Denied)" : "Update Succeeded", passUpdateReply, updateReplyBA.stderr);
+
+  const deleteReplyBA = runQuery(TENANT_A, `DELETE FROM mail_replies WHERE id = '${TENANT_B.replyId}';`);
+  const passDeleteReply = deleteReplyBA.stdout.includes("DELETE 0") || !deleteReplyBA.ok || deleteReplyBA.stderr.includes("permission denied");
+  record("TEST-31", "Tenant A attempts to delete Tenant B mail reply", TENANT_A, TENANT_B, "DELETE 0 or Permission Denied", passDeleteReply ? "Blocked (DELETE 0 or Permission Denied)" : "Delete Succeeded", passDeleteReply, deleteReplyBA.stderr);
+
+  // --- 18. CROSS-TENANT LISTS & JUNCTION ISOLATION ---
+  const readListBA = runQuery(TENANT_A, `SELECT count(*) FROM lists WHERE id = '${TENANT_B.listId}';`);
+  const countListBA = getResultLine(readListBA);
+  record("TEST-32", "Tenant A attempts to read Tenant B list", TENANT_A, TENANT_B, "0 rows", `${countListBA} rows`, countListBA === "0");
+
+  const updateListBA = runQuery(TENANT_A, `UPDATE lists SET name = 'HACKED_LIST' WHERE id = '${TENANT_B.listId}';`);
+  const passUpdateList = updateListBA.stdout.includes("UPDATE 0") || !updateListBA.ok || updateListBA.stderr.includes("permission denied");
+  record("TEST-33", "Tenant A attempts to update Tenant B list", TENANT_A, TENANT_B, "UPDATE 0 or Permission Denied", passUpdateList ? "Blocked (UPDATE 0 or Permission Denied)" : "Update Succeeded", passUpdateList, updateListBA.stderr);
+
+  const injectListJunctionBA = runQuery(TENANT_A, `INSERT INTO list_leads (list_id, lead_id, team_id) VALUES ('${TENANT_B.listId}', '${TENANT_A.lead1Id}', '${TENANT_B.teamId}');`);
+  const passInjectList = !injectListJunctionBA.ok && /row-level security/i.test(injectListJunctionBA.stderr);
+  record("TEST-34", "Tenant A attempts unauthorized insert into Tenant B list_leads", TENANT_A, TENANT_B, "Blocked by RLS", passInjectList ? "Rejected with RLS policy error" : "INSERT succeeded", passInjectList, injectListJunctionBA.stderr);
+
+  // --- 19. CROSS-TENANT OFFER PROFILES ---
+  const readOfferBA = runQuery(TENANT_A, `SELECT count(*) FROM offer_profiles WHERE id = '${TENANT_B.offerId}';`);
+  const countOfferBA = getResultLine(readOfferBA);
+  record("TEST-35", "Tenant A attempts to read Tenant B offer profile", TENANT_A, TENANT_B, "0 rows", `${countOfferBA} rows`, countOfferBA === "0");
+
+  const updateOfferBA = runQuery(TENANT_A, `UPDATE offer_profiles SET name = 'HACKED_OFFER' WHERE id = '${TENANT_B.offerId}';`);
+  record("TEST-36", "Tenant A attempts to update Tenant B offer profile", TENANT_A, TENANT_B, "UPDATE 0", updateOfferBA.stdout, updateOfferBA.stdout.includes("UPDATE 0"));
+
+  // --- 20. CROSS-TENANT TEAM CONFIG (ABOUT & AI) ---
+  const readAboutBA = runQuery(TENANT_A, `SELECT count(*) FROM team_about WHERE team_id = '${TENANT_B.teamId}';`);
+  const countAboutBA = getResultLine(readAboutBA);
+  record("TEST-37", "Tenant A attempts to read Tenant B team_about", TENANT_A, TENANT_B, "0 rows", `${countAboutBA} rows`, countAboutBA === "0");
+
+  const updateAboutBA = runQuery(TENANT_A, `UPDATE team_about SET about = 'HACKED_ABOUT' WHERE team_id = '${TENANT_B.teamId}';`);
+  record("TEST-38", "Tenant A attempts to update Tenant B team_about", TENANT_A, TENANT_B, "UPDATE 0", updateAboutBA.stdout, updateAboutBA.stdout.includes("UPDATE 0"));
+
+  const readAiBA = runQuery(TENANT_A, `SELECT count(*) FROM team_ai WHERE team_id = '${TENANT_B.teamId}';`);
+  const countAiBA = getResultLine(readAiBA);
+  record("TEST-39", "Tenant A attempts to read Tenant B team_ai", TENANT_A, TENANT_B, "0 rows", `${countAiBA} rows`, countAiBA === "0");
+
+  const updateAiBA = runQuery(TENANT_A, `UPDATE team_ai SET business = 'HACKED_AI' WHERE team_id = '${TENANT_B.teamId}';`);
+  record("TEST-40", "Tenant A attempts to update Tenant B team_ai", TENANT_A, TENANT_B, "UPDATE 0", updateAiBA.stdout, updateAiBA.stdout.includes("UPDATE 0"));
+
+  // --- 21. CROSS-TENANT TELEMETRY (DOMAIN MONITOR) ---
+  const readDomainBA = runQuery(TENANT_A, `SELECT count(*) FROM domain_monitor WHERE team_id = '${TENANT_B.teamId}';`);
+  const countDomainBA = getResultLine(readDomainBA);
+  record("TEST-41", "Tenant A attempts to read Tenant B domain_monitor", TENANT_A, TENANT_B, "0 rows", `${countDomainBA} rows`, countDomainBA === "0");
+
+  // --- 22. SENSITIVE CREDENTIAL DEFAULT-DENY (RLS / PRIVILEGE ENFORCEMENT) ---
+  const readTeamKeys = runQuery(TENANT_A, `SELECT count(*) FROM team_keys;`);
+  const passKeys = !readTeamKeys.ok || readTeamKeys.stdout.includes("ERROR") || getResultLine(readTeamKeys) === "0";
+  record("TEST-42", "Direct read rejection on sensitive credentials table team_keys", TENANT_A, TENANT_A, "Access denied / default-deny", passKeys ? "Rejected with permission error or 0 rows" : "Data exposed", passKeys, readTeamKeys.stderr);
+
+  const readLemonSettings = runQuery(TENANT_A, `SELECT count(*) FROM lemon_settings;`);
+  const passLemon = !readLemonSettings.ok || readLemonSettings.stdout.includes("ERROR") || getResultLine(readLemonSettings) === "0";
+  record("TEST-43", "Direct read rejection on billing secrets table lemon_settings", TENANT_A, TENANT_A, "Access denied / default-deny", passLemon ? "Rejected with permission error or 0 rows" : "Data exposed", passLemon, readLemonSettings.stderr);
 
   // Summary
   console.log("\n================================================================================");

@@ -58,10 +58,13 @@ export async function proxy(request: NextRequest) {
 
   // Protected /app routes
   if (path === "/app" || path.startsWith("/app/")) {
-    const isExplicitDemo = request.nextUrl.searchParams.get("demo") === "true" ||
-                           request.nextUrl.searchParams.get("demo") === "1" ||
-                           request.nextUrl.searchParams.get("preview") === "1";
-    // Allow if user is authenticated OR explicitly viewing isolated demo
+    const isDemoAllowed = process.env.KESTREL_ALLOW_DEMO === "true";
+    const isExplicitDemo = isDemoAllowed && (
+      request.nextUrl.searchParams.get("demo") === "true" ||
+      request.nextUrl.searchParams.get("demo") === "1" ||
+      request.nextUrl.searchParams.get("preview") === "1"
+    );
+    // Allow if user is authenticated OR explicitly viewing isolated demo (when enabled)
     if (user || isExplicitDemo) {
       return response;
     }

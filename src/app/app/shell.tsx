@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { DialogHost, askConfirm, askText } from "@/components/dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Brand, Line, Tip } from "@/components/ui";
@@ -147,7 +146,6 @@ function KSub({ label, count, on, onClick }: { label: string; count?: number; on
 
 
 export default function AppShell({ email, loading = false, preview = false, account: initialAccount = null, demo, initialView = "home", isDemoMode = false }: { email: string; loading?: boolean; preview?: boolean; account?: Account | null; demo?: LeadRow[]; initialView?: string; isDemoMode?: boolean }) {
-  const router = useRouter();
   const [account, setAccount] = useState<Account | null>(initialAccount);
   useEffect(() => {
     Promise.resolve().then(() => setAccount(initialAccount));

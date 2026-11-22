@@ -60,7 +60,8 @@ const demoLeads = (): LeadRow[] => EXAMPLE_LEADS.map((l, i) => ({
 async function SignedIn({ searchParams }: { searchParams: PageProps<"/app">["searchParams"] }) {
   const sp = await searchParams;
   const initialView = typeof sp.view === "string" ? sp.view : "home";
-  const isExplicitDemo = sp.demo === "true" || sp.demo === "1" || sp.preview === "1";
+  const isDemoAllowed = process.env.KESTREL_ALLOW_DEMO === "true";
+  const isExplicitDemo = isDemoAllowed && (sp.demo === "true" || sp.demo === "1" || sp.preview === "1");
 
   // Check Supabase authentication
   const user = await currentUser();

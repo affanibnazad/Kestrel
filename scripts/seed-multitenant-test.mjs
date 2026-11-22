@@ -45,6 +45,33 @@ INSERT INTO public.team_rules (team_id, weights, tiers, rules)
 VALUES ('a0000000-0000-0000-0000-000000000002', '{"score": 90}'::jsonb, '{"tier": "AlphaTier"}'::jsonb, '[{"rule": "AlphaRule"}]'::jsonb)
 ON CONFLICT (team_id) DO UPDATE SET weights = excluded.weights;
 
+INSERT INTO public.mailboxes (id, team_id, email, from_name, provider, smtp_host, smtp_port, username, secret_id, daily_limit, signature, status, created_by)
+VALUES ('a0000000-0000-0000-0000-000000000071', 'a0000000-0000-0000-0000-000000000002', 'alpha-box@alpha.example.com', 'Alpha Mailbox', 'smtp', 'smtp.alpha.example.com', 587, 'alpha-user', gen_random_uuid(), 50, '-- Alpha Team', 'ok', 'a0000000-0000-0000-0000-000000000001');
+
+INSERT INTO public.mail_replies (id, team_id, mailbox_id, kind, from_email, lead_email, subject, snippet, handled, ai_label)
+VALUES ('a0000000-0000-0000-0000-000000000061', 'a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000071', 'reply', 'prospect1@london.example.com', 'lead1@alpha.example.com', 'Re: Alpha Subject', 'Yes I am interested in Alpha proposal', false, 'interested');
+
+INSERT INTO public.lists (id, team_id, name, created_by)
+VALUES ('a0000000-0000-0000-0000-000000000081', 'a0000000-0000-0000-0000-000000000002', 'ALPHA_VIP_LIST', 'a0000000-0000-0000-0000-000000000001');
+
+INSERT INTO public.list_leads (list_id, lead_id, team_id)
+VALUES ('a0000000-0000-0000-0000-000000000081', 'a0000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000002');
+
+INSERT INTO public.offer_profiles (id, team_id, name, offer, customer, good, bad, criteria, strictness, one_line, updated_by)
+VALUES ('a0000000-0000-0000-0000-000000000091', 'a0000000-0000-0000-0000-000000000002', 'Alpha Cold Outreach Offer', 'Outreach system for SaaS', 'B2B SaaS companies', 'Funded startups', 'Consumer apps', 'At least 10 employees', 'strict', 'We scale B2B SaaS pipeline', 'a0000000-0000-0000-0000-000000000001');
+
+INSERT INTO public.team_about (team_id, mode, website, about, proof, tone, avoid, updated_by)
+VALUES ('a0000000-0000-0000-0000-000000000002', 'agency', 'https://alpha.example.com', 'Alpha Growth Agency', '[]'::jsonb, 'friendly', 'cheap, guarantee', 'a0000000-0000-0000-0000-000000000001')
+ON CONFLICT (team_id) DO UPDATE SET about = excluded.about;
+
+INSERT INTO public.team_ai (team_id, provider, model, sender_name, business, address, signature, booking_link)
+VALUES ('a0000000-0000-0000-0000-000000000002', 'anthropic', 'claude-3-5-sonnet', 'Alpha Team', 'Alpha SaaS Agency', '123 London St', 'Best,\nAlpha Team', 'https://cal.com/alpha')
+ON CONFLICT (team_id) DO UPDATE SET business = excluded.business;
+
+INSERT INTO public.domain_monitor (team_id, domain, checked_at, listed, results)
+VALUES ('a0000000-0000-0000-0000-000000000002', 'alpha.example.com', '2026-11-22T00:00:00Z', false, '{"clean": true}'::jsonb)
+ON CONFLICT (team_id, domain) DO NOTHING;
+
 -- 4. Seed Tenant B (Beta)
 INSERT INTO auth.users (id, email, raw_user_meta_data)
 VALUES ('b0000000-0000-0000-0000-000000000001', 'beta-owner@kestrel-test.local', '{"full_name": "Beta Owner", "company": "Kestrel QA Beta"}'::jsonb);
@@ -72,6 +99,33 @@ VALUES ('b0000000-0000-0000-0000-000000000051', 'b0000000-0000-0000-0000-0000000
 INSERT INTO public.team_rules (team_id, weights, tiers, rules)
 VALUES ('b0000000-0000-0000-0000-000000000002', '{"score": 75}'::jsonb, '{"tier": "BetaTier"}'::jsonb, '[{"rule": "BetaRule"}]'::jsonb)
 ON CONFLICT (team_id) DO UPDATE SET weights = excluded.weights;
+
+INSERT INTO public.mailboxes (id, team_id, email, from_name, provider, smtp_host, smtp_port, username, secret_id, daily_limit, signature, status, created_by)
+VALUES ('b0000000-0000-0000-0000-000000000071', 'b0000000-0000-0000-0000-000000000002', 'beta-box@beta.example.com', 'Beta Mailbox', 'smtp', 'smtp.beta.example.com', 587, 'beta-user', gen_random_uuid(), 50, '-- Beta Team', 'ok', 'b0000000-0000-0000-0000-000000000001');
+
+INSERT INTO public.mail_replies (id, team_id, mailbox_id, kind, from_email, lead_email, subject, snippet, handled, ai_label)
+VALUES ('b0000000-0000-0000-0000-000000000061', 'b0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000071', 'reply', 'prospect1@berlin.example.com', 'lead1@beta.example.com', 'Re: Beta Subject', 'Yes I am interested in Beta proposal', false, 'interested');
+
+INSERT INTO public.lists (id, team_id, name, created_by)
+VALUES ('b0000000-0000-0000-0000-000000000081', 'b0000000-0000-0000-0000-000000000002', 'BETA_VIP_LIST', 'b0000000-0000-0000-0000-000000000001');
+
+INSERT INTO public.list_leads (list_id, lead_id, team_id)
+VALUES ('b0000000-0000-0000-0000-000000000081', 'b0000000-0000-0000-0000-000000000011', 'b0000000-0000-0000-0000-000000000002');
+
+INSERT INTO public.offer_profiles (id, team_id, name, offer, customer, good, bad, criteria, strictness, one_line, updated_by)
+VALUES ('b0000000-0000-0000-0000-000000000091', 'b0000000-0000-0000-0000-000000000002', 'Beta Cold Outreach Offer', 'Outreach system for Design Agencies', 'Design studios', 'Agencies with 5+ staff', 'Solo graphic designers', 'Active website', 'balanced', 'We scale Design Agency pipeline', 'b0000000-0000-0000-0000-000000000001');
+
+INSERT INTO public.team_about (team_id, mode, website, about, proof, tone, avoid, updated_by)
+VALUES ('b0000000-0000-0000-0000-000000000002', 'agency', 'https://beta.example.com', 'Beta Design Growth', '[]'::jsonb, 'professional', 'discount, cheap', 'b0000000-0000-0000-0000-000000000001')
+ON CONFLICT (team_id) DO UPDATE SET about = excluded.about;
+
+INSERT INTO public.team_ai (team_id, provider, model, sender_name, business, address, signature, booking_link)
+VALUES ('b0000000-0000-0000-0000-000000000002', 'anthropic', 'claude-3-5-sonnet', 'Beta Team', 'Beta Design Growth', '456 Berlin Ave', 'Best,\nBeta Team', 'https://cal.com/beta')
+ON CONFLICT (team_id) DO UPDATE SET business = excluded.business;
+
+INSERT INTO public.domain_monitor (team_id, domain, checked_at, listed, results)
+VALUES ('b0000000-0000-0000-0000-000000000002', 'beta.example.com', '2026-11-22T00:00:00Z', false, '{"clean": true}'::jsonb)
+ON CONFLICT (team_id, domain) DO NOTHING;
 
 -- 5. Re-enable trigger
 ALTER TABLE auth.users ENABLE TRIGGER on_auth_user_created;
