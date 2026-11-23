@@ -34,6 +34,7 @@ This is a clean, production-ready copy of Kestrel with **zero build cache, zero 
 - `src/app/globals.css` holds universal design tokens and verified styling rules.
 - `page-rules/` holds detailed specifications for every single page. Before modifying or adding any page, consult the corresponding file in `page-rules/`.
 - `PROGRESS.md` tracks all verified tasks up to date.
+- Admin portal plan: `docs/ADMIN_PORTAL_PLAN.md` (platform admin and team owner are separate; no fake data outside demo mode).
 
 <!-- BEGIN:nextjs-agent-rules -->
 
