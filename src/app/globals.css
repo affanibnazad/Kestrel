@@ -18943,12 +18943,21 @@ a.btn:focus-visible {
   width: auto;
 }
 
+:root[data-look="v2"] .kcamp-card .kcamp-name,
+.kcamp-card .kcamp-name {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  min-width: 0 !important;
+}
+
 :root[data-look="v2"] .kcamp-card .kcamp-name b,
 .kcamp-card .kcamp-name b {
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   display: block !important;
+  max-width: 100% !important;
   -webkit-line-clamp: unset !important;
   line-clamp: unset !important;
   line-height: 1.35 !important;
@@ -18960,6 +18969,7 @@ a.btn:focus-visible {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   display: block !important;
+  max-width: 100% !important;
   line-height: 1.35 !important;
   margin-top: 3px !important;
 }
@@ -24421,6 +24431,9 @@ a.btn:focus-visible {
   flex: 1 1 auto !important;
   cursor: pointer !important;
   min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
 }
 
 :root[data-look="v2"] .kcamp-name b {

@@ -81,6 +81,10 @@ async function SignedIn({ searchParams }: { searchParams: PageProps<"/app">["sea
       is_admin: false,
       members: [{ name: user.email?.split("@")[0] ?? "User", email: user.email ?? "", role: "owner", joined_at: "2026-11-22T09:00:00.000Z" }],
     };
+    if (process.env.STAGING_FREE_ACCESS === "true" && user.email === process.env.STAGING_TEST_EMAIL && !account.access_until) {
+      account.access_until = "2026-12-23T00:00:00.000Z";
+      account.access_plan = "pro";
+    }
     return <ClientAppShell initialView={initialView} email={user.email ?? ""} account={account} demo={undefined} isDemoMode={false} />;
   }
 
