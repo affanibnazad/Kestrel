@@ -1,0 +1,32 @@
+# Environment files
+.env*
+!.env.example
+
+# Private tokens & keys
+.supabase-token
+.vercel-token
+.resend-key
+.lemon-key
+.contact-inbox
+.mail-secret
+.anthropic-key
+.verifier-secret
+.verifier-url
+.connect-signing-key
+
+# Private downloads & sensitive assets
+downloads-private/
+kestrel-source-code.zip
+kestrel-audit-docs.zip
+docs/KESTREL_SECURITY_BACKLOG.md
+docs/independent-audit/
+
+# Test outputs & screenshots
+playwright-report/
+test-results/
+scripts/screenshot*
+scripts/*.png
+
+# Database backups & dumps
+backups/
+*.dump
