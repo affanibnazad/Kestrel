@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
+import { createBrowserClient } from "@supabase/ssr";
 
 // scripts/verify-downloads.mjs
 // Real HTTP verification suite for Kestrel paid downloads route security & Supabase Storage.
@@ -13,6 +14,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://xjqtgvhnby
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
 const STAGING_EMAIL = process.env.STAGING_TEST_EMAIL || "";
 const STAGING_PASSWORD = process.env.STAGING_TEST_PASSWORD || "";
+const BACKUP_DIR = path.join(process.env.HOME, "Documents/Kestrel-private/downloads-private");
 
 console.log("================================================================================");
 console.log("KESTREL REAL DOWNLOAD ROUTE & STORAGE VERIFICATION");
@@ -78,28 +80,33 @@ if (!STAGING_EMAIL || !STAGING_PASSWORD || !SUPABASE_KEY) {
 } else {
   console.log(`Authenticating real staging test user: ${STAGING_EMAIL}...`);
   try {
-    const authRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method: "POST",
-      headers: {
-        "apikey": SUPABASE_KEY,
-        "content-type": "application/json",
+    const cookieJar = {};
+    const sb = createBrowserClient(SUPABASE_URL, SUPABASE_KEY, {
+      cookies: {
+        getAll() {
+          return Object.entries(cookieJar).map(([name, value]) => ({ name, value }));
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            cookieJar[name] = value;
+          });
+        },
       },
-      body: JSON.stringify({
-        email: STAGING_EMAIL,
-        password: STAGING_PASSWORD,
-      }),
     });
 
-    if (!authRes.ok) {
-      const errBody = await authRes.text();
-      console.error(`Authentication failed (HTTP ${authRes.status}):`, errBody);
+    const { data: authData, error: authError } = await sb.auth.signInWithPassword({
+      email: STAGING_EMAIL,
+      password: STAGING_PASSWORD,
+    });
+
+    if (authError || !authData.session) {
+      console.error("Authentication failed:", authError?.message || "No session returned");
       process.exit(1);
     }
 
-    const authData = await authRes.json();
-    const accessToken = authData.access_token;
-    const projectRef = new URL(SUPABASE_URL).hostname.split(".")[0];
-    const cookieHeader = `sb-${projectRef}-auth-token=${JSON.stringify([accessToken, authData.refresh_token, null, null, null])}`;
+    const cookieHeader = Object.entries(cookieJar)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
 
     const filesToTest = [
       { key: "extension", filename: "Kestrel-extension-2.9.4.zip" },
@@ -110,6 +117,7 @@ if (!STAGING_EMAIL || !STAGING_PASSWORD || !SUPABASE_KEY) {
     for (const item of filesToTest) {
       const downloadRes = await fetch(`${BASE_URL}/app/download/${item.key}`, {
         headers: { Cookie: cookieHeader },
+        redirect: "manual",
       });
 
       const status = downloadRes.status;
@@ -127,8 +135,17 @@ if (!STAGING_EMAIL || !STAGING_PASSWORD || !SUPABASE_KEY) {
       console.log(`  First 16 Bytes:  ${first16Bytes}`);
 
       assert.strictEqual(status, 200, `Expected HTTP 200 for ${item.key}`);
+
+      // Compare with backup copy
+      const backupPath = path.join(BACKUP_DIR, item.filename);
+      if (fs.existsSync(backupPath)) {
+        const backupBuf = fs.readFileSync(backupPath);
+        const backupSha256 = crypto.createHash("sha256").update(backupBuf).digest("hex");
+        assert.strictEqual(sha256, backupSha256, `SHA-256 mismatch for ${item.filename}`);
+        console.log(`  Backup Match:    ✓ MATCH (${backupSha256})`);
+      }
     }
-    console.log("\n✓ All authenticated staging downloads succeeded with exact bytes.");
+    console.log("\n✓ All authenticated staging downloads succeeded with 100% SHA-256 byte match.");
   } catch (err) {
     console.error("Authenticated staging test error:", err);
     process.exit(1);
