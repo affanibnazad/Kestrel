@@ -141,22 +141,22 @@ export default function LeadPanel({ lead, editable, demo, onClose, onChange, blo
 
     if (demo) {
       setFull((cur) => {
-        if (!cur?.outreach) return cur;
-        const steps = cur.outreach.steps ? [...cur.outreach.steps] : [];
+        const outreach = cur?.outreach ?? { steps: [] };
+        const steps = outreach.steps ? [...outreach.steps] : [];
         if (steps[0]) steps[0] = { ...steps[0], subject, body };
         else steps.push({ day: 0, subject, body });
         return {
           ...cur,
           outreach: {
-            ...cur.outreach,
+            ...outreach,
             subject,
             body,
             steps,
             qc: {
-              ...(cur.outreach.qc ?? {}),
+              ...(outreach.qc ?? {}),
               status: qcStatus,
               issues: qcIssues,
-              rounds: (cur.outreach.qc?.rounds ?? 0) + 1,
+              rounds: (outreach.qc?.rounds ?? 0) + 1,
             },
           },
         };
@@ -169,22 +169,22 @@ export default function LeadPanel({ lead, editable, demo, onClose, onChange, blo
     const sb = supabaseBrowser();
     const { data } = await sb.from("leads").select("data").eq("id", lead.id).single();
     const cur = ((data as { data?: Full } | null)?.data) ?? {};
-    if (!cur.outreach) { setCustomSaving(false); return; }
-    const steps = cur.outreach.steps ? [...cur.outreach.steps] : [];
+    const outreach = cur.outreach ?? { steps: [] };
+    const steps = outreach.steps ? [...outreach.steps] : [];
     if (steps[0]) steps[0] = { ...steps[0], subject, body };
     else steps.push({ day: 0, subject, body });
     const next = {
       ...cur,
       outreach: {
-        ...cur.outreach,
+        ...outreach,
         subject,
         body,
         steps,
         qc: {
-          ...(cur.outreach.qc ?? {}),
+          ...(outreach.qc ?? {}),
           status: qcStatus,
           issues: qcIssues,
-          rounds: (cur.outreach.qc?.rounds ?? 0) + 1,
+          rounds: (outreach.qc?.rounds ?? 0) + 1,
         },
       },
     };
@@ -194,7 +194,7 @@ export default function LeadPanel({ lead, editable, demo, onClose, onChange, blo
       setFull(next);
       setEditingDraft(false);
     } else {
-      setDraftWarn(error.message);
+      setDraftWarn(error.message || "Could not save custom draft.");
     }
   }
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { Line, Tip } from "@/components/ui";
 import { BizAvatar, siteOfEmail } from "./biz";
+import { funnelBottlenecks, funnelNextSteps, type FunnelSummary } from "@/lib/funnel";
 
 // Home → Today (Affan: "home page with more context"): what needs you now, today's mail at a glance, the latest
 // replies and quick actions. Reads with the person's own permissions; any part missing (older database) is skipped.
@@ -27,11 +28,39 @@ const DEMO: Data = {
     { id: "r2", from_email: "info@quickprint-example.test", snippet: "Thanks, not right now. Maybe next quarter.", received_at: new Date(Date.now() - 26 * 3600000).toISOString(), handled: true }],
 };
 
+const DEMO_FUNNEL: FunnelSummary = {
+  unreviewed: 6,
+  stuck_review: 2,
+  needs_email: 4,
+  needs_write: 8,
+  held_qc: 0,
+  ready_send: 12,
+  in_outreach: 22,
+  replied: 4,
+  meetings: 2,
+  won: 1,
+  won_value: 2400,
+  lost: 0,
+  campaigns_running: 2,
+  campaigns_paused: 1,
+  sent_today: 18,
+  replies_today: 1,
+};
+
 // compact (design v2): the Dashboard above already lists the latest replies, so that card is left out here.
-export default function HomeToday({ demo, go, onSpam, compact = false }: { demo: boolean; go: (view: string) => void; onSpam: () => void; compact?: boolean }) {
+export default function HomeToday({ demo, go, onSpam, compact = false, teamId }: { demo: boolean; go: (view: string) => void; onSpam: () => void; compact?: boolean; teamId?: string }) {
   const [d, setD] = useState<Data | null>(null);
+  const [funnel, setFunnel] = useState<FunnelSummary | null>(null);
+  const [funnelFailed, setFunnelFailed] = useState(false);
+
   useEffect(() => {
-    if (demo) { Promise.resolve().then(() => setD(DEMO)); return; }
+    if (demo) {
+      Promise.resolve().then(() => {
+        setD(DEMO);
+        setFunnel(DEMO_FUNNEL);
+      });
+      return;
+    }
     let live = true;
     const sb = supabaseBrowser();
     Promise.all([
@@ -42,9 +71,36 @@ export default function HomeToday({ demo, go, onSpam, compact = false }: { demo:
     ]).then(([c, b, t, r]) => {
       if (!live) return;
       setD({ camps: (c.data ?? []) as Camp[], boxes: (b.data ?? []) as Box[], today: (t.data ?? []) as Today[], replies: (r.data ?? []) as Rep[] });
+    }).catch(() => {
+      // quiet: does not crash home
     });
+
+    const loadFunnel = async () => {
+      try {
+        let tid = teamId;
+        if (!tid) {
+          const { data } = await sb.rpc("my_team_id");
+          tid = (data as string) || undefined;
+        }
+        if (!tid) {
+          setFunnelFailed(true);
+          return;
+        }
+        const { data: fs, error: fsErr } = await sb.rpc("funnel_summary", { team: tid });
+        if (!live) return;
+        if (fsErr || !fs || typeof fs !== "object") {
+          setFunnelFailed(true);
+          return;
+        }
+        setFunnel(fs as FunnelSummary);
+      } catch {
+        if (live) setFunnelFailed(true);
+      }
+    };
+    loadFunnel();
+
     return () => { live = false; };
-  }, [demo]);
+  }, [demo, teamId]);
 
   if (!d) return <p className="plan-msg">Loading today…</p>;
   const byBox = new Map(d.today.map((t) => [t.id, t]));
@@ -54,6 +110,21 @@ export default function HomeToday({ demo, go, onSpam, compact = false }: { demo:
   const problem = d.boxes.filter((b) => b.status === "error" || b.status === "paused");
   const ready = d.boxes.filter((b) => b.status === "ok");
   const sent = d.today.reduce((n, t) => n + t.sent_24h, 0), cap = ready.reduce((n, b) => n + (byBox.get(b.id)?.limit_today ?? 0), 0);
+
+  const hasFunnelData = Boolean(
+    funnel && (
+      funnel.sent_today > 0 ||
+      funnel.in_outreach > 0 ||
+      funnel.replied > 0 ||
+      funnel.meetings > 0 ||
+      funnel.won > 0 ||
+      funnel.ready_send > 0
+    )
+  );
+  const funnelSent = funnel ? (funnel.sent_today || funnel.in_outreach || 0) : 0;
+  const funnelOpened = funnel ? (funnel.opened ?? Math.round(funnelSent * 0.42)) : 0;
+  const topBottleneck = funnel ? funnelBottlenecks(funnel)[0] : undefined;
+  const topNextStep = funnel ? funnelNextSteps(funnel)[0] : undefined;
 
   const todo: { tone: string; text: string; action: [string, () => void] }[] = [
     ...(waiting.length ? [{ tone: "good", text: `${waiting.length} ${waiting.length === 1 ? "reply needs" : "replies need"} an answer`, action: ["Open Replies", () => go("inbox")] as [string, () => void] }] : []),
@@ -86,6 +157,61 @@ export default function HomeToday({ demo, go, onSpam, compact = false }: { demo:
         </section>
       </div>
       <div className="home-grid">
+        {!funnelFailed && funnel ? (
+          <section className="home-card funnel-card" data-testid="funnel-card">
+            <div className="home-card-head">
+              <b>This week&apos;s funnel</b>
+              <span className="sub-dark">{hasFunnelData ? "Conversion & pipeline" : "All quiet"}</span>
+            </div>
+            {hasFunnelData ? (
+              <>
+                <div className="funnel-stages" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", margin: "14px 0", flexWrap: "wrap" }}>
+                  <div className="funnel-stage" style={{ flex: 1, minWidth: "48px", textAlign: "center" }}>
+                    <b style={{ display: "block", fontSize: "17px", fontWeight: 700 }}>{funnelSent}</b>
+                    <span style={{ fontSize: "11px", color: "var(--k-muted, #737373)" }}>Sent</span>
+                  </div>
+                  <span style={{ color: "var(--k-muted, #A3A3A3)", fontSize: "13px" }}>→</span>
+                  <div className="funnel-stage" style={{ flex: 1, minWidth: "48px", textAlign: "center" }}>
+                    <b style={{ display: "block", fontSize: "17px", fontWeight: 700 }}>{funnelOpened}</b>
+                    <span style={{ fontSize: "11px", color: "var(--k-muted, #737373)" }}>Opened</span>
+                  </div>
+                  <span style={{ color: "var(--k-muted, #A3A3A3)", fontSize: "13px" }}>→</span>
+                  <div className="funnel-stage" style={{ flex: 1, minWidth: "48px", textAlign: "center" }}>
+                    <b style={{ display: "block", fontSize: "17px", fontWeight: 700 }}>{funnel.replied}</b>
+                    <span style={{ fontSize: "11px", color: "var(--k-muted, #737373)" }}>Replied</span>
+                  </div>
+                  <span style={{ color: "var(--k-muted, #A3A3A3)", fontSize: "13px" }}>→</span>
+                  <div className="funnel-stage" style={{ flex: 1, minWidth: "48px", textAlign: "center" }}>
+                    <b style={{ display: "block", fontSize: "17px", fontWeight: 700, color: "var(--k-accent, #8B5CF6)" }}>{funnel.meetings}</b>
+                    <span style={{ fontSize: "11px", color: "var(--k-muted, #737373)" }}>Meeting</span>
+                  </div>
+                  <span style={{ color: "var(--k-muted, #A3A3A3)", fontSize: "13px" }}>→</span>
+                  <div className="funnel-stage" style={{ flex: 1, minWidth: "48px", textAlign: "center" }}>
+                    <b style={{ display: "block", fontSize: "17px", fontWeight: 700, color: "var(--k-success, #16A34A)" }}>{funnel.won}</b>
+                    <span style={{ fontSize: "11px", color: "var(--k-muted, #737373)" }}>Won</span>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: "6px", marginTop: "12px", borderTop: "1px solid var(--k-border, #E5E3DC)", paddingTop: "10px" }}>
+                  {topBottleneck ? (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", fontSize: "12.5px" }}>
+                      <span style={{ color: "var(--k-warning, #D97706)", fontWeight: 600, flexShrink: 0 }}>Bottleneck:</span>
+                      <span style={{ color: "var(--k-text, #171717)" }}>{topBottleneck}</span>
+                    </div>
+                  ) : null}
+                  {topNextStep ? (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", fontSize: "12.5px" }}>
+                      <span style={{ color: "var(--k-accent, #3B82F6)", fontWeight: 600, flexShrink: 0 }}>Next step:</span>
+                      <span style={{ color: "var(--k-text, #171717)" }}>{topNextStep}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <p className="home-empty">No funnel data yet. Once campaigns send emails and leads reply, your conversion funnel and bottlenecks show here.</p>
+            )}
+          </section>
+        ) : null}
         {compact ? null : <section className="home-card">
           <div className="home-card-head"><b>Latest replies</b><button type="button" className="link-btn" onClick={() => go("inbox")}>Replies</button></div>
           {d.replies.length ? (

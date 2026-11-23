@@ -18,6 +18,7 @@ export type FunnelSummary = {
   campaigns_paused: number;
   sent_today: number;
   replies_today: number;
+  opened?: number;
   last_report_at?: string | null;
 };
 

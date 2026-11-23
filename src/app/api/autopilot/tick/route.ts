@@ -130,6 +130,12 @@ export async function POST(request: Request) {
       Object.values(stopped).forEach((x) => notes.add(x));
       const note = notes.size ? [...notes].join(" ").slice(0, 500) : null;
       await sb.rpc("ap_finish", { server_secret: secret, team: t.team_id, worked, emails, scored, good, written, note });
+      // Funnel daily report (once per 20h in try/catch, no bot_post, no Bot room)
+      try {
+        await sb.rpc("funnel_post_daily_report", { server_secret: secret, team: t.team_id });
+      } catch {
+        // quiet: does not block autopilot tick
+      }
     }
     report.push(`${t.team_id.slice(0, 8)}: ${worked} worked, ${emails} emails, ${scored} scored, ${written} written`);
   }

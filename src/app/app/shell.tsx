@@ -1371,7 +1371,7 @@ function HomeView({ account, leads, loaded, email, go, demo, onSpam, onLead }: {
       {account && !demo && loaded && !leads.length && (account.members?.length ?? 1) <= 1 && account.role === "owner" ? (
         <p className="plan-msg home-new">This is a new workspace, <b>{account.team_name}</b>, for {email}. Meant to join your team&apos;s workspace instead? Sign out and sign in with the email your team uses, or ask your team owner for the join link.</p>
       ) : null}
-      <HomeToday demo={demo} go={go} onSpam={onSpam} compact />
+      <HomeToday demo={demo} go={go} onSpam={onSpam} compact teamId={account?.team_id} />
       <div className="home-grid">
         {done < steps.length ? <section className="home-card">
           <div className="home-card-head"><b>Set up Kestrel</b><span className="sub-dark">{done} of {steps.length} done</span></div>

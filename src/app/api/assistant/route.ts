@@ -9,6 +9,7 @@ import { aboutForAi, cleanAbout } from "@/lib/about";import { STAGES, leadStage,
 import { aboutReady } from "@/lib/about";
 import { cleanRules, isOldPointsRule, NO_VALUE, RULE_ACTIONS, RULE_FIELDS, RULE_OPS } from "@/lib/scoring";
 import { MAX_STEPS, checkSequence, cleanSteps, unknownFields, type Step } from "@/lib/sequence";
+import { funnelBottlenecks, funnelNextSteps, type FunnelSummary } from "@/lib/funnel";
 
 
 
@@ -263,7 +264,27 @@ async function runTool(sb: Sb, name: string, input: Record<string, unknown>, tur
         if (st === "review" && Date.parse(l.created_at) < week) oldReview++;
       }
       const stages = [...STAGES.map((x) => ({ stage: x.name, leads: counts[x.id] ?? 0 })), { stage: "Not a fit", leads: counts.nofit ?? 0 }];
-      return JSON.stringify({ stages, won_value_usd: Math.round(won), in_review_over_7_days: oldReview, note: (ls.data ?? []).length >= 5000 ? "Counted the newest 5,000 leads." : undefined });
+      const summary: FunnelSummary = {
+        unreviewed: counts.review ?? 0,
+        stuck_review: oldReview,
+        needs_email: counts.email ?? 0,
+        needs_write: counts.write ?? 0,
+        held_qc: 0,
+        ready_send: counts.ready ?? 0,
+        in_outreach: counts.outreach ?? 0,
+        replied: counts.replied ?? 0,
+        meetings: counts.meeting ?? 0,
+        won: counts.won ?? 0,
+        won_value: Math.round(won),
+        lost: counts.lost ?? 0,
+        campaigns_running: 0,
+        campaigns_paused: 0,
+        sent_today: 0,
+        replies_today: 0,
+      };
+      const next_steps = funnelNextSteps(summary);
+      const bottlenecks = funnelBottlenecks(summary);
+      return JSON.stringify({ stages, won_value_usd: Math.round(won), in_review_over_7_days: oldReview, next_steps, bottlenecks, note: (ls.data ?? []).length >= 5000 ? "Counted the newest 5,000 leads." : undefined });
     }
     case "get_business": {
       turn.activity.push("Read Your business");
