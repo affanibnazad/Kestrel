@@ -48,9 +48,24 @@ export async function ask(provider: Provider, key: string, model: string, system
 
   for (let attempt = 0; ; attempt++) {
     let res: Response;
-    try { res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) }); }
-    catch { if (attempt >= retries) throw new AiError(`Network problem reaching ${name}.`); await wait(1000 * 2 ** attempt); continue; }
-    if (res.ok) return read(provider, await res.json());
+    const startMs = Date.now();
+    try {
+      res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+      const elapsedMs = Date.now() - startMs;
+      console.log(`[ai-server] provider=${provider} model=${model} status=${res.status} ms=${elapsedMs}`);
+    } catch (err: any) {
+      const elapsedMs = Date.now() - startMs;
+      console.log(`[ai-server] provider=${provider} model=${model} status=FETCH_ERROR error=${err?.message || err} ms=${elapsedMs}`);
+      if (attempt >= retries) throw new AiError(`Network problem reaching ${name}.`);
+      await wait(1000 * 2 ** attempt);
+      continue;
+    }
+    if (res.ok) {
+      const json = await res.json();
+      const answer = read(provider, json);
+      console.log(`[ai-server] raw_text=${JSON.stringify(answer.text)}`);
+      return answer;
+    }
     const detail = await res.json().catch(() => ({}));
     const message = String((detail?.error && (detail.error.message || detail.error)) || "");
     if ([429, 500, 502, 503, 529].includes(res.status) && attempt < retries) { await wait((Number(res.headers.get("retry-after")) || 2 ** attempt) * 1000); continue; }
