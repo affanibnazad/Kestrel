@@ -22,10 +22,11 @@ export const canWork = (role: string) => ["owner", "manager", "researcher"].incl
 // The same instructions as the App's own AI, for the person's Claude Code or Codex plan to follow (no AI key needed).
 // Everything comes from the person's current team only (a person in two teams never mixes them).
 export async function agentPlan(sb: SupabaseClient, team: string, task: "score" | "emails", offerId: string, sequence: string): Promise<AiPlan | { error: string }> {
-  const [{ data: offer }, { data: ai }, { data: aboutRow }] = await Promise.all([
+  const [{ data: offer }, { data: ai }, { data: aboutRow }, { data: allActiveOffers }] = await Promise.all([
     sb.from("offer_profiles").select("*").eq("id", offerId).eq("team_id", team).maybeSingle(),
     sb.from("team_ai").select("*").eq("team_id", team).maybeSingle(),
     sb.from("team_about").select("*").eq("team_id", team).maybeSingle(),   // database 059
+    task === "score" ? sb.from("offer_profiles").select("*").eq("team_id", team).eq("active", true).order("name") : Promise.resolve({ data: [] }),
   ]);
   const settings = ai ? { ...ai, about: aboutForAi(aboutRow ? cleanAbout(aboutRow) : null) } : null;
   if (!offer) return { error: "Offer not found. Use list_offers for the ids." };
@@ -38,7 +39,8 @@ export async function agentPlan(sb: SupabaseClient, team: string, task: "score" 
       seq = { steps: row.steps, id: row.id as string };
     } else seq = "default";
   }
+  const activeServices = (allActiveOffers ?? []) as Offer[];
   // Model and key are not used here: the person's own plan does the thinking.
-  const p = aiPlan(task, offer as Offer, { ...(settings ?? {}), provider: "anthropic", model: "" }, "agent", seq);
+  const p = aiPlan(task, offer as Offer, { ...(settings ?? {}), provider: "anthropic", model: "" }, "agent", seq, activeServices);
   return "error" in p ? p : { ...p, by: "kestrel-mcp" };
 }

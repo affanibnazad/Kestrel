@@ -22,6 +22,7 @@ export type AiPlan = {
   task: "score" | "emails" | "research" | "qc"; provider: Provider; key: string; model: string; effort?: "low" | "medium" | "high";
   offer: Offer; sender: Sender; hash: string; system: string; schema: object; followUps: number;
   seq: { steps: Step[]; id?: string } | null;
+  activeServices?: Offer[];
   by?: string;   // who wrote it, when not the team's AI company (Kestrel MCP: "claude-code / codex")
 };
 // Checks the offer, sender, model and sequence, and builds what every lead in the batch shares. Returns an error in plain words.
@@ -44,7 +45,7 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
   const followUps = seq ? followUpCount(seq.steps) : 0;
   return { task, provider, key, model: pick.model, effort: provider === "anthropic" ? pick.effort : undefined, offer, sender: s, hash: profileHash(offer),
     system: task === "score" ? fitSystem(offer, s.about ?? "", activeServices) : task === "research" ? researchSystem(offer, s.about ?? "") : task === "qc" ? qcSystem(offer) : emailSystem(offer, s, seq?.steps),
-    schema: task === "score" ? FIT_SCHEMA : task === "research" ? RESEARCH_SCHEMA : task === "qc" ? QC_SCHEMA : sequenceSchema(followUps), followUps, seq };
+    schema: task === "score" ? FIT_SCHEMA : task === "research" ? RESEARCH_SCHEMA : task === "qc" ? QC_SCHEMA : sequenceSchema(followUps), followUps, seq, activeServices };
 }
 
 export type LeadIn = { id: string; email: string | null; data: LeadData | null };
@@ -95,7 +96,29 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
   if (p.task === "score") {
     const f = cleanFit(answer);
     if (!f) return { ok: false, why: "unreadable answer", cost };
-    const ai = { ...f, profile: p.hash, by, at: Date.now() };
+
+    // Validate matched_service_id: keep it only if it equals the id of one of the team's ACTIVE services;
+    // otherwise drop it and set matched_service_name from the real service, never from the AI text.
+    let matchedId: string | undefined = undefined;
+    let matchedName: string | undefined = undefined;
+    if (f.matched_service_id && p.activeServices && p.activeServices.length > 0) {
+      const activeMatch = p.activeServices.find((s) => s.id === f.matched_service_id && s.active !== false);
+      if (activeMatch) {
+        matchedId = activeMatch.id;
+        matchedName = activeMatch.name;
+      }
+    }
+
+    const cleanF = {
+      ...f,
+      ...(matchedId ? { matched_service_id: matchedId, matched_service_name: matchedName } : {}),
+    };
+    if (!matchedId) {
+      delete cleanF.matched_service_id;
+      delete cleanF.matched_service_name;
+    }
+
+    const ai = { ...cleanF, profile: p.hash, by, at: Date.now() };
     const patch: Record<string, unknown> = {
       verdict: VERDICT_COLUMN[f.verdict],
       reason: f.reason,
@@ -107,11 +130,11 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
       reason: f.reason,
       fit: f.fit,
     };
-    if (f.matched_service_id) {
-      resObj.matched_service_id = f.matched_service_id;
+    if (matchedId) {
+      resObj.matched_service_id = matchedId;
     }
-    if (f.matched_service_name) {
-      resObj.matched_service_name = f.matched_service_name;
+    if (matchedName) {
+      resObj.matched_service_name = matchedName;
     }
     return { ok: true, patch, result: resObj, cost };
   }

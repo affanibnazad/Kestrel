@@ -2,6 +2,19 @@
 -- Blueprint Stage B, Task 2.1: Additive Service Catalog extension on public.offer_profiles
 -- Additive only. No existing columns or RLS dropped.
 
+-- Pre-check: Inspect proof length per team_about row.
+-- Adding a UUID "id" key (~45 chars) per proof element must not cause proof to exceed the 8000 byte limit.
+SELECT
+  team_id,
+  length(proof::text) as current_bytes,
+  jsonb_array_length(proof) as proof_count,
+  length(proof::text) + (jsonb_array_length(proof) * 45) as projected_bytes,
+  (length(proof::text) + (jsonb_array_length(proof) * 45) > 8000) as would_exceed_limit
+FROM public.team_about
+WHERE proof is not null and jsonb_array_length(proof) > 0;
+
+BEGIN;
+
 -- 1. Extend public.offer_profiles with additive fields
 alter table public.offer_profiles
   add column if not exists service_type text check (service_type is null or length(service_type) <= 50),
@@ -35,5 +48,7 @@ begin
     update public.team_about set proof = new_proof where team_id = r.team_id;
   end loop;
 end $$;
+
+COMMIT;
 
 notify pgrst, 'reload schema';
