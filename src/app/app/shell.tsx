@@ -171,6 +171,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
   const resolveView = useCallback((v: string | null | undefined): string => {
     if (!v || !isValidView(v)) return "home";
     if (v === "owner" && !isAdmin && !demo && !isDemoMode) return "home";
+    if (v === "autopilot") return "home"; // r9: Autopilot parked
     return v;
   }, [isAdmin, demo, isDemoMode]);
 
@@ -889,7 +890,6 @@ export default function AppShell({ email, loading = false, preview = false, acco
           <div className="kside-sec">AI</div>
           <nav className="kside-nav" aria-label="AI">
             <KNav icon="sparkle" label="Kestrel AI" on={view === "ai" || view === "assistant"} onClick={() => pick("ai")} />
-            <KNav icon="bolt" label="Autopilot" on={view === "autopilot"} onClick={() => pick("autopilot")} />
           </nav>
           <div className="kside-sec">More</div>
           <nav className="kside-nav" aria-label="More">

@@ -15,10 +15,10 @@ export async function proxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
-  // /ai-chat redirects to the standalone /kestrel-ai-chat page
-  if (path === "/ai-chat") {
+  // Parked standalone chat routes redirect to home
+  if (path === "/ai-chat" || path === "/kestrel-ai-chat") {
     const url = request.nextUrl.clone();
-    url.pathname = "/kestrel-ai-chat";
+    url.pathname = "/";
     return NextResponse.redirect(url, 308);
   }
 

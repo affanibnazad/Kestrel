@@ -62,11 +62,6 @@ export default function InboxView({ account, demo, editable, toast }: { account:
   const [alerts, setAlerts] = useAlertsSetting();
   const [labelling, setLabelling] = useState(false);
   const [booking, setBooking] = useState("");
-  const [composing, setComposing] = useState(false);
-  const [composeTo, setComposeTo] = useState("");
-  const [composeSubj, setComposeSubj] = useState("");
-  const [composeBody, setComposeBody] = useState("");
-  const [sending, setSending] = useState(false);
 
   const activeTeamRef = useRef(account?.team_id);
   const reqGenRef = useRef(0);
@@ -207,7 +202,7 @@ export default function InboxView({ account, demo, editable, toast }: { account:
     if (!pick && firstId && window.innerWidth > 900) Promise.resolve().then(() => setPick(firstId));
   }, [pick, firstId]);
 
-  const choose = (id: string) => { setPick(id); setNote(null); setComposing(false); };
+  const choose = (id: string) => { setPick(id); setNote(null); };
   const when = (s: string | null) => s ? new Date(s).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(", ", ", ") : "";
 
   async function setStage(stage: Stage | null) {
@@ -297,18 +292,7 @@ export default function InboxView({ account, demo, editable, toast }: { account:
           <aside className="kinbox-card kinbox-list-card">
             {/* Top Search & Filter Bar */}
             <div className="kinbox-top-bar">
-              <button
-                type="button"
-                className={`kinbox-compose-btn${composing ? " on" : ""}`}
-                title="Write new email"
-                onClick={() => {
-                  setComposing(true);
-                  setPick("");
-                }}
-              >
-                <Line name="pencil" />
-                <span>Write Email</span>
-              </button>
+              {/* r9: Write Email (direct send) hidden */}
               <div className="kinbox-search-wrap">
                 <Line name="search" />
                 <input
@@ -519,122 +503,7 @@ export default function InboxView({ account, demo, editable, toast }: { account:
 
           {/* Card 2: Reading Pane & Reply Composer */}
           <section className="kinbox-card kinbox-pane-card">
-            {composing ? (
-              <>
-                <div className="kinbox-pane-header">
-                  <div className="kinbox-pane-sender">
-                    <div className="kinbox-new-mail-avatar">
-                      <Line name="pencil" />
-                    </div>
-                    <div className="kinbox-pane-sender-info">
-                      <b className="kinbox-pane-name">New Message</b>
-                      <span className="kinbox-pane-email">Send direct email to any contact</span>
-                    </div>
-                  </div>
-                  <div className="kinbox-pane-actions">
-                    <button
-                      type="button"
-                      className="kinbox-pill-btn"
-                      onClick={() => {
-                        setComposing(false);
-                        if (rows[0]) choose(rows[0].c.id);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-                <div className="kinbox-compose-body">
-                  <div className="kc-modern-card kinbox-direct-compose">
-                    <div className="kc-to-row">
-                      <div className="kc-to-left">
-                        <span className="kc-label">To:</span>
-                        <input
-                          type="email"
-                          className="kinbox-direct-input"
-                          placeholder="recipient@example.com"
-                          value={composeTo}
-                          onChange={(e) => setComposeTo(e.target.value)}
-                          autoFocus
-                        />
-                      </div>
-                    </div>
-                    <div className="kc-subj-row">
-                      <span className="kc-label">Subject:</span>
-                      <input
-                        type="text"
-                        className="kinbox-direct-input"
-                        placeholder="Subject..."
-                        value={composeSubj}
-                        onChange={(e) => setComposeSubj(e.target.value)}
-                      />
-                    </div>
-                    <textarea
-                      className="kinbox-direct-editor"
-                      rows={10}
-                      placeholder="Write your email here..."
-                      value={composeBody}
-                      onChange={(e) => setComposeBody(e.target.value)}
-                    />
-                    <div className="kc-modern-foot">
-                      <button
-                        type="button"
-                        className="btn glass small kc-trash-btn"
-                        title="Discard"
-                        onClick={() => {
-                          setComposeTo("");
-                          setComposeSubj("");
-                          setComposeBody("");
-                          setComposing(false);
-                          if (rows[0]) choose(rows[0].c.id);
-                        }}
-                      >
-                        <Line name="trash" />
-                      </button>
-                      <div style={{ marginLeft: "auto" }}>
-                        <button
-                          type="button"
-                          className="btn go small"
-                          style={{ borderRadius: 9999, height: 38, padding: "0 22px", background: "#111827", color: "#fff", fontWeight: 600, border: 0 }}
-                          disabled={!composeTo.trim() || !composeBody.trim() || sending}
-                          onClick={async () => {
-                            if (!composeTo.trim() || !composeBody.trim()) return;
-                            setSending(true);
-                            try {
-                              if (demo) {
-                                await new Promise((r) => setTimeout(r, 400));
-                              } else {
-                                await fetch("/api/mail/reply", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    to_email: composeTo.trim(),
-                                    subject: composeSubj.trim() || "No subject",
-                                    body_text: composeBody.trim(),
-                                  }),
-                                }).catch(() => null);
-                              }
-                              toast(`Email sent to ${composeTo.trim()}`);
-                              setComposeTo("");
-                              setComposeSubj("");
-                              setComposeBody("");
-                              setComposing(false);
-                              if (rows[0]) choose(rows[0].c.id);
-                            } catch {
-                              toast("Could not send email.");
-                            } finally {
-                              setSending(false);
-                            }
-                          }}
-                        >
-                          {sending ? "Sending…" : "Send Message"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : open ? (
+            {open ? (
               <>
                 {/* Sender Header */}
                 <div className="kinbox-pane-header">

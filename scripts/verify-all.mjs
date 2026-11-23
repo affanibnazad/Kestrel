@@ -32,13 +32,12 @@ async function runTests() {
     const redirectedToAppOrLogin = currentUrl.includes("/app") || currentUrl.includes("/login");
     record("Root redirect to protected entry /app (redirects to /login when unauthenticated)", redirectedToAppOrLogin, `Final URL: ${currentUrl}`);
 
-    // 2. Standalone /kestrel-ai-chat view verification
-    console.log("2. Checking standalone /kestrel-ai-chat...");
+    // 2. Standalone /kestrel-ai-chat is parked (redirects to root)
+    console.log("2. Checking parked /kestrel-ai-chat redirect...");
     await page.goto("http://localhost:3333/kestrel-ai-chat", { waitUntil: "networkidle" });
-    const aiChatTitle = await page.title();
-    const hasKchat = await page.locator(".kchat-page").count();
-    const starterButtons = await page.locator(".kchat-starter").count();
-    record("Standalone /kestrel-ai-chat loads with full UI", hasKchat > 0 && starterButtons >= 4, `Title: ${aiChatTitle}, Starters: ${starterButtons}`);
+    const currentAiUrl = page.url();
+    const redirectedHome = !currentAiUrl.includes("/kestrel-ai-chat");
+    record("Standalone /kestrel-ai-chat is parked and redirected", redirectedHome, `Final URL: ${currentAiUrl}`);
 
     // 3. In-App Kestrel AI view verification
     console.log("3. Verifying In-App Kestrel AI interface in Demo Mode...");
