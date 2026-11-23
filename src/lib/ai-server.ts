@@ -53,9 +53,10 @@ export async function ask(provider: Provider, key: string, model: string, system
       res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
       const elapsedMs = Date.now() - startMs;
       console.log(`[ai-server] provider=${provider} model=${model} status=${res.status} ms=${elapsedMs}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       const elapsedMs = Date.now() - startMs;
-      console.log(`[ai-server] provider=${provider} model=${model} status=FETCH_ERROR error=${err?.message || err} ms=${elapsedMs}`);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.log(`[ai-server] provider=${provider} model=${model} status=FETCH_ERROR error=${errMsg} ms=${elapsedMs}`);
       if (attempt >= retries) throw new AiError(`Network problem reaching ${name}.`);
       await wait(1000 * 2 ** attempt);
       continue;

@@ -16,9 +16,30 @@ import { IssueList, ScoreBadge } from "./spam-check";
 type Full = Record<string, unknown> & {
   emails?: string[]; address?: string; description?: string; url?: string; keyword?: string; rating?: number; reviews?: number;
   socials?: Record<string, string>; contacts?: { name?: string; position?: string; role?: string; email?: string; linkedin?: string }[];
-  hiring?: { jobs?: { title?: string; url?: string }[] }; ai?: { verdict?: string; reason?: string; fit?: string };
+  hiring?: { jobs?: { title?: string; url?: string }[] };
+  ai?: {
+    verdict?: string;
+    reason?: string;
+    fit?: string | number;
+    matched_service_id?: string;
+    matched_service_name?: string;
+    buying_trigger?: string;
+  };
   verdict_log?: { from: string | null; to: string | null; at: string; by: string }[];
-  research?: { problem?: string; how?: string; detail?: string; sure?: string; host?: string; at?: number };
+  research?: {
+    problem?: string;
+    how?: string;
+    detail?: string;
+    sure?: string;
+    host?: string;
+    at?: number;
+    observations?: { fact: string; quote: string; url?: string }[];
+    hypotheses?: string[];
+    unknowns?: string[];
+    dropped_observations?: { fact: string; quote: string; url?: string }[];
+  };
+  outreach_approved?: boolean;
+  outreach_approved_at?: string;
   outreach?: { qc?: { status?: string; issues?: string[]; rounds?: number; fixed?: string[] }; firstName?: string; subject?: string; icebreaker?: string; question?: string; body?: string; steps?: { day: number; subject: string; body: string }[] };
 };
 export type Status = "new" | "kept" | "removed";
@@ -84,13 +105,73 @@ export default function LeadPanel({ lead, editable, demo, onClose, onChange, blo
   }
   // Phase 4B: the Research bot reads this lead's website now (the same step Autopilot runs before writing).
   async function research() {
-    if (demo) { setFull((x) => ({ ...(x ?? {}), research: { problem: "They post new client launch videos every week, so editing likely piles up around launches.", how: "A steady outside editor could take the launch edits so their team keeps up.", detail: "Their latest case study is a 6-part launch series for an outdoor brand.", sure: "high", host: "example.test", at: Date.now() } })); return; }
+    if (demo) {
+      setFull((x) => ({
+        ...(x ?? {}),
+        research: {
+          observations: [
+            { fact: "They publish weekly client stories and video productions.", quote: "client stories and launch videos every week", url: "https://example.test" },
+            { fact: "Produced a 6-part launch series for an outdoor apparel brand.", quote: "6-part launch series for an outdoor brand", url: "https://example.test" },
+          ],
+          hypotheses: [
+            "Guess: Video post-production workload spikes around customer launches.",
+            "Guess: Would benefit from dedicated overflow editing support.",
+          ],
+          unknowns: [
+            "Internal video post-production team size",
+            "Target turnaround speed requirements",
+          ],
+          problem: "They post new client launch videos every week, so editing likely piles up around launches.",
+          how: "A steady outside editor could take the launch edits so their team keeps up.",
+          detail: "Their latest case study is a 6-part launch series for an outdoor brand.",
+          sure: "high",
+          host: "example.test",
+          at: Date.now(),
+        },
+      }));
+      return;
+    }
     setReading("busy");
     const r = await fetch("/api/ai", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ task: "research", ids: [lead.id], offerId: "current" }) })
       .then((x) => x.json()).catch(() => null) as { done?: { research?: Full["research"] }[]; skipped?: { why: string }[]; error?: string } | null;
     const got = r?.done?.[0]?.research;
     if (got) { setFull((x) => ({ ...(x ?? {}), research: got })); setReading(""); return; }
     setReading(r?.error || (r?.skipped?.[0]?.why ? `Could not research it: ${r.skipped[0].why}.` : "Could not research it just now. Try again in a minute."));
+  }
+
+  const [approving, setApproving] = useState(false);
+
+  async function toggleApproveOutreach() {
+    if (approving) return;
+    setApproving(true);
+    const nextApproved = !(lead.outreach_approved || full?.outreach_approved);
+    const now = new Date().toISOString();
+    if (demo) {
+      setFull((x) => ({ ...(x ?? {}), outreach_approved: nextApproved, outreach_approved_at: now }));
+      onChange({ outreach_approved: nextApproved, outreach_approved_at: now } as Partial<LeadRow>);
+      setApproving(false);
+      return;
+    }
+    const sb = supabaseBrowser();
+    const { data: userData } = await sb.auth.getUser();
+    const userId = userData.user?.id || null;
+    const patch: Record<string, unknown> = {
+      outreach_approved: nextApproved,
+      outreach_approved_at: nextApproved ? now : null,
+      outreach_approved_by: nextApproved ? userId : null,
+    };
+    let { error } = await sb.from("leads").update(patch).eq("id", lead.id);
+    if (error && /column.*does not exist|schema cache/i.test(error.message)) {
+      const curData = (full ?? {}) as Record<string, unknown>;
+      const nextData = { ...curData, outreach_approved: nextApproved, outreach_approved_at: nextApproved ? now : null };
+      const res2 = await sb.from("leads").update({ data: nextData }).eq("id", lead.id);
+      error = res2.error;
+    }
+    setApproving(false);
+    if (!error) {
+      setFull((x) => ({ ...(x ?? {}), outreach_approved: nextApproved, outreach_approved_at: now }));
+      onChange({ outreach_approved: nextApproved, outreach_approved_at: now } as Partial<LeadRow>);
+    }
   }
   // Phase 4C: approve an email the QC bot held, so campaigns can send it (database 068 leaves held emails out).
   async function approveQc() {
@@ -234,19 +315,150 @@ export default function LeadPanel({ lead, editable, demo, onClose, onChange, blo
             </div>
           </div>
           {lead.reason ? <p className="dr-reason">{lead.reason}</p> : null}
-          {f.research?.problem ? (
-            <div className="dr-research">
-              <p className="dr-research-h"><b>From their website</b><small>{[f.research.host, f.research.sure === "low" ? "a guess: little text on the site" : ""].filter(Boolean).join(" · ")}</small></p>
-              <dl>
-                <div><dt>Likely problem</dt><dd>{f.research.problem}</dd></div>
-                <div><dt>How you can help</dt><dd>{f.research.how}</dd></div>
-                <div><dt>Detail for the first line</dt><dd>{f.research.detail}</dd></div>
-              </dl>
-              {editable ? <button type="button" className="link-btn" disabled={reading === "busy"} onClick={research}>{reading === "busy" ? "Reading their website…" : "Read it again"}</button> : null}
+          {/* Opportunity Report Card (Stage C) */}
+          {f.research || f.ai?.matched_service_name || lead.matched_service_id || f.ai?.buying_trigger || lead.buying_trigger ? (
+            <div className="dr-opp-card" style={{ border: "1px solid var(--k-border, rgba(120,120,128,0.18))", borderRadius: "14px", padding: "12px", background: "var(--fill, rgba(120, 120, 128, .04))", margin: "10px 0 6px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <b style={{ fontSize: "13.5px" }}>Opportunity Report</b>
+                  <span style={{ fontSize: "11px", padding: "1px 7px", borderRadius: 9999, background: "rgba(14, 165, 164, 0.12)", color: "#0EA5A4", fontWeight: 600 }}>
+                    Stage C
+                  </span>
+                </div>
+                {(lead.outreach_approved || f.outreach_approved) ? (
+                  <span style={{ fontSize: "11.5px", padding: "2px 8px", borderRadius: 9999, background: "rgba(22, 163, 74, 0.12)", color: "#16A34A", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    Approved for outreach ✓
+                  </span>
+                ) : (
+                  <span style={{ fontSize: "11.5px", padding: "2px 8px", borderRadius: 9999, background: "rgba(217, 119, 6, 0.12)", color: "#D97706", fontWeight: 600 }}>
+                    Approval required
+                  </span>
+                )}
+              </div>
+
+              {/* Matched Service, Buying Trigger, and Fit */}
+              <div style={{ display: "grid", gap: "6px", background: "var(--k-surface, rgba(120, 120, 128, .06))", padding: "8px 10px", borderRadius: "10px", marginBottom: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "12px", color: "var(--label2, #8A8A8A)" }}>Service Fit:</span>
+                  <b style={{ fontSize: "13px", color: (f.ai?.matched_service_name || lead.matched_service_id) ? "#8B5CF6" : "inherit" }}>
+                    {f.ai?.matched_service_name || (lead.matched_service_id ? "Active Service" : "None")}
+                  </b>
+                  {lead.verdict ? (
+                    <span className={`seg-pill ${lead.verdict.toLowerCase()}`} style={{ fontSize: "11px", padding: "1px 8px", borderRadius: 9999, fontWeight: 600 }}>
+                      {lead.verdict} ({lead.score ?? f.ai?.fit ?? "—"})
+                    </span>
+                  ) : null}
+                </div>
+                {(f.ai?.buying_trigger || lead.buying_trigger) ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "12px", color: "var(--label2, #8A8A8A)" }}>Buying Trigger:</span>
+                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#0EA5A4", background: "rgba(14, 165, 164, 0.1)", padding: "1px 8px", borderRadius: 9999 }}>
+                      ⚡ {f.ai?.buying_trigger || lead.buying_trigger}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Observations with verbatim quotes */}
+              {f.research?.observations && f.research.observations.length > 0 ? (
+                <div style={{ marginBottom: "8px" }}>
+                  <p style={{ margin: "0 0 5px", fontSize: "11.5px", fontWeight: 600, color: "var(--label2, #8A8A8A)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Verified Observations ({f.research.observations.length})
+                  </p>
+                  <div style={{ display: "grid", gap: "5px" }}>
+                    {f.research.observations.map((obs, i) => (
+                      <div key={i} style={{ border: "1px solid var(--k-border, rgba(120,120,128,0.15))", borderRadius: "8px", padding: "6px 8px", background: "var(--k-surface, #fff)" }}>
+                        <div style={{ fontSize: "12.5px", fontWeight: 500, marginBottom: "3px" }}>• {obs.fact}</div>
+                        <blockquote style={{ margin: 0, padding: "3px 6px", borderLeft: "2px solid #0EA5A4", background: "rgba(14, 165, 164, 0.05)", fontSize: "11.5px", fontStyle: "italic", color: "var(--label2, #666)" }}>
+                          &ldquo;{obs.quote}&rdquo;
+                        </blockquote>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : f.research?.problem ? (
+                <div style={{ marginBottom: "8px" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: "11.5px", fontWeight: 600, color: "var(--label2, #8A8A8A)", textTransform: "uppercase" }}>
+                    Website Research
+                  </p>
+                  <div style={{ fontSize: "12.5px", lineHeight: "1.4" }}>
+                    <div><b>Problem:</b> {f.research.problem}</div>
+                    <div style={{ marginTop: "2px" }}><b>How you help:</b> {f.research.how}</div>
+                    {f.research.detail ? <div style={{ marginTop: "2px" }}><b>Detail:</b> {f.research.detail}</div> : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Hypotheses */}
+              {f.research?.hypotheses && f.research.hypotheses.length > 0 ? (
+                <div style={{ marginBottom: "8px" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: "11.5px", fontWeight: 600, color: "var(--label2, #8A8A8A)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Hypotheses
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", display: "grid", gap: "3px" }}>
+                    {f.research.hypotheses.map((h, i) => (
+                      <li key={i} style={{ lineHeight: "1.35" }}>
+                        <span style={{ fontSize: "10.5px", fontWeight: 600, color: "#8B5CF6", marginRight: "3px" }}>[Guess]</span>
+                        {h.replace(/^Guess:\s*/i, "")}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {/* Unknowns */}
+              {f.research?.unknowns && f.research.unknowns.length > 0 ? (
+                <div style={{ marginBottom: "8px" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: "11.5px", fontWeight: 600, color: "var(--label2, #8A8A8A)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Unknowns
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "11.5px", color: "var(--label2, #8A8A8A)", display: "grid", gap: "2px" }}>
+                    {f.research.unknowns.map((u, i) => (
+                      <li key={i}>{u}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {/* Human Approval Action */}
+              {editable ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", paddingTop: "8px", borderTop: "1px solid var(--k-border, rgba(120,120,128,0.15))" }}>
+                  {!(lead.outreach_approved || f.outreach_approved) ? (
+                    <button
+                      type="button"
+                      className="btn go small"
+                      style={{ borderRadius: 9999 }}
+                      disabled={approving}
+                      onClick={toggleApproveOutreach}
+                    >
+                      {approving ? "Approving…" : "Approve for Outreach"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn glass small"
+                      style={{ borderRadius: 9999, color: "var(--label2, #8A8A8A)" }}
+                      disabled={approving}
+                      onClick={toggleApproveOutreach}
+                    >
+                      {approving ? "Revoking…" : "Revoke approval"}
+                    </button>
+                  )}
+                  {editable ? (
+                    <button type="button" className="link-btn" disabled={reading === "busy"} onClick={research}>
+                      {reading === "busy" ? "Reading website…" : "Re-read website"}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : editable && (lead.website || (f as { website?: string }).website) ? (
-            <p className="dr-research-go"><button type="button" className="btn small glass" disabled={reading === "busy"} onClick={research}>{reading === "busy" ? "Reading their website…" : "Research their website"}</button>
-              <Tip text="The Research bot reads this lead's own website and notes a likely problem, how your offer helps, and one detail only they have. The Writer uses it for the first line. Uses your team's AI." /></p>
+            <p className="dr-research-go">
+              <button type="button" className="btn small glass" style={{ borderRadius: 9999 }} disabled={reading === "busy"} onClick={research}>
+                {reading === "busy" ? "Reading their website…" : "Research their website"}
+              </button>
+              <Tip text="The Research bot reads this lead's own website and extracts verified observations, hypotheses, unknowns, and buying triggers. Uses your team's AI." />
+            </p>
           ) : null}
           {reading && reading !== "busy" ? <p className="dr-muted" role="status">{reading}</p> : null}
           {(f.verdict_log ?? []).length > 1 ? <details className="dr-log"><summary>Verdict changed {(f.verdict_log ?? []).length - 1} {(f.verdict_log ?? []).length === 2 ? "time" : "times"}</summary>
@@ -301,7 +513,14 @@ export default function LeadPanel({ lead, editable, demo, onClose, onChange, blo
         </section>
 
         <section className="dr-block">
-          <h3>Email draft</h3>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+            <h3 style={{ margin: 0 }}>Email draft</h3>
+            {!(lead.outreach_approved || f.outreach_approved) ? (
+              <span style={{ fontSize: "11px", padding: "1px 8px", borderRadius: 9999, background: "rgba(217, 119, 6, 0.12)", color: "#D97706", fontWeight: 500 }}>
+                Approval required to write/send
+              </span>
+            ) : null}
+          </div>
           {draftText && blocked ? <p className="dr-muted">This lead is on your Do-not-contact list, so its draft is hidden.</p> : editingDraft ? (
             <div className="dr-custom-draft" style={{ display: "grid", gap: "10px", margin: "12px 0" }}>
               <div>

@@ -17,12 +17,19 @@ export type LeadRow = {
   // Pipeline (lib/pipeline.ts): Meeting / Won / Lost saved on the lead (data.result, database 058), and whether a written
   // email exists (the first subject of the new or the old draft format).
   result?: unknown; w1?: string | null; w0?: string | null;
+  // Stage C (Opportunity intelligence & approval)
+  outreach_approved?: boolean;
+  outreach_approved_at?: string | null;
+  matched_service_id?: string | null;
+  buying_trigger?: string | null;
 };
 export const LEAD_COLUMNS = "id,name,category,location,source,email,phone,website,verdict,reason,score,tier,hiring,named,sample,created_at,socials:data->socials,city:data->>city,keyword:data->>keyword,result:data->result,w1:data->outreach->steps->0->>subject,w0:data->outreach->>subject";
 // With Keep / Remove (database 006). The App falls back to LEAD_COLUMNS until 006 has been run.
 export const LEAD_COLUMNS_STATUS = `${LEAD_COLUMNS},status`;
 // With the email verifier labels (database 044). The App falls back to LEAD_COLUMNS_STATUS until 044 has been run.
 export const LEAD_COLUMNS_VERIFY = `${LEAD_COLUMNS_STATUS},email_status,email_check`;
+// With Opportunity Intelligence & Approval (Stage C, 20261123g).
+export const LEAD_COLUMNS_STAGE_C = `${LEAD_COLUMNS_VERIFY},outreach_approved,buying_trigger,matched_service_id`;
 
 export const SOURCE_NAMES: Record<string, string> = {
   maps: "Google Maps", search: "Google Search", youtube: "YouTube", osm: "OpenStreetMap", jobs: "Job boards",

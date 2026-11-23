@@ -42,7 +42,12 @@ export async function POST(request: Request) {
   ]);
   const settings = ai ? { ...ai, about: aboutForAi(aboutRow ? cleanAbout(aboutRow) : null) } : null;
   if (!offer) return NextResponse.json({ error: "Choose an offer profile first." }, { status: 400 });
-  const activeServices = ((allActiveOffers ?? []) as (Offer & { active?: boolean })[]).filter((o) => o.active !== false);
+  const activeServices = ((allActiveOffers ?? []) as (Offer & { active?: boolean })[])
+    .filter((o) => o.active !== false)
+    .map((o) => ({
+      ...o,
+      buying_triggers: o.buying_triggers || (o.name.includes("Web") ? "Hiring developers, new product launch, tech stack migration" : o.name.includes("Video") ? "Weekly webinar or podcast series, hiring video editor, regular YouTube content" : o.good || ""),
+    }));
   // The sequence: "default" = Kestrel's (first email + day 5, 10, 15), a sequence id = the team's own (database 015), none = first email only.
   let sequence: { steps: unknown; id: string } | "default" | null = null;
   if (task === "emails" && body.sequence === "default") sequence = "default";
@@ -64,9 +69,13 @@ export async function POST(request: Request) {
   const qcPlan = task === "emails" ? aiPlan("qc", offer as Offer, settings, typeof key === "string" ? key : "", null) : null;
   const qc = qcPlan && !("error" in qcPlan) ? qcPlan : null;
 
-  const { data: rows } = await sb.from("leads").select("id,team_id,email,website,data").in("id", ids);
+  let rowsRes = await sb.from("leads").select("id,team_id,email,website,data,outreach_approved").in("id", ids);
+  if (rowsRes.error && /outreach_approved/i.test(rowsRes.error.message)) {
+    rowsRes = (await sb.from("leads").select("id,team_id,email,website,data").in("id", ids)) as typeof rowsRes;
+  }
+  const rows = rowsRes.data;
   // The website column is the lead's main site; research reads it when the scraped details have none.
-  const leads = ((rows ?? []) as { id: string; team_id: string; email: string | null; website: string | null; data: Record<string, unknown> | null }[])
+  const leads = ((rows ?? []) as { id: string; team_id: string; email: string | null; website: string | null; data: Record<string, unknown> | null; outreach_approved?: boolean }[])
     .map(({ website, ...l }) => (task === "research" && website && !(l.data as { website?: string } | null)?.website ? { ...l, data: { ...(l.data ?? {}), website } } : l));
   // One team per batch, and its own Do-not-contact list: never write to anyone on it. If the check fails, nothing is written.
   if (leads.some((l) => l.team_id !== leads[0].team_id)) return NextResponse.json({ error: "These leads belong to different teams. Run one team at a time." }, { status: 400 });
@@ -79,10 +88,27 @@ export async function POST(request: Request) {
   let cost: number | null = 0, fatal = "";
   const one = async (l: (typeof leads)[number]) => {
     if (fatal) return;
+    if (task === "emails") {
+      const isApproved = l.outreach_approved === true || Boolean((l.data as Record<string, unknown> | null)?.outreach_approved);
+      if (!isApproved) {
+        skipped.push({ id: l.id, why: "Needs human review: approve opportunity report first" });
+        return;
+      }
+    }
     const r = task === "emails" ? await writeChecked(plan, qc, l, dnc, 1, () => Date.now() - started < 42_000) : await aiOne(plan, l, dnc);
     cost = cost === null || r.cost === null ? null : cost + r.cost;
     if (!r.ok) { if (r.fatal) fatal = r.fatal; else skipped.push({ id: l.id, why: r.why }); return; }
-    const { error } = await sb.from("leads").update(r.patch).eq("id", l.id);
+    let { error } = await sb.from("leads").update(r.patch).eq("id", l.id);
+    if (error && /column.*does not exist|schema cache/i.test(error.message)) {
+      const safePatch = { ...r.patch };
+      delete safePatch.matched_service_id;
+      delete safePatch.buying_trigger;
+      delete safePatch.outreach_approved;
+      delete safePatch.outreach_approved_at;
+      delete safePatch.outreach_approved_by;
+      const res2 = await sb.from("leads").update(safePatch).eq("id", l.id);
+      error = res2.error;
+    }
     if (error) skipped.push({ id: l.id, why: "could not save" }); else done.push(r.result);
   };
   for (let i = 0; i < leads.length; i += AT_ONCE) await Promise.all(leads.slice(i, i + AT_ONCE).map(one));

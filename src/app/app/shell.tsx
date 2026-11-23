@@ -43,7 +43,7 @@ import HomeKit from "./home-kit";
 import AutopilotView from "./autopilot-view";
 import { dncBlocks, dncIndex, normalizeDnc, type DncRow } from "@/lib/dnc";
 import { PENDING, claim } from "../redeem/redeem";
-import { EXAMPLE_LEADS, LEAD_COLUMNS, LEAD_COLUMNS_STATUS, LEAD_COLUMNS_VERIFY, LEADS_DRAG, leadsCsv, placeOf, searchGroups, searchKey, leadsFromBackup, toRow, type LeadRow } from "@/lib/leads";
+import { EXAMPLE_LEADS, LEAD_COLUMNS, LEAD_COLUMNS_STATUS, LEAD_COLUMNS_VERIFY, LEAD_COLUMNS_STAGE_C, LEADS_DRAG, leadsCsv, placeOf, searchGroups, searchKey, leadsFromBackup, toRow, type LeadRow } from "@/lib/leads";
 import downloads from "@/lib/downloads";
 import { EXTENSION, storeUrl } from "@/lib/site";
 import { LAUNCH as INTRO, PLANS, TRIAL_DAYS, introPrice, money, planName, type PlanId } from "@/lib/plans";
@@ -444,9 +444,11 @@ export default function AppShell({ email, loading = false, preview = false, acco
     // network error is not retried here (19 Nov 2026: three heavy loads in a row made a slow database slower) and is
     // shown, never turned into "0 leads".
     const missing = (e: { message: string } | null) => Boolean(e && /does not exist|column|schema cache/i.test(e.message));
-    load(LEAD_COLUMNS_VERIFY).then(async (res) => {
+    load(LEAD_COLUMNS_STAGE_C).then(async (res) => {
       if (!isCurrent()) return;
-      const r2 = missing(res.error) ? await load(LEAD_COLUMNS_STATUS) : res;
+      const r1 = missing(res.error) ? await load(LEAD_COLUMNS_VERIFY) : res;
+      if (!isCurrent()) return;
+      const r2 = missing(r1.error) ? await load(LEAD_COLUMNS_STATUS) : r1;
       if (!isCurrent()) return;
       const r3 = missing(r2.error) ? await load(LEAD_COLUMNS) : r2;
       if (!isCurrent()) return;

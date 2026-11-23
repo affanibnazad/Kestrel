@@ -57,6 +57,12 @@ export type AiResult =
 export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] = []): Promise<AiResult> {
   const data = l.data ?? {};
   if (p.task === "emails" && !l.email) return { ok: false, why: "no email", cost: 0 };
+  // Stage C (Opportunity Intelligence): human must approve before lead can be used for outreach
+  if (p.task === "emails") {
+    const isApproved = (l as { outreach_approved?: boolean }).outreach_approved === true ||
+      Boolean((data as Record<string, unknown>).outreach_approved);
+    if (!isApproved) return { ok: false, why: "Needs human review: approve opportunity report first", cost: 0 };
+  }
   if (p.task !== "score" && dncBlocks({ email: l.email, emails: (data as { emails?: string[] }).emails, website: (data as { website?: string }).website }, dnc)) return { ok: false, why: "do not contact", cost: 0 };
   // Research (Phase 4B): read the lead's own website first; no website or an unreadable one means nothing to research.
   let site: { text: string; host: string } | null = null;
@@ -74,7 +80,7 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
     const a = await ask(p.provider, p.key, p.model, p.system, user, p.schema, p.task === "emails" ? 600 + p.followUps * 250 : p.task === "research" ? 800 : 1500, p.effort);
     const cost = costOf(a.usage, p.provider, p.model);
     if (a.skip) return { ok: false, why: a.skip, cost };
-    return aiAnswer(p, l, readJson(a.text), cost, site?.host);
+    return aiAnswer(p, l, readJson(a.text), cost, site?.host, site?.text);
   } catch (e) {
     return e instanceof AiError ? { ok: false, why: "error", cost: 0, fatal: e.message } : { ok: false, why: "error", cost: 0 };
   }
@@ -83,15 +89,15 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
 // An AI answer (already parsed JSON) → the database change, with every check of the App's own AI: a readable fit, a full
 // email and follow-ups, no [FIELD] left, no price or payment words. Used for the team's AI and for Kestrel MCP (the person's
 // own Claude Code or Codex plan). Do-not-contact is checked by the caller before (aiOne, /api/mcp/ai-save).
-export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null = 0, host = ""): AiResult {
+export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null = 0, host = "", siteText = ""): AiResult {
   const data = l.data ?? {};
   const answer = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
   const by = p.by ?? p.provider;
   if (p.task === "research") {
-    const r = cleanResearch(answer);
+    const r = cleanResearch(answer, siteText, host);
     if (!r) return { ok: false, why: "unreadable answer", cost };
     const research = { ...r, host: host.slice(0, 120), by, at: Date.now() };
-    return { ok: true, patch: { data: { ...data, research } }, result: { id: l.id, research }, cost };
+    return { ok: true, patch: { data: { ...data, research } }, result: { id: l.id, research, dropped_observations: r.dropped_observations }, cost };
   }
   if (p.task === "score") {
     const f = cleanFit(answer);
@@ -101,28 +107,37 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
     // otherwise drop it and set matched_service_name from the real service, never from the AI text.
     let matchedId: string | undefined = undefined;
     let matchedName: string | undefined = undefined;
-    if (f.matched_service_id && p.activeServices && p.activeServices.length > 0) {
+    let matchedTrigger: string | undefined = undefined;
+    if (f.verdict !== "no" && f.matched_service_id && p.activeServices && p.activeServices.length > 0) {
       const activeMatch = p.activeServices.find((s) => s.id === f.matched_service_id && s.active !== false);
       if (activeMatch) {
         matchedId = activeMatch.id;
         matchedName = activeMatch.name;
+        if (f.buying_trigger && activeMatch.buying_triggers) {
+          matchedTrigger = f.buying_trigger;
+        }
       }
     }
 
     const cleanF = {
       ...f,
       ...(matchedId ? { matched_service_id: matchedId, matched_service_name: matchedName } : {}),
+      ...(matchedTrigger ? { buying_trigger: matchedTrigger } : {}),
     };
-    if (!matchedId) {
+    if (!matchedId || cleanF.verdict === "no") {
       delete cleanF.matched_service_id;
       delete cleanF.matched_service_name;
+      delete cleanF.buying_trigger;
     }
 
     const ai = { ...cleanF, profile: p.hash, by, at: Date.now() };
     const patch: Record<string, unknown> = {
       verdict: VERDICT_COLUMN[f.verdict],
       reason: f.reason,
+      score: f.fit,
       data: { ...data, ai },
+      ...(matchedId ? { matched_service_id: matchedId } : { matched_service_id: null }),
+      ...(matchedTrigger ? { buying_trigger: matchedTrigger } : { buying_trigger: null }),
     };
     const resObj: Record<string, unknown> = {
       id: l.id,
@@ -135,6 +150,9 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
     }
     if (matchedName) {
       resObj.matched_service_name = matchedName;
+    }
+    if (matchedTrigger) {
+      resObj.buying_trigger = matchedTrigger;
     }
     return { ok: true, patch, result: resObj, cost };
   }

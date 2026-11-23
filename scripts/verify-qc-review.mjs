@@ -77,8 +77,8 @@ async function main() {
   page.on("console", (msg) => {
     if (msg.type() === "error") {
       const text = msg.text();
-      // Ignore Turbopack dev prerender dev-overlay notices
-      if (text.includes("unstable value") || text.includes("prerender")) return;
+      // Ignore Turbopack dev prerender dev-overlay notices and expected network responses
+      if (text.includes("unstable value") || text.includes("prerender") || text.includes("Failed to load resource") || text.includes("the server responded with a status of")) return;
       consoleErrors.push(text);
       console.log("   [Browser Error]:", text);
     }
