@@ -30,14 +30,31 @@ export default function LeadPanel({ lead, editable, demo, onClose, onChange, blo
   const [full, setFull] = useState<Full | null>(null);
   const [copied, setCopied] = useState("");
   const [reading, setReading] = useState(""); // Research bot: "" idle, "busy", or what went wrong
+  const [editingDraft, setEditingDraft] = useState(false);
+  const [customSubject, setCustomSubject] = useState("");
+  const [customBody, setCustomBody] = useState("");
+  const [customSaving, setCustomSaving] = useState(false);
+  const [draftWarn, setDraftWarn] = useState("");
 
   useEffect(() => {
     let live = true;
-    if (demo) { Promise.resolve().then(() => { if (live) setFull({}); }); return () => { live = false; }; }
+    if (demo) {
+      const name = String(lead.name || "there").replace(/\s+(ltd|limited|llc|inc)\.?$/i, "");
+      const d = {
+        firstName: name,
+        subject: `video edits at ${name.toLowerCase()}`,
+        icebreaker: `Saw ${name} films client stories in ${lead.location || "your city"}.`,
+        question: "Who edits those videos when your team gets busy?",
+        body: `Hi ${name},\n\nSaw ${name} films client stories in ${lead.location || "your city"}.\n\nWho edits those videos when your team gets busy?`,
+        steps: [{ day: 0, subject: `video edits at ${name.toLowerCase()}`, body: `Hi ${name},\n\nSaw ${name} films client stories in ${lead.location || "your city"}.\n\nWho edits those videos when your team gets busy?` }],
+      };
+      Promise.resolve().then(() => { if (live) setFull({ outreach: d }); });
+      return () => { live = false; };
+    }
     supabaseBrowser().from("leads").select("data").eq("id", lead.id).single()
       .then(({ data }) => { if (live) setFull(((data as { data?: Full } | null)?.data) ?? {}); });
     return () => { live = false; };
-  }, [lead.id, demo]);
+  }, [lead.id, lead.name, lead.location, demo]);
 
   // Keyboard: focus moves into the panel, Tab stays inside it, Escape closes it, and focus goes back to the lead row.
   const box = useRef<HTMLElement>(null);
@@ -86,6 +103,101 @@ export default function LeadPanel({ lead, editable, demo, onClose, onChange, blo
     const { error } = await sb.from("leads").update({ data: next }).eq("id", lead.id);
     if (!error) setFull(next);
   }
+
+  function startEditDraft() {
+    const d = full?.outreach;
+    const first = d?.steps?.[0] ?? {
+      subject: d?.subject ?? "",
+      body: d?.body || [d?.icebreaker, d?.question].filter(Boolean).join("\n\n"),
+    };
+    setCustomSubject(first.subject || "");
+    setCustomBody(first.body || "");
+    setDraftWarn("");
+    setEditingDraft(true);
+  }
+
+  async function saveCustomDraft() {
+    if (customSaving) return;
+    const subject = customSubject.trim();
+    const body = customBody.trim();
+    if (!subject && !body) {
+      setDraftWarn("Draft subject or body cannot be completely empty.");
+      return;
+    }
+
+    // Run rigorous QC + spam + link checks
+    const sc = scoreEmail({ subject, body });
+    if (sc.blocked || sc.issues.some((h) => h.level === "red")) {
+      const redIssues = sc.issues.filter((h) => h.level === "red").map((h) => h.title).join(", ");
+      setDraftWarn(`Blocked by spam check: ${redIssues}. Please fix the red items first.`);
+      return;
+    }
+
+    setCustomSaving(true);
+    setDraftWarn("");
+
+    const qcIssues = sc.issues.map((h) => `${h.title}: ${h.fix}`);
+    const qcStatus = sc.issues.some((h) => h.level === "orange") ? "hold" : "passed";
+
+    if (demo) {
+      setFull((cur) => {
+        if (!cur?.outreach) return cur;
+        const steps = cur.outreach.steps ? [...cur.outreach.steps] : [];
+        if (steps[0]) steps[0] = { ...steps[0], subject, body };
+        else steps.push({ day: 0, subject, body });
+        return {
+          ...cur,
+          outreach: {
+            ...cur.outreach,
+            subject,
+            body,
+            steps,
+            qc: {
+              ...(cur.outreach.qc ?? {}),
+              status: qcStatus,
+              issues: qcIssues,
+              rounds: (cur.outreach.qc?.rounds ?? 0) + 1,
+            },
+          },
+        };
+      });
+      setEditingDraft(false);
+      setCustomSaving(false);
+      return;
+    }
+
+    const sb = supabaseBrowser();
+    const { data } = await sb.from("leads").select("data").eq("id", lead.id).single();
+    const cur = ((data as { data?: Full } | null)?.data) ?? {};
+    if (!cur.outreach) { setCustomSaving(false); return; }
+    const steps = cur.outreach.steps ? [...cur.outreach.steps] : [];
+    if (steps[0]) steps[0] = { ...steps[0], subject, body };
+    else steps.push({ day: 0, subject, body });
+    const next = {
+      ...cur,
+      outreach: {
+        ...cur.outreach,
+        subject,
+        body,
+        steps,
+        qc: {
+          ...(cur.outreach.qc ?? {}),
+          status: qcStatus,
+          issues: qcIssues,
+          rounds: (cur.outreach.qc?.rounds ?? 0) + 1,
+        },
+      },
+    };
+    const { error } = await sb.from("leads").update({ data: next }).eq("id", lead.id);
+    setCustomSaving(false);
+    if (!error) {
+      setFull(next);
+      setEditingDraft(false);
+    } else {
+      setDraftWarn(error.message);
+    }
+  }
+
   const copy = async (label: string, text: string) => { await navigator.clipboard.writeText(text); setCopied(label); setTimeout(() => setCopied(""), 1800); };
 
   const f = full ?? {};
@@ -190,7 +302,74 @@ export default function LeadPanel({ lead, editable, demo, onClose, onChange, blo
 
         <section className="dr-block">
           <h3>Email draft</h3>
-          {draftText && blocked ? <p className="dr-muted">This lead is on your Do-not-contact list, so its draft is hidden.</p> : draftText ? (
+          {draftText && blocked ? <p className="dr-muted">This lead is on your Do-not-contact list, so its draft is hidden.</p> : editingDraft ? (
+            <div className="dr-custom-draft" style={{ display: "grid", gap: "10px", margin: "12px 0" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Subject</label>
+                <input
+                  type="text"
+                  value={customSubject}
+                  onChange={(e) => { setCustomSubject(e.target.value); setDraftWarn(""); }}
+                  placeholder="Email subject..."
+                  aria-label="Email subject"
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: "10px", border: "1px solid var(--k-border, #E5E3DC)", background: "var(--k-surface, #fff)" }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Body</label>
+                <textarea
+                  rows={8}
+                  value={customBody}
+                  onChange={(e) => { setCustomBody(e.target.value); setDraftWarn(""); }}
+                  placeholder="Email body..."
+                  aria-label="Email body"
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: "10px", border: "1px solid var(--k-border, #E5E3DC)", background: "var(--k-surface, #fff)", resize: "vertical", fontFamily: "inherit", fontSize: "13.5px" }}
+                />
+              </div>
+
+              {(() => {
+                const sc = scoreEmail({ subject: customSubject, body: customBody });
+                return (
+                  <div className="sg-step" style={{ margin: "4px 0" }}>
+                    <div className="sg-head">
+                      <ScoreBadge score={sc} />
+                      <div>
+                        <b>Spam score: Grade {sc.grade} ({sc.score} pts)</b>
+                        <small>{sc.blocked ? "Red items block saving" : sc.grade === "A" ? "Ready to save" : "Contains warnings"}</small>
+                      </div>
+                    </div>
+                    <IssueList score={sc} limit={4} />
+                  </div>
+                );
+              })()}
+
+              {draftWarn ? (
+                <p className="dr-reason" role="alert" style={{ color: "var(--k-danger, #DC2626)", margin: "4px 0", fontSize: "13px", fontWeight: 500 }}>
+                  {draftWarn}
+                </p>
+              ) : null}
+
+              <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+                <button
+                  type="button"
+                  className="btn go small"
+                  style={{ borderRadius: 9999 }}
+                  disabled={customSaving}
+                  onClick={saveCustomDraft}
+                >
+                  {customSaving ? "Saving…" : "Save draft"}
+                </button>
+                <button
+                  type="button"
+                  className="btn glass small"
+                  style={{ borderRadius: 9999 }}
+                  onClick={() => { setEditingDraft(false); setDraftWarn(""); }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : draftText ? (
             <>
               {draft?.qc?.status === "hold" ? (
                 <div className="dr-qc hold" role="status"><b>Held by the QC bot</b><span>Campaigns leave this email out until you approve it or write it again.</span>
@@ -204,7 +383,14 @@ export default function LeadPanel({ lead, editable, demo, onClose, onChange, blo
                 return <div className="sg-step"><div className="sg-head"><ScoreBadge score={sc} /><div><b>Spam score</b><small>{sc.blocked ? "Fix the red items before a campaign sends it" : sc.grade === "A" ? "Ready to send" : "Can be better"}</small></div>
                   <button type="button" className="link-btn" onClick={() => window.dispatchEvent(new CustomEvent("kestrel-spam-check", { detail: { subject: first.subject, body: first.body, mode: "email" } }))}>Open in Spam check</button></div>
                   <IssueList score={sc} limit={3} /></div>; })()}
-              <button type="button" className="btn small go" onClick={() => copy("draft", draftText)}>{copied === "draft" ? "Copied" : "Copy draft"}</button>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", margin: "8px 0" }}>
+                <button type="button" className="btn small go" style={{ borderRadius: 9999 }} onClick={() => copy("draft", draftText)}>{copied === "draft" ? "Copied" : "Copy draft"}</button>
+                {editable ? (
+                  <button type="button" className="btn small glass" style={{ borderRadius: 9999 }} onClick={startEditDraft}>
+                    Edit draft
+                  </button>
+                ) : null}
+              </div>
               {followUps.map((x, i) => {
                 const text = [x.subject ? `Subject: ${x.subject}` : "", x.body].filter(Boolean).join("\n\n");
                 return (
@@ -216,7 +402,16 @@ export default function LeadPanel({ lead, editable, demo, onClose, onChange, blo
                 );
               })}
             </>
-          ) : <p className="dr-muted">No draft yet. Write one in AI → Write emails (or in the extension), and it appears here.</p>}
+          ) : (
+            <div>
+              <p className="dr-muted">No draft yet. Write one in AI → Write emails (or in the extension), and it appears here.</p>
+              {editable ? (
+                <button type="button" className="btn small glass" style={{ borderRadius: 9999, marginTop: 8 }} onClick={startEditDraft}>
+                  Write custom draft
+                </button>
+              ) : null}
+            </div>
+          )}
         </section>
 
         {f.description || f.keyword || f.url ? (

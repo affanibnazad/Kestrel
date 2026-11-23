@@ -10,6 +10,7 @@ import { scoreEmail } from "@/lib/spamguard";
 import { IssueList, ScoreBadge, SCORE_HELP } from "./spam-check";
 import { STEP_KINDS, isTaskStep, type StepKind } from "@/lib/sequence";
 import { DEFAULT_STEPS, EMPTY_SEQUENCE, MAX_STEPS, MAX_VARIANTS, VARIANT_LETTERS, variantCount, MERGE_FIELDS, checkSequence, cleanSteps, footer, renderAll, type Sequence, type SequenceParts, type Step } from "@/lib/sequence";
+import { TEMPLATES, TEMPLATE_CATEGORIES, type Template } from "@/lib/templates";
 
 // Kestrel Mail, phase 2: sequences. The first email and up to 3 follow-ups (day 5, 10, 15 by default, only if no reply),
 // a spam-word check like Manyreach's "Check Spam", and a preview for any lead with the merge fields filled.
@@ -48,6 +49,8 @@ export default function SequencesView({ account, leads, demo, editable, toast, b
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editing, setEditing] = useState(false); // false = the list of sequences; true = one sequence open
   const [q, setQ] = useState("");
+  const [tab, setTab] = useState<"list" | "templates">("list");
+  const [tplCat, setTplCat] = useState<string>("All");
   const ready = Boolean(account && !demo);
   const sb = supabaseBrowser;
 
@@ -132,6 +135,21 @@ export default function SequencesView({ account, leads, demo, editable, toast, b
     setSeq(id === "" ? { ...EMPTY_SEQUENCE, name: "", offer_id: offers[0]?.id ?? null, steps: DEFAULT_STEPS } : list.find((x) => x.id === id) ?? seq);
     setDirty(false); setMsg(""); setEditing(true);
   }
+  async function applyTemplate(t: Template) {
+    if (dirty && !await askConfirm("Leave without saving your changes?")) return;
+    setSeq({
+      ...EMPTY_SEQUENCE,
+      name: `${t.name} (copy)`,
+      offer_id: offers[0]?.id ?? null,
+      steps: cleanSteps(t.steps),
+      stop_on_reply: true,
+      weekdays_only: true,
+    });
+    setDirty(true);
+    setMsg("");
+    setEditing(true);
+    toast(`Loaded "${t.name}" template.`);
+  }
   async function back() {
     if (dirty && !await askConfirm("Leave without saving your changes?")) return;
     setDirty(false); setMsg(""); setEditing(false);
@@ -174,38 +192,138 @@ export default function SequencesView({ account, leads, demo, editable, toast, b
   // The list, like Campaigns and Email accounts: one row per sequence, click to open it.
   if (!editing) {
     const shown = list.filter((x) => !q || x.name.toLowerCase().includes(q.trim().toLowerCase()));
+    const tplShown = TEMPLATES.filter((t) => {
+      const matchCat = tplCat === "All" || t.category === tplCat;
+      const matchQ = !q || t.name.toLowerCase().includes(q.toLowerCase()) || t.tagline.toLowerCase().includes(q.toLowerCase()) || t.bestFor.toLowerCase().includes(q.toLowerCase());
+      return matchCat && matchQ;
+    });
+
     return (
       <div className="app-page">
         <header className="head">
-          <div><h1>Sequences <Tip text={HELP.page} /></h1><span className="sub">{list.length} saved · each is a first email and its follow-ups</span></div>
+          <div>
+            <h1>Sequences <Tip text={HELP.page} /></h1>
+            <span className="sub">
+              {tab === "list" ? `${list.length} saved · each is a first email and its follow-ups` : `${TEMPLATES.length} curated cold outreach templates · ready to clone and run`}
+            </span>
+          </div>
           <div className="head-actions">{can ? <button type="button" className="btn go small" onClick={() => pick("")}>Add new</button> : null}</div>
         </header>
         {missing ? <p className="plan-msg">Sequences are coming soon to your workspace. You can still use Kestrel&apos;s default sequence in AI → Write emails.</p> : null}
-        <div className="acct-bar">
-          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search sequences" aria-label="Search sequences" />
+        
+        <div className="acct-bar" style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px" }}>
+          <div className="seg" role="tablist" aria-label="Sequence tabs">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "list"}
+              className={tab === "list" ? "on" : ""}
+              onClick={() => setTab("list")}
+            >
+              My sequences ({list.length})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "templates"}
+              className={tab === "templates" ? "on" : ""}
+              onClick={() => setTab("templates")}
+            >
+              Templates ({TEMPLATES.length})
+            </button>
+          </div>
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={tab === "list" ? "Search sequences" : "Search templates"}
+            aria-label={tab === "list" ? "Search sequences" : "Search templates"}
+            style={{ maxWidth: 320 }}
+          />
         </div>
-        <div className="table-card members acct-table">
-          <table className="leads">
-            <thead><tr><th>Name</th><th>Offer</th><th>Steps</th><th>Spam check <Tip text={HELP.spam} /></th><th>Sending days</th></tr></thead>
-            <tbody>{shown.map((x) => {
-              const c = checkSequence(x.steps), red = c.steps.reduce((n, st) => n + st.hits.filter((h) => h.level === "block").length, 0) + c.problems.length;
-              const orange = c.steps.reduce((n, st) => n + st.hits.filter((h) => h.level === "warn").length, 0);
-              return (
-                <tr key={x.id} className="acct-row" onClick={() => pick(x.id!)}>
-                  <td><button type="button" className="acct-open" onClick={(e) => { e.stopPropagation(); pick(x.id!); }}><b>{x.name}</b></button></td>
-                  <td>{offerName(x.offer_id)}</td>
-                  <td>{x.steps.length === 1 ? "First email only" : `First email + ${x.steps.length - 1} follow-ups`}<small className="muted-line">{x.steps.length > 1 ? `Day ${x.steps.slice(1).map((st) => st.day).join(", ")}` : ""}{variantCount(x.steps) > 1 ? ` · A/B test (${variantCount(x.steps)} subjects)` : ""}</small></td>
-                  <td><em className={`pill ${red ? "no" : orange ? "maybe" : "good"}`}>{red ? `${red} to fix` : orange ? `${orange} to look at` : "Clean"}</em></td>
-                  <td>{x.weekdays_only ? "Weekdays" : "Every day"}</td>
-                </tr>
-              );
-            })}</tbody>
-          </table>
-          {!list.length ? (
-            <div className="empty seq-default"><div><b>Kestrel default</b><span className="dr-muted"> First email + 3 follow-ups (day 5, 10 and 15). Used by Kestrel AI → Score and write until you save your own.</span>
-              {editable ? <button type="button" className="btn go small" onClick={async () => { await pick(""); setSeq({ ...EMPTY_SEQUENCE, name: "Kestrel default (copy)", offer_id: offers[0]?.id ?? null, steps: DEFAULT_STEPS }); }}>Edit a copy</button> : null}</div></div>
-          ) : !shown.length ? <div className="empty"><div><b>No sequences match</b></div></div> : null}
-        </div>
+
+        {tab === "list" ? (
+          <div className="table-card members acct-table">
+            <table className="leads">
+              <thead><tr><th>Name</th><th>Offer</th><th>Steps</th><th>Spam check <Tip text={HELP.spam} /></th><th>Sending days</th></tr></thead>
+              <tbody>{shown.map((x) => {
+                const c = checkSequence(x.steps), red = c.steps.reduce((n, st) => n + st.hits.filter((h) => h.level === "block").length, 0) + c.problems.length;
+                const orange = c.steps.reduce((n, st) => n + st.hits.filter((h) => h.level === "warn").length, 0);
+                return (
+                  <tr key={x.id} className="acct-row" onClick={() => pick(x.id!)}>
+                    <td><button type="button" className="acct-open" onClick={(e) => { e.stopPropagation(); pick(x.id!); }}><b>{x.name}</b></button></td>
+                    <td>{offerName(x.offer_id)}</td>
+                    <td>{x.steps.length === 1 ? "First email only" : `First email + ${x.steps.length - 1} follow-ups`}<small className="muted-line">{x.steps.length > 1 ? `Day ${x.steps.slice(1).map((st) => st.day).join(", ")}` : ""}{variantCount(x.steps) > 1 ? ` · A/B test (${variantCount(x.steps)} subjects)` : ""}</small></td>
+                    <td><em className={`pill ${red ? "no" : orange ? "maybe" : "good"}`}>{red ? `${red} to fix` : orange ? `${orange} to look at` : "Clean"}</em></td>
+                    <td>{x.weekdays_only ? "Weekdays" : "Every day"}</td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+            {!list.length ? (
+              <div className="empty seq-default"><div><b>Kestrel default</b><span className="dr-muted"> First email + 3 follow-ups (day 5, 10 and 15). Used by Kestrel AI → Score and write until you save your own.</span>
+                {editable ? <button type="button" className="btn go small" onClick={async () => { await pick(""); setSeq({ ...EMPTY_SEQUENCE, name: "Kestrel default (copy)", offer_id: offers[0]?.id ?? null, steps: DEFAULT_STEPS }); }}>Edit a copy</button> : null}</div></div>
+            ) : !shown.length ? <div className="empty"><div><b>No sequences match</b></div></div> : null}
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", margin: "0 0 16px" }}>
+              {TEMPLATE_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  className={`btn small ${tplCat === cat ? "go" : "glass"}`}
+                  style={{ borderRadius: 9999 }}
+                  onClick={() => setTplCat(cat)}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+              {tplShown.map((t) => (
+                <article
+                  key={t.id}
+                  style={{
+                    background: "var(--k-surface, #fff)",
+                    border: "1px solid var(--k-border, #E5E3DC)",
+                    borderRadius: 16,
+                    padding: "20px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                    boxShadow: "none",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span className="pill neutral" style={{ borderRadius: 9999 }}>{t.category}</span>
+                    <span className="pill good" style={{ borderRadius: 9999 }}>Spam clean</span>
+                  </div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{t.name}</h3>
+                  <p style={{ margin: 0, fontSize: "13.5px", color: "var(--k-muted, #8A8A8A)", lineHeight: 1.45 }}>{t.tagline}</p>
+                  <div style={{ display: "grid", gap: "6px", fontSize: "13px", background: "var(--k-sidebar, #F3F2EE)", padding: "12px", borderRadius: 10, marginTop: "auto" }}>
+                    <div><b>Best for:</b> <span>{t.bestFor}</span></div>
+                    <div><b>Steps:</b> <span>{t.steps.length} touchpoints (Day {t.steps.map((s) => s.day).join(", ")})</span></div>
+                    {t.steps[0].variants?.length ? (
+                      <div><b>A/B testing:</b> <span>{t.steps[0].variants.length + 1} subject variants included</span></div>
+                    ) : null}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "4px" }}>
+                    <button
+                      type="button"
+                      className="btn go small"
+                      style={{ borderRadius: 9999 }}
+                      onClick={() => applyTemplate(t)}
+                    >
+                      Use this template
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            {!tplShown.length ? <div className="empty"><div><b>No templates match &ldquo;{q}&rdquo;</b></div></div> : null}
+          </div>
+        )}
       </div>
     );
   }
