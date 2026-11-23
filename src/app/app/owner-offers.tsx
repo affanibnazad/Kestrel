@@ -32,15 +32,6 @@ const toLocal = (s: string | null) => (s ? new Date(new Date(s).getTime() - new 
 const fromLocal = (s: string) => (s ? new Date(s).toISOString() : null);
 const EMPTY: Draft = { id: null, name: "", code: "", kind: "code", amount_type: "percent", amount: 20, duration: "repeating", months: 3, plans: [], starts_at: null, ends_at: null, max_uses: null, active: true };
 
-const DEMO_OFFERS_DATA: Data = {
-  lemon: { has_key: true, last4: "8f2a", store_id: "store_norven", test_mode: false, checked_at: new Date().toISOString(), check_ok: true, check_note: "Ready" },
-  creators: [
-    { id: "creator_01", name: "Affan Norven", code: "NORVEN", status: "active", ls_discount_id: "ls_disc_01", ls_error: null },
-  ],
-  offers: [
-    { id: "LAUNCH50", name: "Launch 50% Off", code: "LAUNCH50", kind: "code", amount_type: "percent", amount: 50, duration: "repeating", months: 3, plans: [], starts_at: null, ends_at: null, max_uses: 100, active: true, live: true, ls_discount_id: "ls_disc_launch", ls_synced_at: new Date().toISOString(), ls_error: null, uses: 14, paying: 12 },
-  ],
-};
 
 export default function OwnerOffers({ toast }: { toast: (t: string) => void }) {
   const [d, setD] = useState<Data | null>(null);
@@ -53,12 +44,12 @@ export default function OwnerOffers({ toast }: { toast: (t: string) => void }) {
     try {
       const { data, error } = await supabaseBrowser().rpc("offers_admin");
       if (error || !data) {
-        setD(DEMO_OFFERS_DATA);
+        setD(null);
         return;
       }
       setD(data as Data);
     } catch {
-      setD(DEMO_OFFERS_DATA);
+      setD(null);
     }
   }, []);
   useEffect(() => { Promise.resolve().then(load); }, [load]);

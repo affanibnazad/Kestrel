@@ -167,14 +167,22 @@ export default function AppShell({ email, loading = false, preview = false, acco
     return () => window.removeEventListener("kestrel-switch-team", onSwitch);
   }, []);
 
-  const [view, setView] = useState(() => (isValidView(initialView) ? initialView : "home"));
+  const isAdmin = Boolean(account?.is_admin);
+  const resolveView = useCallback((v: string | null | undefined): string => {
+    if (!v || !isValidView(v)) return "home";
+    if (v === "owner" && !isAdmin && !demo && !isDemoMode) return "home";
+    return v;
+  }, [isAdmin, demo, isDemoMode]);
+
+  const [view, setView] = useState(() => resolveView(initialView));
   useEffect(() => {
-    if (initialView && initialView !== "home" && isValidView(initialView)) Promise.resolve().then(() => setView(initialView));
-    else if (typeof window !== "undefined") {
+    if (initialView && initialView !== "home" && isValidView(initialView)) {
+      Promise.resolve().then(() => setView(resolveView(initialView)));
+    } else if (typeof window !== "undefined") {
       const v = new URLSearchParams(window.location.search).get("view");
-      if (v && isValidView(v)) Promise.resolve().then(() => setView(v));
+      if (v && isValidView(v)) Promise.resolve().then(() => setView(resolveView(v)));
     }
-  }, [initialView]);
+  }, [initialView, resolveView]);
   const [userMenu, setUserMenu] = useState(() => (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("menu") === "1"));     // the avatar menu at the bottom of the sidebar
   const userMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -530,7 +538,8 @@ export default function AppShell({ email, loading = false, preview = false, acco
   const listName = view.startsWith("list:") ? lists.find((l) => `list:${l.id}` === view)?.name : undefined;
   const title = listName ?? PAGES[view] ?? (SMART.some((s) => s[0] === view) ? "Leads" : (SOURCES.find((s) => s[0] === view) || [, "Leads"])[1]);
   const pick = (id: string) => {
-    const validId = isValidView(id) ? id : "home";
+    const target = resolveView(id);
+    const validId = isValidView(target) ? target : "home";
     setView(validId);
     setOpen(false);
     setPicked(new Set());
@@ -896,7 +905,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
               <KSub label="Do-not-contact" count={dnc.length} on={view === "dnc"} onClick={() => pick("dnc")} />
               <KSub label="Import and examples" on={view === "import"} onClick={() => pick("import")} />
             </>)}
-            <KNav icon="crown" label="Owner" on={view === "owner"} onClick={() => pick("owner")} />
+            {isAdmin || demo || isDemoMode ? <KNav icon="crown" label="Owner" on={view === "owner"} onClick={() => pick("owner")} /> : null}
             {isCreator ? <KNav icon="star" label="Creator" on={view === "creator"} onClick={() => pick("creator")} /> : null}
             <KNav icon="book" label="Guide" onClick={() => window.open("/help", "_blank")} />
           </nav>
@@ -1025,7 +1034,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
                               </div>
                             ) : view === "rules" ? <RulesView account={account} leads={leads} demo={Boolean(demo)} toast={setToast} onLeads={(p) => setLeads((ls) => ls.map((l) => (p[l.id] ? { ...l, ...p[l.id] } : l)))} />
                               : view === "dnc" ? <DncView rows={dnc} leads={leads} canBlock={canBlock} canRemove={editable} add={addDnc} remove={removeDnc} />
-                                : view === "owner" ? <OwnerView toast={setToast} />
+                                : view === "owner" ? <OwnerView toast={setToast} demo={Boolean(demo || isDemoMode)} />
                                   : view === "creator" && isCreator ? <CreatorPage toast={setToast} />
                                     : view === "plan" ? <PlanView account={account} />
                                       : view === "team" ? <TeamView account={account} go={pick} />

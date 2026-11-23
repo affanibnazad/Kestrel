@@ -69,16 +69,16 @@ export default function OwnerAssistant({ toast, demo = false }: { toast: (t: str
       const sb = supabaseBrowser();
       const [a, p] = await Promise.all([sb.rpc("assistant_admin_status"), sb.rpc("assistant_admin_providers")]);
       if (a.error || !a.data) {
-        setSt(DEMO_ST);
-        setPv(DEMO_PV);
+        setSt(null);
+        setPv(null);
         return;
       }
       setSt(a.data as Status);
       if (!p.error && p.data) setPv(p.data as Providers);
-      else setPv(DEMO_PV);
+      else setPv(null);
     } catch {
-      setSt(DEMO_ST);
-      setPv(DEMO_PV);
+      setSt(null);
+      setPv(null);
     }
   }, [demo]);
   useEffect(() => { Promise.resolve().then(load); }, [load]);

@@ -68,19 +68,24 @@ async function SignedIn({ searchParams }: { searchParams: PageProps<"/app">["sea
 
   // 1. Authenticated user: Load real workspace, pass demo=undefined so real leads load from database
   if (user) {
-    const { data } = await (await supabaseServer()).rpc("my_account");
-    const account = (data as Account | null) ?? {
-      team_id: user.id,
-      team_name: "My Workspace",
-      role: "owner",
-      full_name: user.email?.split("@")[0] ?? "User",
-      plan: "trial",
-      chosen_plan: null,
-      trial_ends_at: "2026-12-06T09:00:00.000Z",
-      join_code: null,
-      is_admin: false,
-      members: [{ name: user.email?.split("@")[0] ?? "User", email: user.email ?? "", role: "owner", joined_at: "2026-11-22T09:00:00.000Z" }],
-    };
+    const { data, error } = await (await supabaseServer()).rpc("my_account");
+    if (error || !data) {
+      return (
+        <main className="app" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px", fontFamily: "var(--font-sf-pro, -apple-system, BlinkMacSystemFont, sans-serif)" }}>
+          <div className="join-card" style={{ maxWidth: "480px", width: "100%", padding: "32px", textAlign: "center" }}>
+            <h2 style={{ margin: "0 0 12px", fontSize: "20px", fontWeight: 600 }}>Unable to load account</h2>
+            <p className="sub" style={{ margin: "0 0 24px", fontSize: "14px", color: "var(--ink-muted, #64748b)" }}>
+              {error?.message || "Your workspace details could not be loaded from the database."}
+            </p>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+              <a href="/app" className="btn go" style={{ textDecoration: "none" }}>Try again</a>
+              <a href="/auth/signout" className="btn glass" style={{ textDecoration: "none" }}>Sign out</a>
+            </div>
+          </div>
+        </main>
+      );
+    }
+    const account = data as Account;
     return <ClientAppShell initialView={initialView} email={user.email ?? ""} account={account} demo={undefined} isDemoMode={false} />;
   }
 

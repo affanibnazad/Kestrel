@@ -29,11 +29,6 @@ const day = (s: string | null) => (s ? new Date(s).toLocaleDateString(undefined,
 const pct = (a: number, b: number) => (b ? `${Math.round((a * 1000) / b) / 10}%` : "—");
 const NEEDS = /admin_usage|admin_team_usage|admin_lock_team|schema cache/i;
 
-const DEMO_USAGE_ROWS: Team[] = [
-  { id: "team_norven_01", name: "Norven Studio", owner: "affan@norvenstudio.com", state: "paid", plan: "agency", locked_at: null, locked_reason: null, created_at: "2026-01-15T10:00:00Z", people: 3, seen: new Date().toISOString(), searches: 14, leads_new: 140, leads_total: 4820, leads_top_day: 32, sent: 3200, bounced: 24, unsubs: 12, paused: 0, replies: 248, complaints: 0, dnc_sent: 0, ai_messages: 42, mailboxes: 3, last_active: new Date().toISOString(), flags: [] },
-  { id: "team_northlight_02", name: "Northlight Studio", owner: "alex@northlight-studio.test", state: "paid", plan: "pro", locked_at: null, locked_reason: null, created_at: "2026-02-10T12:00:00Z", people: 2, seen: new Date().toISOString(), searches: 8, leads_new: 80, leads_total: 1250, leads_top_day: 18, sent: 980, bounced: 8, unsubs: 4, paused: 0, replies: 84, complaints: 0, dnc_sent: 0, ai_messages: 18, mailboxes: 2, last_active: new Date().toISOString(), flags: [] },
-  { id: "team_copperleaf_03", name: "Copperleaf Design", owner: "sarah@copperleaf.design", state: "paid", plan: "starter", locked_at: null, locked_reason: null, created_at: "2026-03-01T09:00:00Z", people: 1, seen: new Date().toISOString(), searches: 4, leads_new: 40, leads_total: 680, leads_top_day: 12, sent: 520, bounced: 4, unsubs: 2, paused: 0, replies: 36, complaints: 0, dnc_sent: 0, ai_messages: 9, mailboxes: 1, last_active: new Date().toISOString(), flags: [] },
-];
 
 export default function OwnerUsage({ toast }: { toast: (t: string) => void }) {
   const [days, setDays] = useState(30);
@@ -48,15 +43,15 @@ export default function OwnerUsage({ toast }: { toast: (t: string) => void }) {
   const load = useCallback(async () => {
     try {
       const { data, error } = await supabaseBrowser().rpc("admin_usage", { days });
-      if (error || !data) {
-        setErr("");
-        setRows(DEMO_USAGE_ROWS);
+      if (error) {
+        setErr(error.message || "You don't have access.");
+        setRows([]);
         return;
       }
       setErr(""); setRows((data as Team[] | null) ?? []);
-    } catch {
-      setErr("");
-      setRows(DEMO_USAGE_ROWS);
+    } catch (err: unknown) {
+      setErr(err instanceof Error ? err.message : "You don't have access.");
+      setRows([]);
     }
   }, [days]);
   useEffect(() => { Promise.resolve().then(load); }, [load]);

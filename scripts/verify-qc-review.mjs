@@ -14,6 +14,8 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://xjqtgvhnby
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
 const STAGING_EMAIL = process.env.STAGING_TEST_EMAIL || "";
 const STAGING_PASSWORD = process.env.STAGING_TEST_PASSWORD || "";
+const STAGING_ADMIN_EMAIL = process.env.STAGING_ADMIN_EMAIL || "";
+const STAGING_ADMIN_PASSWORD = process.env.STAGING_ADMIN_PASSWORD || "";
 
 const screenshotsDir = path.join(process.cwd(), "scripts");
 
@@ -167,18 +169,38 @@ async function main() {
     record("Item 7b: Outside click closes user menu cleanly", menuClosed);
 
     // -------------------------------------------------------------------------
-    // ITEM 2: OWNER → RULES & CONTEXT REMOVED
+    // ITEM 2: NON-ADMIN ACCESS GUARDS (STEP A1)
     // -------------------------------------------------------------------------
-    console.log("\n[Item 2] Checking Owner → Rules & Context Tab is Cleanly Removed...");
-    await page.goto(`${BASE_URL}/app?view=owner`, { waitUntil: "networkidle" });
-    await page.waitForTimeout(1000);
-
-    const rulesTab = page.locator(".owner-tabs button:has-text('Rules & Context')");
-    const rulesTabCount = await rulesTab.count();
+    console.log("\n[Item 2] Checking Non-Admin Access Guards (Owner Nav & Route Protection)...");
+    // 2a. Check sidebar nav for non-admin
+    await page.goto(`${BASE_URL}/app?view=home`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(600);
+    const nonAdminOwnerNav = await page.locator("nav button:has-text('Owner')").count();
     record(
-      "Item 2: Owner Rules & Context tab completely removed (zero fake/typed data)",
-      rulesTabCount === 0,
-      `Rules & Context tab count: ${rulesTabCount}`
+      "Item 2a: Non-admin user has NO Owner navigation link in sidebar",
+      nonAdminOwnerNav === 0,
+      `Owner nav count: ${nonAdminOwnerNav}`
+    );
+
+    // 2b. Check navigating to /app?view=owner redirects/lands on Home
+    await page.goto(`${BASE_URL}/app?view=owner`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(800);
+    const landsOnOwner = (await page.locator("h1:has-text('Owner')").count()) > 0;
+    const hasHomeApp = (await page.locator(".home, .home-card, .today-grid, h1:has-text('Overview')").count()) > 0;
+    record(
+      "Item 2b: Non-admin navigating to /app?view=owner safely lands on Home",
+      !landsOnOwner && hasHomeApp,
+      `Lands on Owner: ${landsOnOwner}, Lands on Home: ${hasHomeApp}`
+    );
+
+    // 2c. Check no fake numbers or fake names exist on page
+    const pageBody = await page.evaluate(() => document.body.innerText);
+    const hasFakeNames = pageBody.includes("David Kim") || pageBody.includes("Claire Dupont");
+    const hasFakeData = pageBody.includes("$2,840") || pageBody.includes("18,450");
+    record(
+      "Item 2c: Zero fake sample data or fake numbers outside demo mode",
+      !hasFakeNames && !hasFakeData,
+      `Fake names: ${hasFakeNames}, Fake numbers: ${hasFakeData}`
     );
 
     // -------------------------------------------------------------------------
@@ -204,37 +226,76 @@ async function main() {
     console.log(`   Saved screenshot: ${shotPlanLight}`);
 
     // -------------------------------------------------------------------------
-    // ITEM 6: DARK THEME CAPSULE TABS & OWNER TAB LABELS
+    // ITEM 6: ADMIN USER VERIFICATION (STEP 5B & 5C)
     // -------------------------------------------------------------------------
-    console.log("\n[Item 6] Checking Dark Theme Capsule Tabs Contrast & Legibility...");
-    await page.evaluate(() => {
-      document.documentElement.setAttribute("data-theme", "dark");
-    });
-    await page.waitForTimeout(500);
-
-    await page.goto(`${BASE_URL}/app?view=owner`, { waitUntil: "networkidle" });
-    await page.evaluate(() => {
-      document.documentElement.setAttribute("data-theme", "dark");
-    });
-    await page.waitForTimeout(600);
-
-    const tabTextColor = await page.evaluate(() => {
-      const firstTab = document.querySelector(".owner-tabs button:not(.on)");
-      if (!firstTab) return null;
-      return window.getComputedStyle(firstTab).color;
+    console.log("\n[Item 6] Checking Admin User Verification (Owner Nav, Real Metrics & Dark Theme)...");
+    // Create dedicated admin browser context with staging-admin session
+    const adminCookieJar = {};
+    const adminSb = createBrowserClient(SUPABASE_URL, SUPABASE_KEY, {
+      cookies: {
+        getAll() { return Object.entries(adminCookieJar).map(([name, value]) => ({ name, value })); },
+        setAll(cs) { cs.forEach(({ name, value }) => { adminCookieJar[name] = value; }); },
+      },
     });
 
-    const activeTabBg = await page.evaluate(() => {
-      const activeTab = document.querySelector(".owner-tabs button.on");
-      if (!activeTab) return null;
-      return window.getComputedStyle(activeTab).backgroundColor;
+    const { data: adminAuth, error: adminAuthErr } = await adminSb.auth.signInWithPassword({
+      email: STAGING_ADMIN_EMAIL,
+      password: STAGING_ADMIN_PASSWORD,
     });
 
-    record(
-      "Item 6: Dark theme Owner tab labels & capsule tabs legible with high contrast",
-      Boolean(tabTextColor && activeTabBg),
-      `Inactive tab color: ${tabTextColor}, Active tab bg: ${activeTabBg}`
-    );
+    if (adminAuthErr || !adminAuth?.session) {
+      record("Item 5b: Staging admin user authentication", false, adminAuthErr?.message || "Failed");
+    } else {
+      const adminContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      await adminContext.addCookies(Object.entries(adminCookieJar).map(([name, value]) => ({
+        name, value, domain: "localhost", path: "/", httpOnly: false, secure: false, sameSite: "Lax",
+      })));
+      const adminPage = await adminContext.newPage();
+
+      // 5b: Admin user sees Owner nav and live metrics from database
+      await adminPage.goto(`${BASE_URL}/app?view=owner`, { waitUntil: "networkidle" });
+      await adminPage.waitForTimeout(1000);
+
+      const adminOwnerNav = await adminPage.locator("nav button:has-text('Owner')").count();
+      const adminOwnerHeading = await adminPage.locator("h1:has-text('Owner')").count();
+      const adminTilesCount = await adminPage.locator(".owner-tiles .owner-tile").count();
+      const hasRealMetrics = adminTilesCount > 0;
+
+      record(
+        "Item 5b: Admin user sees Owner nav and real metrics from database",
+        adminOwnerNav > 0 && adminOwnerHeading > 0 && hasRealMetrics,
+        `Owner nav: ${adminOwnerNav > 0}, Heading: ${adminOwnerHeading > 0}, Real tiles: ${adminTilesCount}`
+      );
+
+      // 5c: Verify Dark Theme on the admin Owner view
+      await adminPage.evaluate(() => {
+        document.documentElement.setAttribute("data-theme", "dark");
+      });
+      await adminPage.waitForTimeout(600);
+
+      const tabTextColor = await adminPage.evaluate(() => {
+        const firstTab = document.querySelector(".owner-tabs button:not(.on)");
+        if (!firstTab) return null;
+        return window.getComputedStyle(firstTab).color;
+      });
+
+      const activeTabBg = await adminPage.evaluate(() => {
+        const activeTab = document.querySelector(".owner-tabs button.on");
+        if (!activeTab) return null;
+        return window.getComputedStyle(activeTab).backgroundColor;
+      });
+
+      record(
+        "Item 6: Dark theme Owner tab labels & capsule tabs legible with high contrast (Admin)",
+        Boolean(tabTextColor && activeTabBg),
+        `Inactive tab: ${tabTextColor}, Active tab bg: ${activeTabBg}`
+      );
+
+      const shotOwnerDark = path.join(screenshotsDir, "screenshot-qc-item6-owner-tabs-dark.png");
+      await adminPage.screenshot({ path: shotOwnerDark });
+      console.log(`   Saved screenshot: ${shotOwnerDark}`);
+      await adminContext.close();
+    }
 
     const shotOwnerDark = path.join(screenshotsDir, "screenshot-qc-item6-owner-tabs-dark.png");
     await page.screenshot({ path: shotOwnerDark });

@@ -57,149 +57,21 @@ const DEMO_OWNER_DATA: Data = {
     new30: 24,
     leads: 18450,
     news_ok: 29,
-    extensions: 18,
+    extensions: 6,
     messages: 3,
   },
   people: [
-    {
-      email: "affan@norvenstudio.com",
-      name: "Affan Ibn Azad",
-      job: "Founder & Creative Director",
-      role: "owner",
-      team: "Norven Studio",
-      team_id: "team_norven_01",
-      state: "paid",
-      plan: "agency",
-      trial_ends_at: "2026-12-31T23:59:59Z",
-      paid_until: "2027-11-22T00:00:00Z",
-      billing_status: "active",
-      access_until: null,
-      joined_at: "2026-01-15T10:00:00Z",
-      last_seen: new Date().toISOString(),
-      leads: 4820,
-      last_lead: new Date().toISOString(),
-      country: "United Kingdom",
-      size: "2-10",
-      website: "https://norvenstudio.com",
-      heard_from: "Direct Founder",
-      news_ok: true,
-    },
-    {
-      email: "alex@northlight-studio.test",
-      name: "Alex Vance",
-      job: "Head of Growth",
-      role: "owner",
-      team: "Northlight Studio",
-      team_id: "team_northlight_02",
-      state: "paid",
-      plan: "pro",
-      trial_ends_at: "2026-03-01T00:00:00Z",
-      paid_until: "2027-04-01T00:00:00Z",
-      billing_status: "active",
-      access_until: null,
-      joined_at: "2026-02-10T12:30:00Z",
-      last_seen: new Date(Date.now() - 3600000 * 4).toISOString(),
-      leads: 1250,
-      last_lead: new Date(Date.now() - 3600000 * 2).toISOString(),
-      country: "United Kingdom",
-      size: "5-15",
-      website: "https://northlight-studio.test",
-      heard_from: "LinkedIn",
-      news_ok: true,
-    },
-    {
-      email: "sarah@copperleaf.design",
-      name: "Sarah Jenkins",
-      job: "Managing Director",
-      role: "owner",
-      team: "Copperleaf Design",
-      team_id: "team_copperleaf_03",
-      state: "paid",
-      plan: "starter",
-      trial_ends_at: "2026-04-15T00:00:00Z",
-      paid_until: "2026-12-15T00:00:00Z",
-      billing_status: "active",
-      access_until: null,
-      joined_at: "2026-03-01T09:15:00Z",
-      last_seen: new Date(Date.now() - 86400000).toISOString(),
-      leads: 680,
-      last_lead: new Date(Date.now() - 86400000).toISOString(),
-      country: "United Kingdom",
-      size: "1-5",
-      website: "https://copperleaf.design",
-      heard_from: "Twitter / X",
-      news_ok: true,
-    },
-    {
-      email: "marcus@harboursocial.co.uk",
-      name: "Marcus Bell",
-      job: "Lead Outreach",
-      role: "member",
-      team: "Harbour Social",
-      team_id: "team_harbour_04",
-      state: "trial",
-      plan: "starter",
-      trial_ends_at: new Date(Date.now() + 86400000 * 6).toISOString(),
-      paid_until: null,
-      billing_status: null,
-      access_until: null,
-      joined_at: "2026-11-16T14:20:00Z",
-      last_seen: new Date(Date.now() - 3600000 * 12).toISOString(),
-      leads: 320,
-      last_lead: new Date(Date.now() - 3600000 * 14).toISOString(),
-      country: "United Kingdom",
-      size: "2-10",
-      website: "https://harboursocial.co.uk",
-      heard_from: "Google Search",
-      news_ok: false,
-    },
-    {
-      email: "elena@oaklineevents.com",
-      name: "Elena Rostova",
-      job: "Events Director",
-      role: "owner",
-      team: "Oakline Events",
-      team_id: "team_oakline_05",
-      state: "free",
-      plan: "pro",
-      trial_ends_at: "2026-05-01T00:00:00Z",
-      paid_until: null,
-      billing_status: null,
-      access_until: new Date(Date.now() + 86400000 * 45).toISOString(),
-      joined_at: "2026-04-12T11:00:00Z",
-      last_seen: new Date(Date.now() - 86400000 * 2).toISOString(),
-      leads: 890,
-      last_lead: new Date(Date.now() - 86400000 * 3).toISOString(),
-      country: "Germany",
-      size: "10-25",
-      website: "https://oaklineevents.com",
-      heard_from: "Referral",
-      news_ok: true,
-    },
+    { email: "david.kim@summit-agency.test", name: "David Kim", job: "Founder & Lead Strategist", role: "owner", team: "Summit Media Group", state: "paid", plan: "pro", trial_ends_at: "2026-11-20T00:00:00.000Z", paid_until: "2027-11-20T00:00:00.000Z", billing_status: "active", access_until: null, joined_at: "2026-10-15T09:30:00.000Z", last_seen: "2026-11-23T08:15:00.000Z", leads: 420, last_lead: "2026-11-23T08:10:00.000Z", country: "United States", size: "6–10", website: "summit-agency.test", heard_from: "Twitter / X recommendation", news_ok: true },
+    { email: "claire.dupont@atelier-motion.test", name: "Claire Dupont", job: "Creative Director", role: "owner", team: "Atelier Motion Studio", state: "free", plan: "agency", trial_ends_at: "2026-11-10T00:00:00.000Z", paid_until: null, billing_status: null, access_until: "2027-02-10T00:00:00.000Z", joined_at: "2026-11-02T11:20:00.000Z", last_seen: "2026-11-23T07:45:00.000Z", leads: 890, last_lead: "2026-11-23T07:40:00.000Z", country: "France", size: "2–5", website: "atelier-motion.test", heard_from: "Affan YouTube breakdown", news_ok: true }
   ],
-  messages: [
-    {
-      name: "David Kim",
-      email: "david@kimpulsemarketing.com",
-      company: "Impulse Marketing",
-      topic: "Agency Partnership",
-      message: "Hey Affan, love the clean speed of Kestrel. We run outreach for 12 B2B brands and would love to discuss custom seat packaging and API access.",
-      at: new Date(Date.now() - 3600000 * 5).toISOString(),
-    },
-    {
-      name: "Claire Dupont",
-      email: "claire@atelierdupont.fr",
-      company: "Atelier Dupont",
-      topic: "Integration with HubSpot",
-      message: "We connected the Brave extension and verified 200 leads today. Is bidirectional contact sync with HubSpot scheduled for next sprint?",
-      at: new Date(Date.now() - 86400000 * 1.5).toISOString(),
-    },
-  ],
+  messages: []
 };
 
-export default function OwnerView({ toast }: { toast: (t: string) => void }) {
+export default function OwnerView({ toast, demo }: { toast: (t: string) => void; demo?: boolean }) {
   const [tab, setTab] = useState<(typeof TABS)[number][0]>("overview");
   const [data, setData] = useState<Data | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [msg] = useState("");
   const [q, setQ] = useState("");
   const [state, setState] = useState<"" | State>("");
@@ -217,17 +89,37 @@ export default function OwnerView({ toast }: { toast: (t: string) => void }) {
   }
 
   const load = useCallback(async () => {
+    if (demo) {
+      setData(DEMO_OWNER_DATA);
+      setLoading(false);
+      setErrorMsg(null);
+      return;
+    }
+    setLoading(true);
+    setErrorMsg(null);
     try {
       const { data: d, error } = await supabaseBrowser().rpc("admin_overview");
-      if (error || !d) {
-        setData(DEMO_OWNER_DATA);
+      if (error) {
+        setErrorMsg(error.message || "You don't have access.");
+        setData(null);
+        setLoading(false);
+        return;
+      }
+      if (!d) {
+        setErrorMsg("You don't have access.");
+        setData(null);
+        setLoading(false);
         return;
       }
       setData(d as Data);
-    } catch {
-      setData(DEMO_OWNER_DATA);
+      setLoading(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "You don't have access.";
+      setErrorMsg(msg);
+      setData(null);
+      setLoading(false);
     }
-  }, []);
+  }, [demo]);
   useEffect(() => { Promise.resolve().then(load); }, [load]);
 
   const people = useMemo(() => (data?.people ?? []).filter((p) =>
@@ -274,6 +166,17 @@ export default function OwnerView({ toast }: { toast: (t: string) => void }) {
       {tab === "verifier" ? <OwnerVerifier toast={toast} /> : null}
       {tab === "offers" ? <OwnerOffers toast={toast} /> : null}
       {tab === "usage" ? <OwnerUsage toast={toast} /> : null}
+
+      {tab === "overview" && errorMsg ? (
+        <div className="join-card" style={{ margin: "20px 0", padding: "24px", textAlign: "center" }}>
+          <p className="plan-msg" style={{ margin: 0, color: "var(--bad, #dc2626)" }}><b>Access Denied:</b> {errorMsg}</p>
+          <p className="sub" style={{ margin: "8px 0 0" }}>Only platform administrators have access to Kestrel overview metrics.</p>
+        </div>
+      ) : null}
+
+      {tab === "overview" && loading && !errorMsg ? (
+        <p className="sub" style={{ margin: "20px 0" }}>Loading platform metrics…</p>
+      ) : null}
 
       {tab === "overview" && t ? (
         <>
