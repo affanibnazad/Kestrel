@@ -199,6 +199,25 @@ const DEMO_OWNER_DATA: Data = {
 };
 
 function OwnerRulesView() {
+  const [aiSettings, setAiSettings] = useState<{ provider: string; model: string }>({
+    provider: "Anthropic",
+    model: "Auto by job (Haiku 5.5 judges, Sonnet 5.5 writes)",
+  });
+
+  useEffect(() => {
+    supabaseBrowser()
+      .from("team_ai")
+      .select("provider,model")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          const p = data.provider === "anthropic" ? "Anthropic" : data.provider === "openai" ? "OpenAI" : data.provider || "Anthropic";
+          const m = data.model === "auto" ? "Auto by job (Haiku 5.5 judges, Sonnet 5.5 writes)" : data.model || "Auto by job";
+          setAiSettings({ provider: p, model: m });
+        }
+      });
+  }, []);
+
   return (
     <div className="owner-rules-container">
       {/* 1. Deliverability & Safeguards */}
@@ -245,9 +264,9 @@ function OwnerRulesView() {
               </tr>
               <tr>
                 <td><b>Warmup Cadence</b></td>
-                <td>15/day start (+5/day ramp)</td>
+                <td>5/day start (+2/day ramp, 25/day limit)</td>
                 <td>Gradual volume ramp-up per newly connected mailbox</td>
-                <td>Reaches full limit over 14–21 days</td>
+                <td>Reaches full limit over 10–14 days</td>
               </tr>
             </tbody>
           </table>
@@ -258,7 +277,7 @@ function OwnerRulesView() {
       <section className="join-card owner-rule-card">
         <div className="rules-h">
           <b>AI Model Routing & Autopilot Policies <Tip text="Underlying model selection, prompt safeguards, and Quality Control review loops for all generated outreach messages." /></b>
-          <span className="pill good">Claude Sonnet 5.5 / Auto</span>
+          <span className="pill good">{aiSettings.provider} · {aiSettings.model}</span>
         </div>
         <p className="sub-dark">All outbound copywriting and fit scoring adhere to founder-approved voice guidelines and plain-English principles.</p>
         <div className="table-card members" style={{ margin: "14px 0 0" }}>
@@ -273,12 +292,12 @@ function OwnerRulesView() {
             <tbody>
               <tr>
                 <td><b>Primary Model Routing</b></td>
-                <td>Claude Sonnet 5.5 / Auto</td>
+                <td>{aiSettings.provider} · {aiSettings.model}</td>
                 <td>High-stakes email generation and reply classification</td>
               </tr>
               <tr>
                 <td><b>Speed / Fallback Engine</b></td>
-                <td>NVIDIA Nemotron / OpenAI</td>
+                <td>OpenAI / Fast Fallback</td>
                 <td>Spam word detection, subject line variations, fit scoring</td>
               </tr>
               <tr>
@@ -443,7 +462,7 @@ export default function OwnerView({ toast }: { toast: (t: string) => void }) {
     <div className="app-page">
       <header className="head"><div><h1>Owner <Tip text="Only you (Kestrel admins) can see this page: the business at a glance, everyone using Kestrel, access codes and contact messages." /></h1>
         <span className="sub">{t ? `${t.people} people · ${t.paid} paying · $${t.mrr} a month` : "Loading…"}</span></div></header>
-      <div className="owner-tabs seg">{TABS.map(([id, label]) => <button key={id} type="button" className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{label}{id === "messages" && t?.messages ? ` (${t.messages})` : ""}</button>)}</div>
+      <div className="owner-tabs seg" role="tablist" aria-label="Owner tabs">{TABS.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{label}{id === "messages" && t?.messages ? ` (${t.messages})` : ""}</button>)}</div>
 
       {tab === "rules" ? <OwnerRulesView /> : null}
       {tab === "access" ? <AccessView toast={toast} embedded /> : null}

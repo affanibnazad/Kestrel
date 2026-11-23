@@ -429,8 +429,8 @@ export default function CampaignsView({ account, leads, demo, editable, toast, b
                 <div className="kcamp-top">
                   <span className={`kcamp-logo ${PILL[c.status]}`} aria-hidden="true"><Line name={STATUS_IC[c.status]} filled /></span>
                   <button type="button" className="kcamp-name" onClick={() => setOpen(c.id)}>
-                    <b>{c.name}</b>
-                    <small>{boxLine(c)}</small>
+                    <b title={c.name}>{c.name}</b>
+                    <small title={boxLine(c)}>{boxLine(c)}</small>
                   </button>
                   <button type="button" className="kcamp-more" aria-label={`Open ${c.name}`} onClick={() => setOpen(c.id)}><Line name="more" /></button>
                 </div>
@@ -460,7 +460,7 @@ export default function CampaignsView({ account, leads, demo, editable, toast, b
             <thead><tr><th>Campaign</th><th>Status</th><th>Progress</th><th>Sent</th><th>Replied</th><th>Bounced</th><th>Unsubscribed</th></tr></thead>
             <tbody>{shown.map((c) => { const k = counts[c.id] ?? {}, started = k.started ?? 0, p = pct(c); return (
               <tr key={c.id} onClick={() => setOpen(c.id)}>
-                <td><button type="button" className="kcamp-name" onClick={(e) => { e.stopPropagation(); setOpen(c.id); }}><b>{c.name}</b><small>{boxLine(c)}</small></button></td>
+                <td><button type="button" className="kcamp-name" onClick={(e) => { e.stopPropagation(); setOpen(c.id); }}><b title={c.name}>{c.name}</b><small title={boxLine(c)}>{boxLine(c)}</small></button></td>
                 <td><em className={`kpill ${PILL[c.status] === "muted" ? "mute" : PILL[c.status]}`}>{STATUS_NAMES[c.status]}</em></td>
                 <td><span className="kcamp-mini"><span className="kcamp-bar"><i style={{ width: `${p}%` }} /></span>{k.total ? `${p}%` : "—"}</span></td>
                 <td>{started.toLocaleString()}{k.total ? <small className="kmuted"> of {k.total.toLocaleString()}</small> : null}</td>

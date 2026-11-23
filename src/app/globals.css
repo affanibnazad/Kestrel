@@ -18943,13 +18943,25 @@ a.btn:focus-visible {
   width: auto;
 }
 
-:root[data-look="v2"] .kcamp-card .kcamp-name b {
-  white-space: normal;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  line-height: 1.25;
+:root[data-look="v2"] .kcamp-card .kcamp-name b,
+.kcamp-card .kcamp-name b {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: block !important;
+  -webkit-line-clamp: unset !important;
+  line-clamp: unset !important;
+  line-height: 1.35 !important;
+}
+
+:root[data-look="v2"] .kcamp-card .kcamp-name small,
+.kcamp-card .kcamp-name small {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: block !important;
+  line-height: 1.35 !important;
+  margin-top: 3px !important;
 }
 
 /* ===== Design v2, exact kit layout: one campaign = "Project Management - Project Details" ===== */
@@ -27762,6 +27774,8 @@ select:not(.kinbox-snooze-select):not(.search select) {
 
 /* Dark Theme Toggle System */
 :root[data-theme="dark"] .seg,
+:root[data-theme="dark"] .owner-tabs,
+:root[data-theme="dark"] .owner-tabs.seg,
 :root[data-theme="dark"] .acct-bar .seg,
 :root[data-theme="dark"] .camp-tabs.seg,
 :root[data-theme="dark"] .acct-tabs.seg,
@@ -27776,49 +27790,71 @@ select:not(.kinbox-snooze-select):not(.search select) {
 }
 
 :root[data-theme="dark"] .seg button,
+:root[data-theme="dark"] .owner-tabs button,
+:root[data-theme="dark"] .owner-tabs.seg button,
 :root[data-theme="dark"] .acct-bar .seg button,
 :root[data-theme="dark"] .camp-tabs.seg button,
 :root[data-theme="dark"] .acct-tabs.seg button,
 :root[data-theme="dark"] .ktabs button,
 :root[data-theme="dark"] .kcamp-tabs [role="tab"],
 :root[data-theme="dark"] .int-tabs button,
-:root[data-theme="dark"] .br-filters button {
-  color: #94A3B8 !important;
+:root[data-theme="dark"] .br-filters button,
+:root[data-theme="dark"] .kinbox-tabs button {
+  color: #CBD5E1 !important;
+  font-weight: 500 !important;
 }
 
 :root[data-theme="dark"] .seg button:hover:not(.on):not([aria-selected="true"]),
+:root[data-theme="dark"] .owner-tabs button:hover:not(.on):not([aria-selected="true"]),
+:root[data-theme="dark"] .owner-tabs.seg button:hover:not(.on):not([aria-selected="true"]),
 :root[data-theme="dark"] .acct-bar .seg button:hover:not(.on):not([aria-selected="true"]),
 :root[data-theme="dark"] .camp-tabs.seg button:hover:not(.on):not([aria-selected="true"]),
 :root[data-theme="dark"] .acct-tabs.seg button:hover:not(.on):not([aria-selected="true"]),
 :root[data-theme="dark"] .ktabs button:hover:not(.on):not([aria-selected="true"]),
-:root[data-theme="dark"] .kcamp-tabs [role="tab"]:hover:not(.on):not([aria-selected="true"]) {
-  color: #F8FAFC !important;
-  background: rgba(255, 255, 255, 0.08) !important;
+:root[data-theme="dark"] .kcamp-tabs [role="tab"]:hover:not(.on):not([aria-selected="true"]),
+:root[data-theme="dark"] .int-tabs button:hover:not(.on):not([aria-selected="true"]),
+:root[data-theme="dark"] .br-filters button:hover:not(.on):not([aria-selected="true"]),
+:root[data-theme="dark"] .kinbox-tabs button:hover:not(.on):not([aria-selected="true"]) {
+  color: #FFFFFF !important;
+  background: rgba(255, 255, 255, 0.1) !important;
   border-radius: 9999px !important;
 }
 
 :root[data-theme="dark"] .seg button.on,
 :root[data-theme="dark"] .seg button[aria-selected="true"],
+:root[data-theme="dark"] .owner-tabs button.on,
+:root[data-theme="dark"] .owner-tabs button[aria-selected="true"],
+:root[data-theme="dark"] .owner-tabs.seg button.on,
+:root[data-theme="dark"] .owner-tabs.seg button[aria-selected="true"],
 :root[data-theme="dark"] .acct-bar .seg button.on,
 :root[data-theme="dark"] .camp-tabs.seg button.on,
 :root[data-theme="dark"] .acct-tabs.seg button.on,
 :root[data-theme="dark"] .ktabs button.on,
 :root[data-theme="dark"] .ktabs button[aria-selected="true"],
 :root[data-theme="dark"] .kcamp-tabs [role="tab"].on,
-:root[data-theme="dark"] .kcamp-tabs [role="tab"][aria-selected="true"] {
+:root[data-theme="dark"] .kcamp-tabs [role="tab"][aria-selected="true"],
+:root[data-theme="dark"] .int-tabs button.on,
+:root[data-theme="dark"] .int-tabs button[aria-selected="true"],
+:root[data-theme="dark"] .br-filters button.on,
+:root[data-theme="dark"] .br-filters button[aria-selected="true"],
+:root[data-theme="dark"] .kinbox-tabs button.on,
+:root[data-theme="dark"] .kinbox-tabs button[aria-selected="true"] {
   background: #2D3748 !important;
-  color: #F8FAFC !important;
+  color: #FFFFFF !important;
   box-shadow: none !important;
   border-radius: 9999px !important;
+  font-weight: 600 !important;
 }
 
 :root[data-theme="dark"] .seg button.on small,
 :root[data-theme="dark"] .seg button.on i,
+:root[data-theme="dark"] .owner-tabs button.on small,
+:root[data-theme="dark"] .owner-tabs button.on i,
 :root[data-theme="dark"] .ktabs button.on small,
 :root[data-theme="dark"] .ktabs button.on i,
 :root[data-theme="dark"] .kcamp-tabs [role="tab"].on small,
 :root[data-theme="dark"] .kcamp-tabs [role="tab"].on i {
-  color: #F8FAFC !important;
+  color: #FFFFFF !important;
 }
 
 /* ==========================================================================
@@ -28315,6 +28351,24 @@ header button,
   background: #181C26 !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
   box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* Collapsed Rail Floating Menu: Never clipped, floats to right of rail, never covers nav */
+:root .app.collapsed .kside-menu,
+:root[data-look="v2"] .app.collapsed .kside-menu,
+:root[data-theme="light"] .app.collapsed .kside-menu,
+:root[data-theme="dark"] .app.collapsed .kside-menu,
+:root[data-theme="gradient"] .app.collapsed .kside-menu,
+.app.collapsed .kside-menu {
+  position: fixed !important;
+  left: 64px !important;
+  bottom: 12px !important;
+  top: auto !important;
+  right: auto !important;
+  width: 240px !important;
+  min-width: 240px !important;
+  max-width: 260px !important;
+  z-index: 99999 !important;
 }
 
 .kside-menu button[role="menuitem"],

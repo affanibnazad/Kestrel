@@ -176,6 +176,17 @@ export default function AppShell({ email, loading = false, preview = false, acco
     }
   }, [initialView]);
   const [userMenu, setUserMenu] = useState(() => (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("menu") === "1"));     // the avatar menu at the bottom of the sidebar
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!userMenu) return;
+    function handleOutside(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenu(false);
+      }
+    }
+    window.addEventListener("mousedown", handleOutside);
+    return () => window.removeEventListener("mousedown", handleOutside);
+  }, [userMenu]);
   const [, setRecent] = useState<RecentItem[]>([]);
   const [open, setOpen] = useState(false);          // phone: the left bar slides over the page
   const touchStartX = useRef(0);                    // swipe to open/close the sidebar (no collapse button)
@@ -891,12 +902,12 @@ export default function AppShell({ email, loading = false, preview = false, acco
           </nav>
         </div>
         {account ? (
-          <div className="kside-user">
+          <div className="kside-user" ref={userMenuRef}>
             <button type="button" className="kside-user-btn" onClick={() => setUserMenu((v) => !v)} aria-expanded={userMenu} aria-haspopup="menu">
               <PersonAvatar name={account.full_name || email || "You"} photo={account.avatar} size={28} />
               <span className="kside-user-txt">
                 <b>{account.full_name || email || "You"}</b>
-                <small>{account.plan === "trial" ? `Pro · trial ${daysLeft(account.trial_ends_at)} days` : `${planName(account.plan as PlanId)} · ${account.active === false ? "read only" : "active"}`}</small>
+                <small>{account.access_until && new Date(account.access_until) > new Date() ? `Free access until ${new Date(account.access_until).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}` : account.plan === "trial" ? `Pro · trial ${daysLeft(account.trial_ends_at)} days` : `${planName(account.plan as PlanId)} · ${account.active === false ? "read only" : "active"}`}</small>
               </span>
               <i className="kcaret" aria-hidden="true" />
             </button>
@@ -1442,6 +1453,7 @@ function IntegrationsView({ tab, go, account, email, demo, toast }: { tab: strin
 function ExtensionConnect({ account, email }: { account: Account | null; email: string }) {
   const [ext, setExt] = useState<ExtReply | null | undefined>(undefined); // undefined = still checking
   const [keys, setKeys] = useState<ExtKey[]>([]);
+  const [showOlder, setShowOlder] = useState(false);
   const [code, setCode] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1530,17 +1542,29 @@ function ExtensionConnect({ account, email }: { account: Account | null; email: 
         ) : null}
         {!canConnect && account ? <p className="plan-msg" style={{ margin: "10px 0 0" }}>Viewers cannot connect an extension.</p> : null}
       </section>
-      {keys.length ? (
-        <div className="table-card members" style={{ marginTop: 16 }}>
-          <table className="leads">
-            <thead><tr><th>Your connected extensions</th><th>Connected</th><th>Last used</th><th /></tr></thead>
-            <tbody>{keys.map((k) => (
-              <tr key={k.id}><td>{k.label}</td><td>{new Date(k.created_at).toLocaleDateString()}</td><td>{k.last_used_at ? new Date(k.last_used_at).toLocaleString() : "Not yet"}</td>
-                <td style={{ textAlign: "right" }}><button className="link-btn" type="button" onClick={() => remove(k.id)}>Disconnect</button></td></tr>
-            ))}</tbody>
-          </table>
-        </div>
-      ) : null}
+      {keys.length ? (() => {
+        const activeKeys = keys.filter((k, i) => i < 2 || (k.last_used_at && (Date.now() - new Date(k.last_used_at).getTime()) < 30 * 86400000));
+        const olderKeys = keys.filter((k) => !activeKeys.includes(k));
+        const visibleKeys = showOlder ? keys : activeKeys;
+        return (
+          <div className="table-card members" style={{ marginTop: 16 }}>
+            <table className="leads">
+              <thead><tr><th>Your connected extensions</th><th>Connected</th><th>Last used</th><th /></tr></thead>
+              <tbody>{visibleKeys.map((k) => (
+                <tr key={k.id}><td>{k.label}</td><td>{new Date(k.created_at).toLocaleDateString()}</td><td>{k.last_used_at ? new Date(k.last_used_at).toLocaleString() : "Not yet"}</td>
+                  <td style={{ textAlign: "right" }}><button className="link-btn" type="button" onClick={() => remove(k.id)}>Disconnect</button></td></tr>
+              ))}</tbody>
+            </table>
+            {olderKeys.length > 0 ? (
+              <div style={{ padding: "10px 14px", borderTop: "1px solid var(--k-border, rgba(0,0,0,0.06))", textAlign: "center" }}>
+                <button type="button" className="btn glass small" onClick={() => setShowOlder((v) => !v)}>
+                  {showOlder ? "Hide older" : `Show older (${olderKeys.length})`}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        );
+      })() : null}
     </>
   );
 }
@@ -1789,16 +1813,19 @@ function PlanView({ account }: { account: Account | null }) {
     } as Record<string, string>)[b] ?? "";
   });
   const paid = account && account.plan !== "trial" && account.paid_until;
+  const hasFree = Boolean(account?.access_until && new Date(account.access_until) > new Date());
+  const freeDate = hasFree ? new Date(account!.access_until!).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }) : "";
+  const free = hasFree ? `Free access until ${freeDate}` : "";
   const status = !account ? "Sign in to see your plan"
+    : hasFree ? `Free access until ${freeDate}`
     : paid && account.active !== false ? `${planName(account.plan)} plan · ${account.billing_status === "cancelled" ? "ends" : "renews"} ${new Date(account.paid_until!).toLocaleDateString()}`
       : account.active === false ? "Trial ended · choose a plan to carry on"
         : `Free trial, ${daysLeft(account.trial_ends_at)} days left (${TRIAL_DAYS}-day trial)`;
   const current = paid && account?.active !== false ? account?.plan : null;
-  const free = account?.access_until && new Date(account.access_until) > new Date() ? `Free ${planName(account.access_plan ?? "pro")} access until ${new Date(account.access_until).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}` : "";
   const [code, setCode] = useState("");
   const [codeMsg, setCodeMsg] = useState("");
   const [codeOpen, setCodeOpen] = useState(false);
-  const planNow = current ? planName(current) : account?.access_until && new Date(account.access_until) > new Date() ? `${planName(account.access_plan ?? "pro")} (access code)` : account?.active === false ? "None" : "Free trial";
+  const planNow = current ? planName(current) : hasFree ? `${planName(account!.access_plan ?? "pro")} (access code)` : account?.active === false ? "None" : "Free trial";
   const seats = PLANS.find((p) => p.id === seatPlan(account))?.seats ?? "";
   async function useCode(e: React.FormEvent) {
     e.preventDefault(); setCodeMsg("Checking…");
@@ -1815,13 +1842,13 @@ function PlanView({ account }: { account: Account | null }) {
       {account ? (
         <div className="kpis plan-kpis">
           <div><small>Plan</small><b>{planNow}</b></div>
-          <div><small>Status</small><b>{account.active === false ? "Read-only" : paid ? (account.billing_status === "cancelled" ? "Ends" : "Active") : "Trial"}</b>
-            <i className="kpi-note">{paid ? new Date(account.paid_until!).toLocaleDateString() : account.active === false ? "Choose a plan" : `${daysLeft(account.trial_ends_at)} days left`}</i></div>
+          <div><small>Status</small><b>{hasFree ? "Free access" : account.active === false ? "Read-only" : paid ? (account.billing_status === "cancelled" ? "Ends" : "Active") : "Trial"}</b>
+            <i className="kpi-note">{hasFree ? `Until ${freeDate}` : paid ? new Date(account.paid_until!).toLocaleDateString() : account.active === false ? "Choose a plan" : `${daysLeft(account.trial_ends_at)} days left`}</i></div>
           <div><small>Team</small><b>{(account.members?.length ?? 1).toLocaleString()} {account.members?.length === 1 ? "person" : "people"}</b><i className="kpi-note">{seats}</i></div>
-          {free ? <div><small>Free access</small><b>Until</b><i className="kpi-note">{new Date(account.access_until!).toLocaleDateString()}</i></div> : null}
+          {hasFree ? <div><small>Free access</small><b>Until</b><i className="kpi-note">{freeDate}</i></div> : null}
         </div>
       ) : null}
-      {account?.active === false ? <p className="plan-msg lock-msg">Your trial has ended, so Kestrel is read-only. Your leads are safe and you can still export them. Pick a plan below to unlock adding leads, the extension and AI again.</p> : null}
+      {account?.active === false && !hasFree ? <p className="plan-msg lock-msg">Your trial has ended, so Kestrel is read-only. Your leads are safe and you can still export them. Pick a plan below to unlock adding leads, the extension and AI again.</p> : null}
       <OfferBanner />
       {account?.role === "owner" ? <OfferCode demo={false} /> : null}
       <div className="plan-grid">

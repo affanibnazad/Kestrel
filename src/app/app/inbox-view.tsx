@@ -14,9 +14,9 @@ import ReplyBox from "./reply-box";
 // Card 1 (Left): Pill search + filter, Segmented tabs [All Mails | Unread | Archive], rich conversation list with avatars, bold subjects, snippets, tags and star.
 // Card 2 (Right): Thread header with avatar, name, email, time and action pills [Reply | Mark done | Snooze], bold subject, LeadTimeline, and docked composer.
 type Conv = { id: string; lead_id: string | null; lead_name: string | null; to_email: string; status: string; first_sent_at: string | null; campaign_id: string; mailbox_id: string | null; stage?: Stage | null;
-  note?: string | null; assigned_to?: string | null; snoozed_until?: string | null };
+  note?: string | null; assigned_to?: string | null; snoozed_until?: string | null; steps?: Array<{ day?: number; subject?: string; body?: string }> };
 type Ev = { campaign_lead_id: string; kind: string; at: string };
-type Rep = { id: string; campaign_lead_id: string; kind: string; handled: boolean; received_at: string | null; snippet?: string | null; ai_label?: string | null; ai_reason?: string | null; ai_by?: string | null };
+type Rep = { id: string; campaign_lead_id: string; kind: string; handled: boolean; received_at: string | null; snippet?: string | null; subject?: string | null; ai_label?: string | null; ai_reason?: string | null; ai_by?: string | null; attachments?: Array<{ name: string; size?: string; url?: string; type?: string }> };
 type Person = { id: string; name: string | null; email: string };
 type Filter = "all" | "answer" | "replied" | Stage | "seen" | "unseen" | "auto" | "unsubscribed" | "bounced" | "mine" | "snoozed" | `label:${Label}`;
 const PRO_COLS = "stage,note,assigned_to,snoozed_until";
@@ -35,7 +35,13 @@ const ago = (s: string | null) => {
 };
 const SEEN_HELP = "Seen = the email's tracking image was loaded (only campaigns with Track opens on). An estimate: Gmail counts only the first open; Apple Mail can load emails by itself.";
 const STAGE_HELP = "Your own label for each conversation: it powers the Positive replies number in Analytics. Not interested also stops any follow-ups still planned.";
-const CONV_COLS = "id,lead_id,lead_name,to_email,status,first_sent_at,campaign_id,mailbox_id";
+const CONV_COLS = "id,lead_id,lead_name,to_email,status,first_sent_at,campaign_id,mailbox_id,steps";
+
+function firstLineOf(text?: string | null): string {
+  if (!text) return "";
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  return lines[0] ?? "";
+}
 
 export default function InboxView({ account, demo, editable, toast }: { account: { role: string; team_id?: string } | null; demo: boolean; editable: boolean; toast: (t: string) => void }) {
   const [convs, setConvs] = useState<Conv[] | null>(null);
@@ -85,8 +91,8 @@ export default function InboxView({ account, demo, editable, toast }: { account:
         { id: "s2", lead_id: null, lead_name: "Alexandra Smith", to_email: "alexandra.smith@growthmedia.test", status: "replied", first_sent_at: d(10), campaign_id: "c2", mailbox_id: "b", stage: "interested", assigned_to: "me" },
         { id: "s3", lead_id: null, lead_name: "Michael Brown", to_email: "michael.brown@northlight.test", status: "replied", first_sent_at: d(18), campaign_id: "c3", mailbox_id: "b", stage: "meeting" },
         { id: "s4", lead_id: null, lead_name: "James Johnson", to_email: "jamesjohnson1786@gmail.com", status: "replied", first_sent_at: d(15), campaign_id: "c4", mailbox_id: "b", stage: "interested", note: "Asked for video examples. Send 2 reels.", assigned_to: "me" },
-        { id: "s5", lead_id: null, lead_name: "Daniel Martinez", to_email: "daniel.martinez@kuromi.test", status: "active", first_sent_at: d(14), campaign_id: "c5", mailbox_id: "b", stage: null },
-        { id: "s6", lead_id: null, lead_name: "Emily Smith", to_email: "emily.smith@discoverymag.test", status: "active", first_sent_at: d(12), campaign_id: "c6", mailbox_id: "b", stage: null }
+        { id: "s5", lead_id: null, lead_name: "Daniel Martinez", to_email: "daniel.martinez@kuromi.test", status: "active", first_sent_at: d(14), campaign_id: "c5", mailbox_id: "b", stage: null, steps: [{ subject: "Quick question on creative production", body: "Hey Daniel, saw your brand launch and wanted to check if you need help with video production." }] },
+        { id: "s6", lead_id: null, lead_name: "Emily Smith", to_email: "emily.smith@discoverymag.test", status: "active", first_sent_at: d(12), campaign_id: "c6", mailbox_id: "b", stage: null, steps: [{ subject: "Brand motion design collaboration", body: "Hi Emily, love Discovery Mag's visual direction. We help editorial teams produce high-retention video stories." }] }
       ]);
       setEvents([
         { campaign_lead_id: "s1", kind: "opened", at: d(8) },
@@ -117,7 +123,7 @@ export default function InboxView({ account, demo, editable, toast }: { account:
     }
     const sb = supabaseBrowser();
     const convQ = (cols: string) => sb.from("campaign_leads").select(cols).not("first_sent_at", "is", null).order("first_sent_at", { ascending: false }).limit(2000);
-    const repQ = (extra: string) => sb.from("mail_replies").select(`id,campaign_lead_id,kind,handled,received_at,snippet${extra}`).order("received_at", { ascending: false }).limit(2000);
+    const repQ = (extra: string) => sb.from("mail_replies").select(`id,campaign_lead_id,kind,handled,received_at,snippet,subject${extra}`).order("received_at", { ascending: false }).limit(2000);
     const currentGen = reqGenRef.current;
     const currentTeam = account?.team_id;
     const isCurrent = () => reqGenRef.current === currentGen && activeTeamRef.current === currentTeam;
@@ -178,8 +184,11 @@ export default function InboxView({ account, demo, editable, toast }: { account:
     const last = [c.first_sent_at, opens[0]?.at, reps[0]?.received_at].filter(Boolean).sort().pop() ?? null;
     const snoozed = Boolean(c.snoozed_until && Date.parse(c.snoozed_until) > nowMs);
     const label = real.find((r) => isLabel(r.ai_label))?.ai_label as Label | undefined;
-    return { c, opens: opens.length, lastOpen: opens[0]?.at ?? null, reps, waiting: real.some((r) => !r.handled) && !snoozed, snoozed, label, replied: real.length > 0, auto: reps.some((r) => r.kind === "auto"), last, preview: reps[0]?.snippet ?? "" };
-  }), [convs, events, replies, nowMs]);
+    const firstStepBody = c.steps?.[0]?.body;
+    const rawPreview = reps[0]?.snippet || reps[0]?.subject || firstStepBody || "";
+    const preview = firstLineOf(rawPreview) || (c.campaign_id ? names.camps[c.campaign_id] ?? "" : "");
+    return { c, opens: opens.length, lastOpen: opens[0]?.at ?? null, reps, waiting: real.some((r) => !r.handled) && !snoozed, snoozed, label, replied: real.length > 0, auto: reps.some((r) => r.kind === "auto"), last, preview };
+  }), [convs, events, replies, nowMs, names.camps]);
 
   const scoped = all.filter((x) => (!camp || x.c.campaign_id === camp) && (!box || x.c.mailbox_id === box)
     && (!q || `${x.c.lead_name ?? ""} ${x.c.to_email} ${names.camps[x.c.campaign_id] ?? ""}`.toLowerCase().includes(q.trim().toLowerCase())));
@@ -469,7 +478,7 @@ export default function InboxView({ account, demo, editable, toast }: { account:
                       </div>
 
                       <div className="kinbox-item-snippet">
-                        {x.preview || "No preview text available."}
+                        {x.preview || (x.c.campaign_id ? names.camps[x.c.campaign_id] : "") || "Message sent"}
                       </div>
 
                       <div className="kinbox-item-foot">
@@ -710,33 +719,29 @@ export default function InboxView({ account, demo, editable, toast }: { account:
                     )}
                   </div>
 
-                  {/* Attachment Cards mockup */}
-                  <div className="kinbox-attachments-sec">
-                    <span className="kinbox-attach-header">Attachment</span>
-                    <div className="kinbox-attach-grid">
-                      <div className="kinbox-attach-card">
-                        <span className="kinbox-attach-badge pdf">PDF</span>
-                        <div className="kinbox-attach-info">
-                          <b>Collaboration-Overview.pdf</b>
-                          <small>2 MB · Download</small>
+                  {/* Real Attachments (Only shown when real message has them) */}
+                  {(() => {
+                    const realAttach = (open.reps as Rep[]).flatMap((r) => r.attachments ?? []);
+                    if (!realAttach.length) return null;
+                    return (
+                      <div className="kinbox-attachments-sec">
+                        <span className="kinbox-attach-header">Attachments ({realAttach.length})</span>
+                        <div className="kinbox-attach-grid">
+                          {realAttach.map((att, idx) => (
+                            <div key={idx} className="kinbox-attach-card">
+                              <span className={`kinbox-attach-badge ${(att.type || "file").toLowerCase()}`}>
+                                {(att.type || att.name.split(".").pop() || "FILE").toUpperCase().slice(0, 4)}
+                              </span>
+                              <div className="kinbox-attach-info">
+                                <b>{att.name}</b>
+                                <small>{att.size ? `${att.size} · ` : ""}{att.url ? <a href={att.url} target="_blank" rel="noreferrer">Download</a> : "Attachment"}</small>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      <div className="kinbox-attach-card">
-                        <span className="kinbox-attach-badge fig">FIG</span>
-                        <div className="kinbox-attach-info">
-                          <b>Project-Template1.fig</b>
-                          <small>2 MB · Download</small>
-                        </div>
-                      </div>
-                      <div className="kinbox-attach-card">
-                        <span className="kinbox-attach-badge meet">MEET</span>
-                        <div className="kinbox-attach-info">
-                          <b>Meeting With Client</b>
-                          <small>meet.google.com/qwer-wer-ouy</small>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Docked Composer Card at bottom */}
