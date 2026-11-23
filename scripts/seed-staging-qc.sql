@@ -46,16 +46,23 @@ BEGIN
   WHERE team_id = v_team_id AND name = 'London Video Production Studios Q4'
   LIMIT 1;
 
-  -- Look up mailbox by team_id and email
+  -- Look up mailbox: prefer 'outreach@kestrelleads.com', or fallback to any mailbox belonging to this team
   SELECT id INTO v_mailbox FROM public.mailboxes
   WHERE team_id = v_team_id AND email = 'outreach@kestrelleads.com'
   LIMIT 1;
+
+  IF v_mailbox IS NULL THEN
+    SELECT id INTO v_mailbox FROM public.mailboxes
+    WHERE team_id = v_team_id
+    ORDER BY created_at ASC
+    LIMIT 1;
+  END IF;
 
   IF v_camp_ny IS NULL OR v_camp_lon IS NULL THEN
     RAISE EXCEPTION 'Campaigns not found for team %. Run scripts/seed-staging-qc.mjs first.', v_team_id;
   END IF;
 
-  -- 2a. Insert Campaign Leads
+  -- 2a. Insert Campaign Leads (includes required opt-out line to satisfy email_steps_problem trigger)
   INSERT INTO public.campaign_leads (
     id, campaign_id, team_id, mailbox_id, to_email, lead_name, status, first_sent_at, steps
   ) VALUES (
@@ -67,7 +74,7 @@ BEGIN
     'Sarah Connor',
     'replied',
     now() - interval '2 days',
-    '[{"day": 0, "subject": "Video production for Cyberdyne", "body": "Hi Sarah, quick question regarding video production."}]'::jsonb
+    '[{"day": 0, "subject": "Video production for Cyberdyne", "body": "Hi Sarah, quick question regarding video production for Cyberdyne.\n\nNot interested? Just reply no."}]'::jsonb
   ) ON CONFLICT (id) DO UPDATE SET
     campaign_id = excluded.campaign_id,
     mailbox_id = excluded.mailbox_id,
@@ -85,12 +92,17 @@ BEGIN
     'Marcus Wright',
     'replied',
     now() - interval '1 day',
-    '[{"day": 0, "subject": "Content strategy for Q4", "body": "Hey Marcus, loved your recent release."}]'::jsonb
+    '[{"day": 0, "subject": "Content strategy for Q4", "body": "Hey Marcus, loved your recent release.\n\nNot interested? Just reply no."}]'::jsonb
   ) ON CONFLICT (id) DO UPDATE SET
     campaign_id = excluded.campaign_id,
     mailbox_id = excluded.mailbox_id,
     status = excluded.status,
     first_sent_at = excluded.first_sent_at;
+
+  -- Guard: ensure campaign_leads were inserted and not silently skipped by trigger
+  IF (SELECT count(*) FROM public.campaign_leads WHERE id IN (v_lead_1, v_lead_2)) < 2 THEN
+    RAISE EXCEPTION 'campaign_leads were skipped by a trigger';
+  END IF;
 
   -- 2b. Insert Mail Replies
   INSERT INTO public.mail_replies (
@@ -105,8 +117,8 @@ BEGIN
     'sarah.connor@cyberdyne.test',
     'sarah.connor@cyberdyne.test',
     'Re: Video production for Cyberdyne',
-    'Yes, we are currently reviewing video production proposals for next month. Can you send over a deck and pricing?',
-    'Yes, we are currently reviewing video production proposals for next month. Can you send over a deck and pricing?' || E'\n\n' || 'Best,' || E'\n' || 'Sarah Connor' || E'\n' || 'Cyberdyne Systems',
+    'Yes, we are currently reviewing video production proposals for next month. Can you send over a deck?',
+    'Yes, we are currently reviewing video production proposals for next month. Can you send over a deck?' || E'\n\n' || 'Best,' || E'\n' || 'Sarah Connor' || E'\n' || 'Cyberdyne Systems',
     now() - interval '1 day',
     false,
     'interested'
