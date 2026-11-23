@@ -34,13 +34,15 @@ export async function POST(request: Request) {
     if (!id) { const { data: o1 } = await sb.from("offer_profiles").select("id").order("name").limit(1).maybeSingle(); id = (o1 as { id?: string } | null)?.id ?? ""; }
     body.offerId = id;
   }
-  const [{ data: offer }, { data: ai }, { data: aboutRow }] = await Promise.all([
+  const [{ data: offer }, { data: ai }, { data: aboutRow }, { data: allActiveOffers }] = await Promise.all([
     sb.from("offer_profiles").select("*").eq("id", body.offerId).maybeSingle(),
     sb.from("team_ai").select("*").maybeSingle(),
     sb.from("team_about").select("*").maybeSingle(),   // database 059; before it is run this is empty
+    task === "score" ? sb.from("offer_profiles").select("*").eq("active", true).order("name") : Promise.resolve({ data: [] }),
   ]);
   const settings = ai ? { ...ai, about: aboutForAi(aboutRow ? cleanAbout(aboutRow) : null) } : null;
   if (!offer) return NextResponse.json({ error: "Choose an offer profile first." }, { status: 400 });
+  const activeServices = (allActiveOffers ?? []) as Offer[];
   // The sequence: "default" = Kestrel's (first email + day 5, 10, 15), a sequence id = the team's own (database 015), none = first email only.
   let sequence: { steps: unknown; id: string } | "default" | null = null;
   if (task === "emails" && body.sequence === "default") sequence = "default";
@@ -53,10 +55,10 @@ export async function POST(request: Request) {
   const provider = ((settings?.provider as Provider) || "anthropic");
   const { data: key, error: keyError } = await sb.rpc("ai_key_for_server", { server_secret: process.env.MAIL_SERVER_SECRET || "", service: provider });
   // Check the offer, model and sender before the key, so the first missing thing is named.
-  const pre = aiPlan(task, offer as Offer, settings, "-", sequence);
+  const pre = aiPlan(task, offer as Offer, settings, "-", sequence, activeServices);
   if ("error" in pre) return NextResponse.json({ error: pre.error }, { status: 400 });
   if (keyError) return NextResponse.json({ error: /can change leads/.test(keyError.message) ? "Your role can view leads but not run AI. Ask your team owner." : "AI is coming soon to your workspace." }, { status: 403 });
-  const plan = aiPlan(task, offer as Offer, settings, typeof key === "string" ? key : "", sequence);
+  const plan = aiPlan(task, offer as Offer, settings, typeof key === "string" ? key : "", sequence, activeServices);
   if ("error" in plan) return NextResponse.json({ error: plan.error }, { status: 400 });
   // Phase 4C: written emails are checked by the QC bot and fixed once; one it cannot pass is held from campaigns.
   const qcPlan = task === "emails" ? aiPlan("qc", offer as Offer, settings, typeof key === "string" ? key : "", null) : null;

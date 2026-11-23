@@ -12,10 +12,53 @@ import { EMPTY_OFFER, EMPTY_SENDER, offerReady, type Offer, type Sender } from "
 
 type Acct = { team_id: string; role: string; active?: boolean } | null;
 type OfferRow = Offer & { id?: string };
-const DEMO_ABOUT: About = { mode: "agency", website: "https://northlight-example.test", about: "We are a small video studio. We turn long videos into short weekly clips for marketing agencies.",
-  proof: [{ title: "Harbour Social (example)", result: "Posted 3x more video with the same team", link: "" }], tone: "Friendly, short, plain words", avoid: "synergy, leverage" };
-const DEMO_OFFER: OfferRow = { ...EMPTY_OFFER, id: "demo-offer", name: "Short clips for agencies", offer: "Short-form video editing for agencies", customer: "Marketing agencies with 5 to 50 people",
-  good: "Posts video weekly", bad: "Has an in-house video team", one_line: "We turn long videos into weekly short clips." };
+const DEMO_ABOUT: About = {
+  mode: "agency",
+  website: "https://northlight-example.test",
+  about: "We are a small video studio. We turn long videos into short weekly clips for marketing agencies.",
+  proof: [{ id: "demo-proof-1", title: "Harbour Social (example)", result: "Posted 3x more video with the same team", link: "" }],
+  tone: "Friendly, short, plain words",
+  avoid: "synergy, leverage",
+};
+const DEMO_OFFER: OfferRow = {
+  ...EMPTY_OFFER,
+  id: "demo-offer",
+  name: "Short clips for agencies",
+  offer: "Short-form video editing for agencies",
+  customer: "Marketing agencies with 5 to 50 people",
+  good: "Posts video weekly",
+  bad: "Has an in-house video team",
+  one_line: "We turn long videos into weekly short clips.",
+  service_type: "video_production",
+  deliverables: "8 short-form clips per month, captions, vertical formats (9:16)",
+  problems_solved: "Inconsistent social posting, internal editing bottleneck",
+  dream_outcome: "Consistent weekly video presence without hiring in-house",
+  time_to_result: "First batch delivered within 5 business days",
+  client_effort: "Upload raw footage once a week to shared drive",
+  risk_reversal: "Full revision until satisfied or money-back guarantee",
+  first_step: "1 free test edit from existing footage",
+  buying_triggers: "Hiring a video editor, launched a new podcast or YouTube channel",
+  proof_ids: [],
+  active: true,
+};
+
+export const SERVICE_CATEGORIES = [
+  { id: "lead_generation", label: "Lead Generation & Outreach" },
+  { id: "video_production", label: "Video Production & Editing" },
+  { id: "web_development", label: "Web & App Development" },
+  { id: "design_branding", label: "Design & Creative Branding" },
+  { id: "seo_content", label: "SEO & Content Marketing" },
+  { id: "paid_advertising", label: "Paid Advertising & Media Buying" },
+  { id: "social_media", label: "Social Media Management" },
+  { id: "copywriting", label: "Copywriting & Email Marketing" },
+  { id: "consulting_strategy", label: "Consulting & Strategy" },
+  { id: "sales_operations", label: "Sales Operations & RevOps" },
+  { id: "recruiting_staffing", label: "Recruiting & Staffing" },
+  { id: "software_saas", label: "Software & SaaS Solutions" },
+  { id: "automation_ai", label: "Automation & AI Integrations" },
+  { id: "pr_communications", label: "PR & Communications" },
+  { id: "other", label: "Other Specialized Service" },
+] as const;
 
 export default function AboutView({ account, demo, editable, toast }: { account: Acct; demo: boolean; editable: boolean; toast: (t: string) => void }) {
   const [about, setAbout] = useState<About>(EMPTY_ABOUT);
@@ -75,7 +118,28 @@ export default function AboutView({ account, demo, editable, toast }: { account:
     const name = offer.name.trim().slice(0, 40);
     if (!name) { toast("Give this offer a name first."); return; }
     if (asNew && offers.some((x) => x.name === name)) { toast("Change the offer name first: an offer with that name already exists."); return; }
-    const row = { name, offer: offer.offer, customer: offer.customer, good: offer.good, bad: offer.bad, criteria: offer.criteria, strictness: offer.strictness, one_line: offer.one_line, updated_at: new Date().toISOString() };
+    const row = {
+      name,
+      offer: offer.offer,
+      customer: offer.customer,
+      good: offer.good,
+      bad: offer.bad,
+      criteria: offer.criteria,
+      strictness: offer.strictness,
+      one_line: offer.one_line,
+      service_type: offer.service_type || null,
+      deliverables: (offer.deliverables || "").slice(0, 2000),
+      problems_solved: (offer.problems_solved || "").slice(0, 2000),
+      dream_outcome: (offer.dream_outcome || "").slice(0, 2000),
+      time_to_result: (offer.time_to_result || "").slice(0, 500),
+      client_effort: (offer.client_effort || "").slice(0, 1000),
+      risk_reversal: (offer.risk_reversal || "").slice(0, 1000),
+      first_step: (offer.first_step || "").slice(0, 1000),
+      buying_triggers: (offer.buying_triggers || "").slice(0, 2000),
+      proof_ids: Array.isArray(offer.proof_ids) ? offer.proof_ids : [],
+      active: offer.active !== false,
+      updated_at: new Date().toISOString(),
+    };
     setBusy("offer");
     let saved: OfferRow;
     if (demo || !account) saved = { ...offer, ...row, id: offer.id && !asNew ? offer.id : `demo-${name}` };
@@ -151,7 +215,29 @@ export default function AboutView({ account, demo, editable, toast }: { account:
               <button type="button" className="link-btn" disabled={off} onClick={() => setAbout({ ...about, proof: about.proof.filter((_, j) => j !== i) })}>Remove</button>
             </div>
           ))}
-          {about.proof.length < 10 ? <button type="button" className="btn glass small" disabled={off} onClick={() => setAbout({ ...about, proof: [...about.proof, { title: "", result: "", link: "" }] })}>Add proof</button> : null}
+          {about.proof.length < 10 ? (
+            <button
+              type="button"
+              className="btn glass small"
+              disabled={off}
+              onClick={() =>
+                setAbout({
+                  ...about,
+                  proof: [
+                    ...about.proof,
+                    {
+                      id: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+                      title: "",
+                      result: "",
+                      link: "",
+                    },
+                  ],
+                })
+              }
+            >
+              Add proof
+            </button>
+          ) : null}
 
           <b className="about-sub">Tone of voice <Tip text="How your emails should sound. Pick one or more, or write your own." /></b>
           <div className="about-chips">
@@ -166,24 +252,52 @@ export default function AboutView({ account, demo, editable, toast }: { account:
       </div>
 
       <section className="join-card about-sec prof-form">
-        <b>Your offers <Tip text="What you sell and who buys it. The AI judges every lead against an offer and writes for it. Save several; the default one is used unless you pick another in Score and write or a campaign." /></b>
+        <b>Service Catalog <Tip text="Configure what you sell, your target client profile, evidence triggers, and deliverables. The AI evaluates leads against all active services and matches the best one. Turn services on or off at any time." /></b>
         <div className="join-row">
           <select aria-label="Offer" value={offer.id ?? ""} disabled={Boolean(busy)} onChange={(e) => setOffer(offers.find((x) => x.id === e.target.value) ?? EMPTY_OFFER)}>
-            {offer.id ? null : <option value="">New offer</option>}
-            {offers.map((o) => <option key={o.id} value={o.id}>{o.name}{o.id === defaultOffer ? " (default)" : ""}</option>)}
+            {offer.id ? null : <option value="">New service</option>}
+            {offers.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}{o.active === false ? " (off)" : ""}{o.id === defaultOffer ? " (default)" : ""}
+              </option>
+            ))}
           </select>
-          <button type="button" className="btn small glass" disabled={off} onClick={() => setOffer({ ...EMPTY_OFFER })}>New offer</button>
-          {offer.id && offer.id !== defaultOffer ? <button type="button" className="link-btn" disabled={off} onClick={() => makeDefault(offer.id!).then(() => toast("Default offer set."))}>Make default</button> : null}
+          <button type="button" className="btn small glass" disabled={off} onClick={() => setOffer({ ...EMPTY_OFFER })}>New service</button>
+          {offer.id ? (
+            <button
+              type="button"
+              className={`btn small ${offer.active !== false ? "glass" : "go"}`}
+              disabled={off}
+              onClick={() => setOffer({ ...offer, active: offer.active === false })}
+            >
+              {offer.active === false ? "Turn on" : "Turn off"}
+            </button>
+          ) : null}
+          {offer.id && offer.id !== defaultOffer ? <button type="button" className="link-btn" disabled={off} onClick={() => makeDefault(offer.id!).then(() => toast("Default service set."))}>Make default</button> : null}
           {offer.id ? <button type="button" className="link-btn danger" disabled={off} onClick={deleteOffer}>Delete</button> : null}
         </div>
         <div className="about-grid">
           <div>
-            <label className="in"><span>Offer name</span><input value={offer.name} maxLength={40} disabled={off} placeholder="e.g. Video editing for agencies" onChange={(e) => setOffer({ ...offer, name: e.target.value })} /></label>
+            <label className="in"><span>Service name</span><input value={offer.name} maxLength={40} disabled={off} placeholder="e.g. Video editing for agencies" onChange={(e) => setOffer({ ...offer, name: e.target.value })} /></label>
+            <label className="in"><span>Service category <Tip text="Blueprint classification of this offering." /></span>
+              <select value={offer.service_type ?? ""} disabled={off} onChange={(e) => setOffer({ ...offer, service_type: e.target.value || null })}>
+                <option value="">Select category…</option>
+                {SERVICE_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </label>
             {field("What you sell", "offer", "e.g. Short-form video editing for agencies")}
+            {field("Deliverables <Tip text=\"Explicit deliverables client gets, e.g. 8 short-form clips per month.\" />", "deliverables", "e.g. 8 short-form clips per month, captions, vertical formats (9:16)")}
+            {field("Problems solved <Tip text=\"Business pains this fixes, e.g. Inconsistent posting, editing bottleneck.\" />", "problems_solved", "e.g. Inconsistent social posting, internal editing bottleneck")}
+            {field("Dream outcome <Tip text=\"Transformation the client wants, e.g. Consistent presence without hiring.\" />", "dream_outcome", "e.g. Consistent weekly video presence without hiring in-house")}
             {field("Ideal customer", "customer", "e.g. Marketing agencies with 5 to 50 people")}
             {field("One line on what you do (in every email)", "one_line", "e.g. We turn long videos into weekly short clips.")}
           </div>
           <div>
+            {field("Time to result <Tip text=\"How fast, e.g. First batch in 5 days.\" />", "time_to_result", "e.g. First batch delivered within 5 business days", 1)}
+            {field("Client effort <Tip text=\"What client must do, e.g. Upload raw footage weekly.\" />", "client_effort", "e.g. Upload raw footage once a week to shared drive", 1)}
+            {field("Risk reversal <Tip text=\"Guarantees or terms that lower risk.\" />", "risk_reversal", "e.g. Full revision until satisfied or money-back guarantee", 1)}
+            {field("First step offer <Tip text=\"Low-risk starting offer, e.g. 1 free test edit.\" />", "first_step", "e.g. 1 free test edit from existing footage", 1)}
+            {field("Buying triggers <Tip text=\"Observable events: hiring, launches, funding.\" />", "buying_triggers", "e.g. Hiring a video editor, launched a new podcast or YouTube channel")}
             {field("Good signs", "good", "e.g. Posts video weekly, hiring an editor")}
             {field("Disqualifiers", "bad", "e.g. Has an in-house video team")}
             {field("Other criteria", "criteria", "Anything else the AI should weigh")}
@@ -193,8 +307,36 @@ export default function AboutView({ account, demo, editable, toast }: { account:
               ))}</div></div>
           </div>
         </div>
+
+        {about.proof.length > 0 ? (
+          <div className="about-sec" style={{ marginTop: 12 }}>
+            <b>Linked Proof Points <Tip text="Pick confirmed proof points from Your Business above to attach to this service. The AI only cites real proof." /></b>
+            <div className="about-chips" style={{ marginTop: 6 }}>
+              {about.proof.map((p) => {
+                const checked = Array.isArray(offer.proof_ids) && offer.proof_ids.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`oa-chip${checked ? " on" : ""}`}
+                    aria-pressed={checked}
+                    disabled={off}
+                    onClick={() => {
+                      const cur = Array.isArray(offer.proof_ids) ? [...offer.proof_ids] : [];
+                      const next = checked ? cur.filter((id) => id !== p.id) : [...cur, p.id];
+                      setOffer({ ...offer, proof_ids: next });
+                    }}
+                  >
+                    {p.title || p.result || "Proof item"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
         <div className="join-row">
-          <button type="button" className="btn go" disabled={off || !offerReady(offer)} onClick={() => saveOffer(false)}>{busy === "offer" ? "Saving…" : offer.id ? "Save offer" : "Save as offer"}</button>
+          <button type="button" className="btn go" disabled={off || !offerReady(offer)} onClick={() => saveOffer(false)}>{busy === "offer" ? "Saving…" : offer.id ? "Save service" : "Save as service"}</button>
           {offer.id ? <button type="button" className="btn glass" disabled={off} onClick={() => saveOffer(true)}>Save as new…</button> : null}
         </div>
       </section>

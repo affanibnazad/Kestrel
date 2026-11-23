@@ -2,7 +2,7 @@
 // team_about (database 059). The AI reads it for scoring, writing and Kestrel AI (aboutForAi).
 
 export type Mode = "agency" | "solo" | "whitelabel";
-export type Proof = { title: string; result: string; link: string };
+export type Proof = { id: string; title: string; result: string; link: string };
 export type About = { mode: Mode; website: string; about: string; proof: Proof[]; tone: string; avoid: string };
 
 export const EMPTY_ABOUT: About = { mode: "agency", website: "", about: "", proof: [], tone: "", avoid: "" };
@@ -25,7 +25,8 @@ export function cleanAbout(raw: unknown): About {
   const mode = MODES.some((m) => m.id === r.mode) ? (r.mode as Mode) : "agency";
   const proof = (Array.isArray(r.proof) ? r.proof : []).slice(0, 10).map((p) => {
     const x = (p && typeof p === "object" ? p : {}) as Record<string, unknown>;
-    return { title: str(x.title, 80), result: str(x.result, 300), link: url(x.link) };
+    const id = typeof x.id === "string" && x.id.trim() ? str(x.id, 64) : (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+    return { id, title: str(x.title, 80), result: str(x.result, 300), link: url(x.link) };
   }).filter((p) => p.title || p.result);
   return { mode, website: url(r.website), about: str(r.about, 2000), proof, tone: str(r.tone, 600), avoid: str(r.avoid, 600) };
 }

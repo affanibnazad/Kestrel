@@ -6,7 +6,28 @@ import { AUTO, modelForTask } from "./ai-models";
 import { greetName, nameFromEmail } from "./email-check";
 import { variantCount, variantFor, followUpCount, followUpPurposes, followUpSteps, renderAll, type Step } from "./sequence";
 
-export type Offer = { id?: string; name: string; offer: string; customer: string; good: string; bad: string; criteria: string; strictness: "lenient" | "balanced" | "strict"; one_line: string };
+export type Offer = {
+  id?: string;
+  name: string;
+  offer: string;
+  customer: string;
+  good: string;
+  bad: string;
+  criteria: string;
+  strictness: "lenient" | "balanced" | "strict";
+  one_line: string;
+  service_type?: string | null;
+  deliverables?: string;
+  problems_solved?: string;
+  dream_outcome?: string;
+  time_to_result?: string;
+  client_effort?: string;
+  risk_reversal?: string;
+  first_step?: string;
+  buying_triggers?: string;
+  proof_ids?: string[];
+  active?: boolean;
+};
 // about: the team's About page as lines for the AI (lib/about.ts aboutForAi, database 059); empty before it is filled in.
 export type Sender = { sender_name: string; business: string; address: string; signature: string; booking_link?: string; about?: string };
 export type Provider = "anthropic" | "openai" | "gemini" | "openrouter" | "groq" | "nvidia";
@@ -19,7 +40,13 @@ export type LeadData = Record<string, unknown> & {
 };
 // What the Research bot found on a lead's own website (19 Nov 2026).
 export type Research = { problem: string; how: string; detail: string; sure: "high" | "low"; host: string; by: string; at: number };
-export type Fit = { fit: number; verdict: "good" | "maybe" | "no"; reason: string };
+export type Fit = {
+  fit: number;
+  verdict: "good" | "maybe" | "no";
+  reason: string;
+  matched_service_id?: string;
+  matched_service_name?: string;
+};
 // one_line: the offer's "one line on what we do", reworded by the AI for this email (Affan, 19 Nov 2026: never the same
 // line in every email). Empty = the offer's own line is used.
 export type Parts = { first_name: string; subject: string; icebreaker: string; question: string; one_line?: string };
@@ -32,7 +59,27 @@ export type Draft = { firstName: string; subject: string; icebreaker: string; qu
 export type Qc = { status: "passed" | "hold" | "approved" | "unchecked"; issues: string[]; rounds: number; at: number; fixed?: string[] };
 export type SeqParts = Parts & { follow_ups: string[] };
 
-export const EMPTY_OFFER: Offer = { name: "", offer: "", customer: "", good: "", bad: "", criteria: "", strictness: "balanced", one_line: "" };
+export const EMPTY_OFFER: Offer = {
+  name: "",
+  offer: "",
+  customer: "",
+  good: "",
+  bad: "",
+  criteria: "",
+  strictness: "balanced",
+  one_line: "",
+  service_type: "",
+  deliverables: "",
+  problems_solved: "",
+  dream_outcome: "",
+  time_to_result: "",
+  client_effort: "",
+  risk_reversal: "",
+  first_step: "",
+  buying_triggers: "",
+  proof_ids: [],
+  active: true,
+};
 export const EMPTY_SENDER: Sender = { sender_name: "", business: "", address: "", signature: "", booking_link: "" };
 
 export const PROVIDERS: Record<Provider, { label: string; maker: string; keyUrl: string; models: { id: string; label: string; input: number | null; output: number | null }[] }> = {
@@ -67,7 +114,9 @@ export const FIT_SCHEMA = {
   properties: {
     fit: { type: "integer", description: "0 to 100. How likely this business is a realistic buyer." },
     verdict: { type: "string", enum: ["good", "maybe", "no"] },
-    reason: { type: "string", description: "One plain sentence under 20 words, citing the evidence." },
+    reason: { type: "string", description: "One plain sentence under 25 words, citing the evidence and matched service." },
+    matched_service_id: { type: "string", description: "The id of the active service that best fits this lead, or empty string if single offer or no match." },
+    matched_service_name: { type: "string", description: "The name of the active service that best fits this lead, or empty string." },
   },
   required: ["fit", "verdict", "reason"],
   additionalProperties: false,
@@ -184,7 +233,40 @@ export function profileHash(o: Offer) {
 
 const line = (label: string, value: string) => (String(value || "").trim() ? `${label}: ${String(value).trim()}\n` : "");
 
-export function fitSystem(o: Offer, about = "") {
+export function fitSystem(o: Offer, about = "", activeServices?: Offer[]) {
+  if (activeServices && activeServices.length > 1) {
+    const catalogDesc = activeServices
+      .map((s, idx) => {
+        const idStr = s.id ? ` [ID: ${s.id}]` : "";
+        const parts = [
+          `Service ${idx + 1}: "${s.name}"${idStr}`,
+          s.offer ? `  What they sell: ${s.offer}` : "",
+          s.customer ? `  Ideal customer: ${s.customer}` : "",
+          s.deliverables ? `  Deliverables: ${s.deliverables}` : "",
+          s.problems_solved ? `  Problems solved: ${s.problems_solved}` : "",
+          s.buying_triggers ? `  Buying triggers: ${s.buying_triggers}` : "",
+          s.good ? `  Good signs: ${s.good}` : "",
+          s.bad ? `  Disqualifiers: ${s.bad}` : "",
+        ].filter(Boolean).join("\n");
+        return parts;
+      })
+      .join("\n\n");
+
+    return `You qualify sales leads against a catalog of active services.
+Decide whether one business is a realistic buyer for ANY of the seller's active services, and identify which service fits best and why.
+
+Active Services Catalog:
+${catalogDesc}
+
+${about ? `About the seller:\n${about}\n` : ""}
+Evaluation Rules:
+1. Compare the lead against all active services above.
+2. If one service is a clear match, return verdict "good", fit (60-100), the matched service's id in matched_service_id, the service name in matched_service_name, and a 1-sentence reason explaining why that service fits the lead's evidence.
+3. If the lead might fit but evidence is thin or mixed, return verdict "maybe", fit (30-59), the best candidate service in matched_service_id and matched_service_name, and reason.
+4. If no active service fits or hard disqualifiers apply to all, return verdict "no", fit (0-29), matched_service_id: "", matched_service_name: "", and cite why.
+5. Judge only from lead data; do not assume facts it does not state.`;
+  }
+
   return `You qualify sales leads. Decide whether one business is a realistic buyer of the seller's offer.
 
 Seller profile
@@ -262,7 +344,18 @@ export function readJson(text: string): Record<string, unknown> | null {
 }
 export function cleanFit(d: Record<string, unknown> | null): Fit | null {
   if (!d || !["good", "maybe", "no"].includes(String(d.verdict)) || !Number.isFinite(Number(d.fit))) return null;
-  return { fit: Math.max(0, Math.min(100, Math.round(Number(d.fit)))), verdict: d.verdict as Fit["verdict"], reason: String(d.reason || "").slice(0, 240) };
+  const res: Fit = {
+    fit: Math.max(0, Math.min(100, Math.round(Number(d.fit)))),
+    verdict: d.verdict as Fit["verdict"],
+    reason: String(d.reason || "").slice(0, 240),
+  };
+  if (typeof d.matched_service_id === "string" && d.matched_service_id.trim()) {
+    res.matched_service_id = d.matched_service_id.trim();
+  }
+  if (typeof d.matched_service_name === "string" && d.matched_service_name.trim()) {
+    res.matched_service_name = d.matched_service_name.trim();
+  }
+  return res;
 }
 export function cleanParts(d: Record<string, unknown> | null): Parts | null {
   if (!d || typeof d !== "object") return null;

@@ -26,7 +26,7 @@ export type AiPlan = {
 };
 // Checks the offer, sender, model and sequence, and builds what every lead in the batch shares. Returns an error in plain words.
 export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offer | null, settings: Record<string, unknown> | null, key: string,
-  sequence: { steps: unknown; id?: string } | "default" | null): AiPlan | { error: string } {
+  sequence: { steps: unknown; id?: string } | "default" | null, activeServices?: Offer[]): AiPlan | { error: string } {
   if (!offer) return { error: "Choose an offer profile first." };
   const s: Sender = { ...EMPTY_SENDER, ...(settings ?? {}) } as Sender;
   // "auto" (the default for Claude): Haiku 5.5 judges leads, Sonnet 5.5 writes emails. A model the team chose is used as it is.
@@ -43,7 +43,7 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
   }
   const followUps = seq ? followUpCount(seq.steps) : 0;
   return { task, provider, key, model: pick.model, effort: provider === "anthropic" ? pick.effort : undefined, offer, sender: s, hash: profileHash(offer),
-    system: task === "score" ? fitSystem(offer, s.about ?? "") : task === "research" ? researchSystem(offer, s.about ?? "") : task === "qc" ? qcSystem(offer) : emailSystem(offer, s, seq?.steps),
+    system: task === "score" ? fitSystem(offer, s.about ?? "", activeServices) : task === "research" ? researchSystem(offer, s.about ?? "") : task === "qc" ? qcSystem(offer) : emailSystem(offer, s, seq?.steps),
     schema: task === "score" ? FIT_SCHEMA : task === "research" ? RESEARCH_SCHEMA : task === "qc" ? QC_SCHEMA : sequenceSchema(followUps), followUps, seq };
 }
 
@@ -96,7 +96,24 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
     const f = cleanFit(answer);
     if (!f) return { ok: false, why: "unreadable answer", cost };
     const ai = { ...f, profile: p.hash, by, at: Date.now() };
-    return { ok: true, patch: { verdict: VERDICT_COLUMN[f.verdict], reason: f.reason, data: { ...data, ai } }, result: { id: l.id, verdict: VERDICT_COLUMN[f.verdict], reason: f.reason, fit: f.fit }, cost };
+    const patch: Record<string, unknown> = {
+      verdict: VERDICT_COLUMN[f.verdict],
+      reason: f.reason,
+      data: { ...data, ai },
+    };
+    const resObj: Record<string, unknown> = {
+      id: l.id,
+      verdict: VERDICT_COLUMN[f.verdict],
+      reason: f.reason,
+      fit: f.fit,
+    };
+    if (f.matched_service_id) {
+      resObj.matched_service_id = f.matched_service_id;
+    }
+    if (f.matched_service_name) {
+      resObj.matched_service_name = f.matched_service_name;
+    }
+    return { ok: true, patch, result: resObj, cost };
   }
   const parts = cleanParts(answer), fu = cleanFollowUps(answer, p.followUps);
   if (!parts || fu.some((x) => !x)) return { ok: false, why: "unreadable answer", cost };
