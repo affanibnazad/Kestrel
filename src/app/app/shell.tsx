@@ -44,7 +44,7 @@ import AutopilotView from "./autopilot-view";
 import { dncBlocks, dncIndex, normalizeDnc, type DncRow } from "@/lib/dnc";
 import { PENDING, claim } from "../redeem/redeem";
 import { EXAMPLE_LEADS, LEAD_COLUMNS, LEAD_COLUMNS_STATUS, LEAD_COLUMNS_VERIFY, LEADS_DRAG, leadsCsv, placeOf, searchGroups, searchKey, leadsFromBackup, toRow, type LeadRow } from "@/lib/leads";
-import downloads from "../../../downloads-private/downloads.json";
+import downloads from "@/lib/downloads";
 import { EXTENSION, storeUrl } from "@/lib/site";
 import { LAUNCH as INTRO, PLANS, TRIAL_DAYS, introPrice, money, planName, type PlanId } from "@/lib/plans";
 import OfferBanner from "@/components/offer-banner";
