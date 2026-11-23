@@ -7,39 +7,59 @@ You are helping **Affan Ibn Azad**, founder of **Norven Studio**, build and grow
 ## 1. How to talk to Affan
 - English is not his first language. Use **short, simple sentences** and **tables**.
 - Give clear next steps. One step at a time.
-- Call him a founder, content strategist or motion designer. Not "entrepreneur", not just "video editor".
+- Call him a founder, content strategist, or motion designer. Not "entrepreneur", not "video editor".
 - He wants things built step by step, approved stage by stage.
 
 ---
 
-## 2. Core Design Rules (Never Break These)
+## 2. Safety & Engineering Rules (Strict)
+- **Live Database Boundary**: NEVER run commands against the live Supabase project (`psocpxaphnfgbxpnkonk`) — no curl, no node -e, no scripts.
+- **Passwords & Keys**: Never print, echo, or type API keys or passwords in commands.
+- **Staging Only**: Test users and commands run only against staging via `.env.staging.local`.
+- **Zero Fake Data**: No mock data, hardcoded sample rows, fake numbers, or fake behavior outside demo mode.
+- **Demo Mode Boundary**: Demo mode operates ONLY when logged out AND `KESTREL_ALLOW_DEMO=true` (e.g. `/app?demo=true`).
+- **Real Tests Only**: Tests must use real staging data. Never use mocks or route intercepts.
+- **No Unapproved Deploy/Push/SQL**: No deploy, git push, or live SQL without Affan's explicit OK.
+- **Report Only Means Zero Changes**: When Affan asks for a report, change nothing, edit nothing, delete nothing.
+- **Never Delete Files**: Move retired or legacy files to `docs/archive/` via `git mv`.
+- **Admin Integrity**: Never change `is_admin` or alter admin users yourself. Affan handles admin roles via SQL.
+- **Honesty First**: If you do not know something, say "unknown" — never guess or invent facts.
+- **Design Lock**: Never change layout, spacing, colors, or fonts without Affan's written OK.
+
+---
+
+## 3. Core Design Rules (Never Break These)
 
 | Rule | Requirement |
 |---|---|
-| **Typography** | Apple SF Pro only (`-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display"`). No other fonts. |
+| **Typography** | Apple SF Pro Native only (`-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display"`). No other fonts. |
 | **Capsule Toggles** | All tablists (`.seg`, `.kcamp-tabs`, `.ktabs`, `.int-tabs`, `.br-filters`, `.kinbox-tabs`) must be smooth rounded capsule containers with interactive active pills. **No bottom underlines. No horizontal divider lines.** |
 | **100% Rounded Buttons** | Every single button site-wide has `border-radius: 9999px !important;` (pills and round action buttons). |
-| **Flat Minimalist (Zero Floating Shadows)** | No floating drop shadows (`box-shadow: none`), no `translateY` hover lifts. Clean 1px solid flat borders. |
-| **Four Themes** | Clean separation of: `light` (warm stone), `dark` (deep slate `#0B0E14`), `gradient` (modern SaaS `#ECEEF2` canvas with radiant headers and pure white cards), and `auto` (OS mode). Never mix white-on-white text or dark text on dark surfaces. |
+| **Flat Minimalist** | Zero floating drop shadows (`box-shadow: none`), no `translateY` hover lifts. Clean 1px solid flat borders. |
 | **Single Outer Outline** | Inputs, search bars, and dropdowns (like Snooze) must have **only one outer line**. Zero inner nested boxes or stroke rings. |
-| **Semantic Palette** | `#3B82F6` (accent), `#0EA5A4` (research), `#8B5CF6` (fit), `#D97706` (opportunity/warning), `#16A34A` (success), `#DC2626` (failure/blocked), `#8A8A8A` (neutral). |
+| **Four Themes** | Clean separation of: `light` (warm stone), `dark` (deep slate `#0B0E14`), `gradient` (modern SaaS `#ECEEF2` canvas with radiant headers and pure white cards), and `auto` (OS mode). Never mix white-on-white text or dark text on dark surfaces. |
+| **Semantic Palette** | `#3B82F6` (accent), `#0EA5A4` (research), `#8B5CF6` (fit), `#D97706` (warning), `#16A34A` (success), `#DC2626` (failure), `#8A8A8A` (neutral). |
 
 ---
 
-## 3. How This Codebase is Organized
+## 4. Where Things Are
 
-This is a clean, production-ready copy of Kestrel with **zero build cache, zero temporary logs, and zero dead code**.
+Before changing any page, read its file in `page-rules/`.
 
-- `src/app/app/` holds all modular page view components (`shell.tsx`, `campaigns-view.tsx`, `leads-view.tsx`, `inbox-view.tsx`, etc.).
-- `src/app/globals.css` holds universal design tokens and verified styling rules.
-- `page-rules/` holds detailed specifications for every single page. Before modifying or adding any page, consult the corresponding file in `page-rules/`.
-- `PROGRESS.md` tracks all verified tasks up to date.
-- Admin portal plan: `docs/ADMIN_PORTAL_PLAN.md` (platform admin and team owner are separate; no fake data outside demo mode).
+| Topic | Primary Document | Description |
+|---|---|---|
+| **Design System** | `docs/DESIGN.md` | Master design specification, CSS tokens, themes, and screen inventory. |
+| **Project Progress** | `docs/PROGRESS.md` | Authoritative progress status, active test suites, and verified milestones. |
+| **System Blueprint** | `docs/BLUEPRINT.md` | Architecture, data model, security boundaries, and infrastructure. |
+| **Admin Portal** | `docs/ADMIN_PORTAL_PLAN.md` | Platform admin requirements, role isolation, and billing ops. |
+| **Page Rules** | `page-rules/*.md` | Detailed UX rules for specific screens (Campaigns, Leads, Inbox, etc.). |
+| **Archived Docs** | `docs/archive/` | Historical audits and retired specs (kept in git, never deleted). |
 
 ---
 
-## 4. Safety Rules
-- Never run any command against the live Supabase project (`psocpxaphnfgbxpnkonk`) — no curl, no node -e, no scripts. Never type passwords in commands. Test users are created only on staging, by Affan or by a script that loads `.env.staging.local`.
+## 5. Codebase Structure
+- Modular page view components live in `src/app/app/` (`shell.tsx`, `campaigns-view.tsx`, `leads-view.tsx`, `inbox-view.tsx`, etc.).
+- Universal design tokens and resets live in `src/app/globals.css`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

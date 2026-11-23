@@ -56,9 +56,9 @@ Kestrel is a service-agnostic **Client Intelligence & Outreach Platform** develo
 - `src/app/`: Next.js App Router entry points, marketing pages, legal pages, and 34 serverless API route handlers (`src/app/api/`).
 - `src/app/app/`: Modular view components (`shell.tsx`, `campaigns-view.tsx`, `leads-view.tsx`, `inbox-view.tsx`, `pipeline-view.tsx`, etc.).
 - `src/lib/`: Core business logic modules (`campaign.ts`, `inbox.ts`, `leads.ts`, `site-read.ts`, `scoring.ts`, `lemon.ts`, `assistant.ts`).
-- `supabase/migrations/`: All 69 sequential database migrations (`001_accounts.sql` through `069_grant_my_team_id.sql`).
-- `scripts/`: 6 portable automated test suites (308 tests total) and administration utilities.
-- `docs/`: Technical audit documentation (`KESTREL_BLUEPRINT.md`, `KESTREL_PROGRESS.md`, `KESTREL_SECURITY_BACKLOG.md`).
+- `supabase/migrations/`: All 80 sequential database migrations (`001_initial_schema.sql` through `080_...sql`).
+- `scripts/`: Automated test suites and administration utilities.
+- `docs/`: Canonical system documentation (`DESIGN.md`, `PROGRESS.md`, `BLUEPRINT.md`, `ADMIN_PORTAL_PLAN.md`).
 - `page-rules/`: Design and layout rules for every individual view.
 
 ---

@@ -14,6 +14,7 @@
     "test:all": "node scripts/verify-all.mjs",
     "test:navigation": "node scripts/verify-client-state-navigation.mjs",
     "test:readiness": "node scripts/verify-production-readiness.mjs",
+    "test:design-lock": "node scripts/verify-design-lock.mjs",
     "test:full": "node scripts/verify-auth-and-demo.mjs && node scripts/verify-multitenant-isolation.mjs && node scripts/verify-error-boundaries.mjs && node scripts/verify-all.mjs && node scripts/verify-client-state-navigation.mjs && node scripts/verify-production-readiness.mjs"
   },
   "dependencies": {
