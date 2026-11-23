@@ -1,12 +1,8 @@
 -- scripts/read-staging-functions.sql
 -- Run this script in the Supabase STAGING SQL Editor (kestrel-staging).
--- It reads and prints the complete function definition (pg_get_functiondef)
--- for all functions introduced or modified by migrations 070-077:
---   070/074: Direct Send, sending limits, mailbox checks
---   071/077: Team Credits, credit ledger, server deduction
---   072/076: Team Files, file management, deletion security
---   073/075: Automations, Outside Bots (Discord/Telegram), White-label RPCs
-
+-- 
+-- Query 1: Prints function definitions (pg_get_functiondef)
+-- for functions introduced or modified by migrations 070-077.
 select
   n.nspname as schema_name,
   p.proname as function_name,
@@ -17,7 +13,6 @@ from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public'
   and (
-    -- Specific 070-073 known function names
     p.proname in (
       'ensure_direct_campaign',
       'mail_direct_prepare',
@@ -26,7 +21,6 @@ where n.nspname = 'public'
       'use_team_credits',
       'save_team_file'
     )
-    -- Or any function matching 074-077 security-fix patterns
     or p.proname ilike '%direct%'
     or p.proname ilike '%credit%'
     or p.proname ilike '%file%'
@@ -36,3 +30,25 @@ where n.nspname = 'public'
     or p.proname ilike '%automation%'
   )
 order by p.proname, arguments;
+
+-- Query 2: Lists RLS policies on key tables from pg_policies.
+select
+  tablename,
+  policyname,
+  cmd,
+  roles,
+  qual,
+  with_check
+from pg_policies
+where schemaname = 'public'
+  and tablename in (
+    'team_files',
+    'team_automations',
+    'team_outside_bots',
+    'team_credits',
+    'team_credit_ledger',
+    'campaigns',
+    'campaign_leads',
+    'mailboxes'
+  )
+order by tablename, policyname;
