@@ -80,12 +80,44 @@ async function call(provider: Provider, url: string, headers: Record<string, str
   const name = NAMES[provider];
   for (let attempt = 0; ; attempt++) {
     let res: Response;
-    try { res = await fetch(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body), signal: AbortSignal.timeout(attempt ? 15_000 : 30_000) }); }
-    catch { if (attempt >= 1) throw new EngineError(`No connection to ${name}. Try again.`, "network"); await new Promise((r) => setTimeout(r, 800 * (attempt + 1))); continue; }
+    const startMs = Date.now();
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(attempt ? 15_000 : 30_000),
+      });
+    } catch (err: unknown) {
+      const elapsed = Date.now() - startMs;
+      const errorObj = err instanceof Error ? {
+        name: err.name,
+        message: err.message,
+        cause: err.cause instanceof Error ? `${err.cause.name}: ${err.cause.message}` : err.cause ? String(err.cause) : undefined,
+      } : { name: "UnknownError", message: String(err) };
+      console.error(`[assistant-engine] ${name} call error (attempt ${attempt + 1}, ${elapsed}ms):`, {
+        errorName: errorObj.name,
+        message: errorObj.message,
+        cause: errorObj.cause,
+        elapsedMs: elapsed,
+      });
+      if (attempt >= 1) throw new EngineError(`No connection to ${name}. Try again.`, "network");
+      await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+      continue;
+    }
+    const elapsed = Date.now() - startMs;
     if (res.ok) return res.json();
     const detail = await res.json().catch(() => ({}));
-    const msg = String((detail?.error && (detail.error.message || detail.error)) || "");
-    if ([429, 500, 502, 503].includes(res.status) && attempt < 1) { await new Promise((r) => setTimeout(r, (Number(res.headers.get("retry-after")) || attempt + 1) * 1000)); continue; }
+    const msg = String((detail?.error && (detail.error.message || detail.error)) || detail?.detail || detail?.title || "");
+    console.error(`[assistant-engine] ${name} HTTP ${res.status} (attempt ${attempt + 1}, ${elapsed}ms):`, {
+      status: res.status,
+      error: msg,
+      elapsedMs: elapsed,
+    });
+    if ([429, 500, 502, 503].includes(res.status) && attempt < 1) {
+      await new Promise((r) => setTimeout(r, (Number(res.headers.get("retry-after")) || attempt + 1) * 1000));
+      continue;
+    }
     if (res.status === 401 || res.status === 403 || /API_KEY_INVALID|invalid api key|incorrect api key/i.test(msg)) throw new EngineError(`The ${name} key was not accepted.`, "key");
     if (res.status === 429) throw new EngineError(`${name} is busy or the credit is used up. Try again later.`, "rate");
     if (res.status === 404 || /model/i.test(msg)) throw new EngineError(`${name} could not use the model "${String((body as { model?: string }).model ?? "")}".`, "model");
