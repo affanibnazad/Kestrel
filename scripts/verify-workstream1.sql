@@ -206,7 +206,7 @@ END $$;
 DELETE FROM public.campaign_deletions cd
 WHERE NOT EXISTS (SELECT 1 FROM public.teams t WHERE t.id = cd.team_id);
 
--- Apply Migration 070 trigger update and strict FKs
+-- Apply Migration 20261123a trigger update and strict FKs
 CREATE OR REPLACE FUNCTION public.campaign_log_delete() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -235,7 +235,7 @@ ALTER TABLE public.campaign_deletions
   ADD CONSTRAINT campaign_deletions_deleted_by_fkey
   FOREIGN KEY (deleted_by) REFERENCES auth.users(id) ON DELETE SET NULL;
 
--- Apply Migration 071 triggers
+-- Apply Migration 20261123b triggers
 CREATE OR REPLACE FUNCTION public.cleanup_vault_secret() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, vault AS $$
 BEGIN

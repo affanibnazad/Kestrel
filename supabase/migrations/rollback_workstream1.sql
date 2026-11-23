@@ -85,7 +85,7 @@ BEGIN
     RAISE EXCEPTION 'Rollback aborted: cleanup_vault_secret baseline metadata missing existed flag.';
   END IF;
 
-  -- If it existed prior to Migration 071, verify its restoration properties and ACL consistency
+  -- If it existed prior to Migration 20261123b, verify its restoration properties and ACL consistency
   IF v_vault_func_rec.existed = true THEN
     IF v_vault_func_rec.def_sql IS NULL 
        OR v_vault_func_rec.owner_role IS NULL 
@@ -141,13 +141,13 @@ BEGIN
 END $$;
 
 -- =============================================================================
--- STEP 2: DROP FOREIGN KEYS ADDED IN MIGRATION 070
+-- STEP 2: DROP FOREIGN KEYS ADDED IN MIGRATION 20261123a
 -- =============================================================================
 ALTER TABLE public.campaign_deletions DROP CONSTRAINT IF EXISTS campaign_deletions_team_id_fkey;
 ALTER TABLE public.campaign_deletions DROP CONSTRAINT IF EXISTS campaign_deletions_deleted_by_fkey;
 
 -- =============================================================================
--- STEP 3: RESTORE OR DROP MIGRATION 071 TRIGGERS AND FUNCTION
+-- STEP 3: RESTORE OR DROP MIGRATION 20261123b TRIGGERS AND FUNCTION
 -- Only drops objects when verified baseline explicitly records existed = false.
 -- =============================================================================
 DO $$
@@ -166,10 +166,10 @@ BEGIN
     SELECT * FROM public._workstream1_vault_triggers_baseline_metadata 
     WHERE object_type = 'trigger'
   LOOP
-    -- Drop the trigger installed by Migration 071
+    -- Drop the trigger installed by Migration 20261123b
     EXECUTE 'DROP TRIGGER IF EXISTS ' || quote_ident(v_rec.object_name) || ' ON public.' || quote_ident(v_rec.table_name);
 
-    -- Only restore if it existed prior to Migration 071
+    -- Only restore if it existed prior to Migration 20261123b
     IF v_rec.existed = true THEN
       EXECUTE v_rec.def_sql;
 
@@ -185,7 +185,7 @@ BEGIN
 
       RAISE NOTICE 'Rollback: Restored pre-existing trigger % on %', v_rec.object_name, v_rec.table_name;
     ELSIF v_rec.existed = false THEN
-      RAISE NOTICE 'Rollback: Dropped Migration 071 trigger % on % (did not exist previously)', v_rec.object_name, v_rec.table_name;
+      RAISE NOTICE 'Rollback: Dropped Migration 20261123b trigger % on % (did not exist previously)', v_rec.object_name, v_rec.table_name;
     END IF;
   END LOOP;
 
@@ -247,9 +247,9 @@ BEGIN
 
     RAISE NOTICE 'Rollback: Restored pre-existing function cleanup_vault_secret';
   ELSIF v_rec.existed = false THEN
-    -- Only drop if verified baseline proves it did not exist before Migration 071
+    -- Only drop if verified baseline proves it did not exist before Migration 20261123b
     DROP FUNCTION IF EXISTS public.cleanup_vault_secret();
-    RAISE NOTICE 'Rollback: Dropped Migration 071 function cleanup_vault_secret (did not exist previously)';
+    RAISE NOTICE 'Rollback: Dropped Migration 20261123b function cleanup_vault_secret (did not exist previously)';
   END IF;
 END $$;
 
@@ -318,7 +318,7 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- Explicit safety revocation for roles altered by Migration 070
+  -- Explicit safety revocation for roles altered by Migration 20261123a
   REVOKE ALL ON FUNCTION public.campaign_log_delete() FROM PUBLIC;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
     REVOKE ALL ON FUNCTION public.campaign_log_delete() FROM anon;
