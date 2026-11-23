@@ -70,18 +70,7 @@ async function main() {
 
   const page = await context.newPage();
   const consoleErrors = [];
-  let browserDialogFired = false;
-
-  page.on("console", (msg) => {
-    if (msg.type() === "error") {
-      consoleErrors.push(msg.text());
-    }
-  });
-  page.on("pageerror", (err) => {
-    consoleErrors.push(err.message);
-  });
   page.on("dialog", async (dialog) => {
-    browserDialogFired = true;
     console.warn(`[Browser Dialog]: ${dialog.type()} - "${dialog.message()}"`);
     await dialog.dismiss();
   });
