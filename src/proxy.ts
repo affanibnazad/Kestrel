@@ -44,9 +44,7 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const authHeader = request.headers.get("authorization") ?? "";
-  const bearerToken = /^Bearer\s+([A-Za-z0-9._-]{20,4096})$/.exec(authHeader)?.[1];
-  const { data: { user } } = bearerToken ? await supabase.auth.getUser(bearerToken) : await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
   // If user is already authenticated and visits /login, redirect straight to /app
   if (path === "/login") {

@@ -4,10 +4,17 @@
 // Reads the token from .supabase-token. Prints only the result, never the token.
 import { readFileSync } from "node:fs";
 
-const REF = "psocpxaphnfgbxpnkonk";
-const file = process.argv[2];
-if (!file) { console.log("Say which file: node scripts/run-sql.mjs supabase/migrations/<file>.sql"); process.exit(1); }
-const token = readFileSync(new URL("../.supabase-token", import.meta.url), "utf8").trim();
+const isStaging = process.argv.includes("--staging");
+const REF = isStaging ? "xjqtgvhnbyepfinqonzm" : "psocpxaphnfgbxpnkonk";
+const file = process.argv.find((a, i) => i >= 2 && !a.startsWith("--"));
+if (!file) { console.log("Say which file: node scripts/run-sql.mjs [--staging] supabase/migrations/<file>.sql"); process.exit(1); }
+let token = "";
+try {
+  token = readFileSync(new URL("../.supabase-token", import.meta.url), "utf8").trim();
+} catch {
+  console.log("The file .supabase-token does not exist. Paste your Supabase access token into .supabase-token and run this again.");
+  process.exit(1);
+}
 if (!token) { console.log("The file .supabase-token is empty."); process.exit(1); }
 // One Supabase access token only (sbp_ + 40 letters and numbers). Checked here so a wrong file never reaches an error
 // message: messages from the network can repeat the header, and the token must never be printed (19 Nov 2026).
