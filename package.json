@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3333",
-    "dev:staging": "node --env-file=.env.staging.local ./node_modules/next/dist/bin/next dev -p 3333",
+    "dev:staging": "node scripts/dev-staging.mjs",
     "build": "next build",
     "start": "next start -p 3333",
     "lint": "eslint",
