@@ -36,6 +36,11 @@ This is a clean, production-ready copy of Kestrel with **zero build cache, zero 
 - `PROGRESS.md` tracks all verified tasks up to date.
 - Admin portal plan: `docs/ADMIN_PORTAL_PLAN.md` (platform admin and team owner are separate; no fake data outside demo mode).
 
+---
+
+## 4. Safety Rules
+- Never run any command against the live Supabase project (`psocpxaphnfgbxpnkonk`) — no curl, no node -e, no scripts. Never type passwords in commands. Test users are created only on staging, by Affan or by a script that loads `.env.staging.local`.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
