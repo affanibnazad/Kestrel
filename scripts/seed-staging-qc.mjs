@@ -4,6 +4,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { createBrowserClient } from "@supabase/ssr";
 
 // 1. Load staging environment
@@ -103,7 +104,7 @@ async function main() {
       imap_host: "imap.example.com",
       imap_port: 993,
       username: "outreach@kestrelleads.com",
-      password: "SamplePassword123!",
+      password: crypto.randomBytes(18).toString("base64url"),
       daily_limit: 25,
       signature: "-- Staging Outreach Team"
     });
@@ -163,41 +164,12 @@ async function main() {
     console.log(`  Already have ${existingKeys.length} extension keys in database.`);
   }
 
-  // 4. Access Grants & Reply Threads (SQL / Management API)
-  console.log("\n[4/4] Writing & applying access grant + reply threads...");
+  // 4. Access Grants & Reply Threads (Writes SQL for dashboard execution)
+  console.log("\n[4/4] Writing access grant + reply threads SQL...");
   const sqlFile = path.join(process.cwd(), "scripts", "seed-staging-qc.sql");
   fs.writeFileSync(sqlFile, SEED_SQL.trim() + "\n", "utf8");
   console.log(`  Saved SQL statements to ${sqlFile}`);
-
-  // Check if .supabase-token or env token exists
-  let token = process.env.SUPABASE_ACCESS_TOKEN || "";
-  try {
-    const tokenPath = path.join(process.cwd(), ".supabase-token");
-    if (fs.existsSync(tokenPath)) {
-      token = fs.readFileSync(tokenPath, "utf8").trim();
-    }
-  } catch {}
-
-  if (token) {
-    console.log("  Found Supabase management token. Executing SQL query directly on staging...");
-    try {
-      const res = await fetch(`https://api.supabase.com/v1/projects/${REQUIRED_REF}/database/query`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify({ query: SEED_SQL }),
-      });
-      const text = await res.text();
-      if (res.ok) {
-        console.log("  ✓ SQL query executed successfully on staging database.");
-      } else {
-        console.log(`  Notice from Supabase (${res.status}): ${text.slice(0, 200)}`);
-      }
-    } catch (err) {
-      console.log("  Notice: Could not post to Supabase Management API:", err.message);
-    }
-  } else {
-    console.log("  Note: .supabase-token not present on disk. SQL written to scripts/seed-staging-qc.sql.");
-  }
+  console.log("  Run scripts/seed-staging-qc.sql in the Supabase Dashboard SQL Editor.");
 
   console.log("\n================================================================================");
   console.log("SEEDING COMPLETE");
