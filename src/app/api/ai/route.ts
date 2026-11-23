@@ -38,11 +38,11 @@ export async function POST(request: Request) {
     sb.from("offer_profiles").select("*").eq("id", body.offerId).maybeSingle(),
     sb.from("team_ai").select("*").maybeSingle(),
     sb.from("team_about").select("*").maybeSingle(),   // database 059; before it is run this is empty
-    task === "score" ? sb.from("offer_profiles").select("*").eq("active", true).order("name") : Promise.resolve({ data: [] }),
+    task === "score" ? sb.from("offer_profiles").select("*").order("name") : Promise.resolve({ data: [] }),
   ]);
   const settings = ai ? { ...ai, about: aboutForAi(aboutRow ? cleanAbout(aboutRow) : null) } : null;
   if (!offer) return NextResponse.json({ error: "Choose an offer profile first." }, { status: 400 });
-  const activeServices = (allActiveOffers ?? []) as Offer[];
+  const activeServices = ((allActiveOffers ?? []) as (Offer & { active?: boolean })[]).filter((o) => o.active !== false);
   // The sequence: "default" = Kestrel's (first email + day 5, 10, 15), a sequence id = the team's own (database 015), none = first email only.
   let sequence: { steps: unknown; id: string } | "default" | null = null;
   if (task === "emails" && body.sequence === "default") sequence = "default";

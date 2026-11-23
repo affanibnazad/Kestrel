@@ -26,7 +26,7 @@ export async function agentPlan(sb: SupabaseClient, team: string, task: "score" 
     sb.from("offer_profiles").select("*").eq("id", offerId).eq("team_id", team).maybeSingle(),
     sb.from("team_ai").select("*").eq("team_id", team).maybeSingle(),
     sb.from("team_about").select("*").eq("team_id", team).maybeSingle(),   // database 059
-    task === "score" ? sb.from("offer_profiles").select("*").eq("team_id", team).eq("active", true).order("name") : Promise.resolve({ data: [] }),
+    task === "score" ? sb.from("offer_profiles").select("*").eq("team_id", team).order("name") : Promise.resolve({ data: [] }),
   ]);
   const settings = ai ? { ...ai, about: aboutForAi(aboutRow ? cleanAbout(aboutRow) : null) } : null;
   if (!offer) return { error: "Offer not found. Use list_offers for the ids." };
@@ -39,7 +39,7 @@ export async function agentPlan(sb: SupabaseClient, team: string, task: "score" 
       seq = { steps: row.steps, id: row.id as string };
     } else seq = "default";
   }
-  const activeServices = (allActiveOffers ?? []) as Offer[];
+  const activeServices = ((allActiveOffers ?? []) as (Offer & { active?: boolean })[]).filter((o) => o.active !== false);
   // Model and key are not used here: the person's own plan does the thinking.
   const p = aiPlan(task, offer as Offer, { ...(settings ?? {}), provider: "anthropic", model: "" }, "agent", seq, activeServices);
   return "error" in p ? p : { ...p, by: "kestrel-mcp" };
