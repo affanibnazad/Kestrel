@@ -263,33 +263,19 @@ async function runTests() {
     const layoutClean = !detailCheck.hasAwkwardNote && detailCheck.hasKpiGrid && detailCheck.hasTableFooter;
     record("Item 5: Campaign detail redesigned with unified sequence table footer", layoutClean, `Awkward note: ${detailCheck.hasAwkwardNote}, KPI grid: ${detailCheck.hasKpiGrid}, Table footer: ${detailCheck.hasTableFooter}`);
 
-    // 15. Item 6: Owner view fallback data and Rules & Context tab
-    console.log("15. Verifying Owner view data and Rules tab...");
+    // 15. Item 6: Owner view fallback data and tabs check
+    console.log("15. Verifying Owner view data and tabs...");
     await page.goto("http://localhost:3333/app?demo=true&view=owner", { waitUntil: "networkidle" });
     const ownerDataCheck = await page.evaluate(() => {
       const text = document.body.innerText;
       const hasDeadDbError = text.includes("database 010") || text.includes("database 023");
       const hasTiles = !!document.querySelector(".owner-tiles");
       const tabs = Array.from(document.querySelectorAll(".owner-tabs button")).map((b) => b.innerText.trim());
-      return { hasDeadDbError, hasTiles, tabs };
+      const hasRulesTab = tabs.some((t) => t.includes("Rules & Context"));
+      return { hasDeadDbError, hasTiles, tabs, hasRulesTab };
     });
     record("Item 6a: Owner overview loads with live metrics (zero database 010/023 errors)", !ownerDataCheck.hasDeadDbError && ownerDataCheck.hasTiles, `Tiles: ${ownerDataCheck.hasTiles}`);
-
-    // Click Rules & Context tab
-    const rulesTab = page.locator(".owner-tabs button:has-text('Rules & Context')");
-    if (await rulesTab.count() > 0) {
-      await rulesTab.click();
-      await page.waitForTimeout(300);
-      const rulesCheck = await page.evaluate(() => {
-        const text = document.body.innerText;
-        const hasDeliverability = text.includes("Deliverability & Sending Safeguards");
-        const hasAiPolicies = text.includes("AI Model Routing & Autopilot Policies");
-        const hasPlanLimits = text.includes("Plan Limits & Seat Architecture");
-        const hasGdpr = text.includes("Data Privacy, Compliance & UI Standards");
-        return hasDeliverability && hasAiPolicies && hasPlanLimits && hasGdpr;
-      });
-      record("Item 6b: Rules & Context tab renders comprehensive governance matrix", rulesCheck);
-    }
+    record("Item 6b: Rules & Context tab cleanly removed from Owner tabs", !ownerDataCheck.hasRulesTab, `Tabs: ${ownerDataCheck.tabs.join(", ")}`);
 
     // 16. Console Errors & Hydration Mismatch Check
     console.log("16. Checking console errors & hydration mismatches...");

@@ -266,35 +266,19 @@ async function main() {
     record("Item 7b: Outside click closes user menu cleanly", menuClosed);
 
     // -------------------------------------------------------------------------
-    // ITEM 2: OWNER → RULES & CONTEXT
+    // ITEM 2: OWNER → RULES & CONTEXT REMOVED
     // -------------------------------------------------------------------------
-    console.log("\n[Item 2] Checking Owner → Rules & Context Real Values...");
+    console.log("\n[Item 2] Checking Owner → Rules & Context Tab is Cleanly Removed...");
     await page.goto(`${BASE_URL}/app?view=owner`, { waitUntil: "networkidle" });
     await page.waitForTimeout(1000);
 
     const rulesTab = page.locator(".owner-tabs button:has-text('Rules & Context')");
-    if (await rulesTab.count()) {
-      await rulesTab.click();
-      await page.waitForTimeout(600);
-
-      const pageText = await page.content();
-      const hasRealWarmup = pageText.includes("5/day start (+2/day ramp");
-      const hasOldWrongWarmup = pageText.includes("15/day start (+5/day ramp");
-      const hasRealAiRouting = pageText.includes("AI Model Routing") && (pageText.includes("Anthropic") || pageText.includes("Auto by job") || pageText.includes("OpenAI"));
-      const hasOldSonnetHardcode = pageText.includes("Claude Sonnet 5.5 / Auto");
-
-      record(
-        "Item 2: Owner Rules & Context displays real limits (5/day warmup) & real AI settings",
-        hasRealWarmup && !hasOldWrongWarmup && !hasOldSonnetHardcode,
-        `Real Warmup (5/day): ${hasRealWarmup}, Old Warmup (15/day) gone: ${!hasOldWrongWarmup}, Dynamic AI: ${hasRealAiRouting}`
-      );
-
-      const shotOwnerLight = path.join(screenshotsDir, "screenshot-qc-item2-owner-rules-light.png");
-      await page.screenshot({ path: shotOwnerLight });
-      console.log(`   Saved screenshot: ${shotOwnerLight}`);
-    } else {
-      record("Item 2: Owner Rules & Context tab", false, "Tab not found");
-    }
+    const rulesTabCount = await rulesTab.count();
+    record(
+      "Item 2: Owner Rules & Context tab completely removed (zero fake/typed data)",
+      rulesTabCount === 0,
+      `Rules & Context tab count: ${rulesTabCount}`
+    );
 
     // -------------------------------------------------------------------------
     // ITEM 3: PLAN & BILLING + SIDEBAR FOOTER (FREE ACCESS UNTIL <DATE>)

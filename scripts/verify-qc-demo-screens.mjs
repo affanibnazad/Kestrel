@@ -35,17 +35,12 @@ async function main() {
   await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(screenshotsDir, "screenshot-qc-campaigns-demo-dark.png") });
 
-  // 5. Owner Rules & Context (Dark)
-  console.log("5. Owner Rules view (Demo mode - Dark)...");
+  // 5. Owner Overview (Dark)
+  console.log("5. Owner Overview (Demo mode - Dark)...");
   await page.goto(`${BASE_URL}/app?demo=true&view=owner`, { waitUntil: "networkidle" });
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
   await page.waitForTimeout(500);
-  const rulesTab = page.locator(".owner-tabs button:has-text('Rules & Context')");
-  if (await rulesTab.count()) {
-    await rulesTab.click();
-    await page.waitForTimeout(500);
-  }
-  await page.screenshot({ path: path.join(screenshotsDir, "screenshot-qc-owner-rules-demo-dark.png") });
+  await page.screenshot({ path: path.join(screenshotsDir, "screenshot-qc-owner-overview-demo-dark.png") });
 
   // 6. Plan & billing (Light & Dark)
   console.log("6. Plan and billing (Demo mode)...");
