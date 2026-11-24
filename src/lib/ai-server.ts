@@ -3,7 +3,7 @@ import { CHAT_BASE, FIT_SCHEMA, PROVIDERS, type Provider } from "./ai";
 
 // One call to an AI company from the App's server. The team key is used here and never sent to the browser.
 // Same requests as the extension (core/ai.js, core/writer.js), minus the browser-only header.
-export class AiError extends Error {}
+export class AiError extends Error { }
 
 type Usage = { input_tokens: number; output_tokens: number; cost?: number };
 type Answer = { text: string; usage: Usage; skip?: string };
@@ -29,14 +29,18 @@ export async function ask(provider: Provider, key: string, model: string, system
   if (provider === "anthropic") {
     url = "https://api.anthropic.com/v1/messages";
     Object.assign(headers, { "x-api-key": key, "anthropic-version": "2026-10-21" });
-    body = { model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }],
-      output_config: { ...(effort ? { effort } : schema === FIT_SCHEMA ? { effort: "low" } : {}), format: { type: "json_schema", schema } } };
+    body = {
+      model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }],
+      output_config: { ...(effort ? { effort } : schema === FIT_SCHEMA ? { effort: "low" } : {}), format: { type: "json_schema", schema } }
+    };
     if (model !== "claude-haiku-5-5" && /^claude-(opus|sonnet)/.test(model)) { headers["anthropic-beta"] = "server-side-fallback-2026-07-01"; body.fallbacks = "default"; }
   } else if (provider === "gemini") {
     url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
     headers["x-goog-api-key"] = key;
-    body = { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: user }] }],
-      generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema(schema) } };
+    body = {
+      systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: user }] }],
+      generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema(schema) }
+    };
   } else {
     url = `${CHAT_BASE[provider]}/chat/completions`;
     headers.authorization = `Bearer ${key}`;
@@ -83,9 +87,10 @@ export async function ask(provider: Provider, key: string, model: string, system
     }
     if ([429, 500, 502, 503, 529].includes(res.status) && attempt < retries) {
       const retryHeader = Number(res.headers.get("retry-after"));
-      const waitSec = Number.isFinite(retryHeader) && retryHeader > 0 && retryHeader <= 15
-        ? retryHeader
-        : Math.min(8, (attempt + 1) * 2.5);
+      const msgMatch = message.match(/try again in ([\d.]+)s/i);
+      const parsedSec = msgMatch ? Math.ceil(Number(msgMatch[1])) + 2 : 0;
+      const waitSec = Math.max(parsedSec, Number.isFinite(retryHeader) && retryHeader > 0 && retryHeader <= 25 ? retryHeader : (attempt + 1) * 4);
+      console.log(`[ai-server] status=${res.status}. Waiting ${waitSec}s before attempt ${attempt + 2}...`);
       await wait(waitSec * 1000);
       continue;
     }

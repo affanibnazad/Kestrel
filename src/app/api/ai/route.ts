@@ -118,7 +118,7 @@ export async function POST(request: Request) {
     }
     console.log(`[ai-route] start task=${task} lead=${l.id}`);
     const leadStart = Date.now();
-    const r = task === "emails" ? await writeChecked(plan, qc, l, dnc, 2, () => Date.now() - leadStart < 40_000) : await aiOne(plan, l, dnc);
+    const r = task === "emails" ? await writeChecked(plan, qc, l, dnc, 2, () => Date.now() - leadStart < 65_000) : await aiOne(plan, l, dnc);
     cost = cost === null || r.cost === null ? null : cost + r.cost;
     if (!r.ok) {
       console.log(`[ai-route] task=${task} lead=${l.id} not ok: ${r.why || r.fatal}`);

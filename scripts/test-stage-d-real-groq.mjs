@@ -124,16 +124,28 @@ function cleanQc(d, draftText = "", voiceNotes = null) {
     rawPass = d.pass;
   } else if (typeof d.pass === "string") {
     rawPass = d.pass.toLowerCase() === "true";
+  } else if (typeof d.valid === "boolean") {
+    rawPass = d.valid;
+  } else if (typeof d.valid === "string") {
+    rawPass = d.valid.toLowerCase() === "true";
+  } else if (typeof d.ok === "boolean") {
+    rawPass = d.ok;
+  } else if (typeof d.ok === "string") {
+    rawPass = d.ok.toLowerCase() === "true";
   } else if (typeof d.result === "string") {
     rawPass = d.result.toLowerCase() === "pass";
   } else if (typeof d.status === "string") {
     rawPass = d.status.toLowerCase() === "pass";
   }
 
-  const issues = (Array.isArray(d.issues) ? d.issues : [])
+  const rawList = Array.isArray(d.issues) ? d.issues : Array.isArray(d.reasons) ? d.reasons : Array.isArray(d.failures) ? d.failures : [];
+  if (typeof d.pass !== "boolean" && typeof d.valid !== "boolean" && typeof d.ok !== "boolean" && !d.status && !d.result) {
+    if (rawList.length === 0) rawPass = true;
+  }
+  const issues = rawList
     .map((x) => {
       if (typeof x === "object" && x !== null) {
-        return String(x.issue || x.message || x.text || x.note || JSON.stringify(x));
+        return String(x.issue || x.message || x.text || x.note || x.reason || JSON.stringify(x));
       }
       return String(x ?? "");
     })
@@ -147,8 +159,15 @@ function cleanQc(d, draftText = "", voiceNotes = null) {
     issues.push(`Draft contains fake urgency or scarcity ('${matched}'). Remove all artificial pressure.`);
   }
 
-  // Grammar, readability & sentence length check: each sentence strictly under 20 words
+  // Grammar, readability, sentence length & word count checks
   if (draftText) {
+    const totalWords = draftText.trim().split(/\s+/).filter(Boolean).length;
+    if (totalWords < 50) {
+      issues.push(`Draft is too brief (${totalWords} words). Total email must be between 50 and 90 words.`);
+    } else if (totalWords > 90) {
+      issues.push(`Draft is too long (${totalWords} words). Total email must be under 90 words.`);
+    }
+
     const rawSentences = draftText
       .split(/(?<=[.!?])\s+|\n+/)
       .map((s) => s.trim())
@@ -165,6 +184,14 @@ function cleanQc(d, draftText = "", voiceNotes = null) {
       if (/\b(?:showing your [a-z]+ [a-z]+ great|and performance today\?|great scalable [a-z]+ today)\b/i.test(sent)) {
         issues.push(`Awkward phrasing in "${sent.slice(0, 50)}...". Rewrite in clear, natural English.`);
       }
+    }
+
+    // Verify question relates to the matched service (e.g. Next.js, web apps, frontend, UI, dashboard, speed, performance, site)
+    const bodyWithoutFooter = draftText.replace(/not relevant\?\s*reply\s+"?no"?[\s\S]*/i, "");
+    const questionMatch = bodyWithoutFooter.match(/([^\n.!?]+\?)/g);
+    const questionText = questionMatch ? questionMatch[questionMatch.length - 1].trim() : "";
+    if (questionText && !/\b(next\.?js|web|app|frontend|site|dashboard|ui|interface|speed|performance|loading|load time)\b/i.test(questionText)) {
+      issues.push(`The question must ask about our matched service (Next.js web application/frontend performance) rather than the lead's internal backend operations.`);
     }
   }
 
@@ -340,29 +367,19 @@ async function main() {
 
   if (teamId) {
     const { data: curAbout } = await sb.from("team_about").select("*").eq("team_id", teamId).maybeSingle();
+    const cleanAboutText = (curAbout?.about || "").replace(/\s*<!--\s*VN:[\s\S]*?-->/g, "").trim();
     const updatePayload = {
       ...(curAbout || { team_id: teamId, mode: "agency" }),
+      about: cleanAboutText,
       voice_notes: extractedNotes,
       updated_at: new Date().toISOString()
     };
-    let { error: saveErr } = await sb.from("team_about").upsert(updatePayload, { onConflict: "team_id" });
-    if (saveErr && /voice_notes/i.test(saveErr.message)) {
-      console.log("ℹ Note: team_about.voice_notes column pending migration 20261124a_voice.sql on staging. Saving with tag fallback.");
-      const cleanBase = (curAbout?.about || "").replace(/\s*<!--\s*VN:[\s\S]*?-->/g, "").trim();
-      const vnTag = `\n<!-- VN:${JSON.stringify(extractedNotes)} -->`;
-      const fallbackPayload = {
-        ...(curAbout || { team_id: teamId, mode: "agency" }),
-        about: `${cleanBase}${vnTag}`.slice(0, 2000),
-        updated_at: new Date().toISOString()
-      };
-      delete fallbackPayload.voice_notes;
-      const { error: fbErr } = await sb.from("team_about").upsert(fallbackPayload, { onConflict: "team_id" });
-      if (fbErr) console.log("Fallback save error:", fbErr.message);
-      else console.log("✓ Saved voice_notes into team_about using tag fallback.");
-    } else if (saveErr) {
-      console.log("Save team_about warning:", saveErr.message);
+    const { error: saveErr } = await sb.from("team_about").upsert(updatePayload, { onConflict: "team_id" });
+    if (saveErr) {
+      console.error("Save team_about error:", saveErr.message);
+      process.exit(1);
     } else {
-      console.log("✓ Saved voice_notes cleanly into team_about on staging.");
+      console.log("✓ Saved voice_notes cleanly into team_about.voice_notes on staging.");
     }
   }
 
@@ -370,17 +387,17 @@ async function main() {
   await new Promise((r) => setTimeout(r, 6000));
 
   // --------------------------------------------------------------------------
-  // TEST D2 & D3: 2 Leads (One With Trigger, One Without)
+  // TEST D2 & D3: Real Leads (Using Only Verified Website Observations)
   // --------------------------------------------------------------------------
   console.log("\n================================================================================");
-  console.log("TEST D2 & D3: ANGLE PICKER & WRITING QUALITY (2 LEADS)");
+  console.log("TEST D2 & D3: ANGLE PICKER & WRITING QUALITY (REAL CLEAN LEADS)");
   console.log("================================================================================");
 
   // Get active offer & team about
   const { data: offerRow } = await sb.from("offer_profiles").select("*").order("name").limit(1).single();
   const { data: aboutRow } = await sb.from("team_about").select("*").eq("team_id", teamId).maybeSingle();
 
-  // Setup Lead 1: Resend (WITHOUT buying trigger: observations only contain "Email for developers")
+  // Setup Lead 1: Resend (Clean research from real website fetch, no buying trigger)
   await sb.from("leads").update({
     buying_trigger: null,
     outreach_approved: true,
@@ -401,22 +418,36 @@ async function main() {
     }
   }).eq("id", LEAD_1_ID);
 
-  // Setup Lead 2: MetaLab (WITH verified buying trigger quote found in observations)
-  const verifiedTriggerQuote = "We are expanding our product team and hiring mobile engineers";
+  // Setup Lead 2: MetaLab (Clean research from real website fetch, no buying trigger)
   await sb.from("leads").update({
-    buying_trigger: verifiedTriggerQuote,
+    buying_trigger: null,
     outreach_approved: true,
     data: {
       name: "MetaLab",
       website: "https://metalab.com",
-      buying_trigger: verifiedTriggerQuote,
+      buying_trigger: null,
       outreach_approved: true,
       research: {
         observations: [
           {
-            fact: "MetaLab is a product design agency scaling engineering teams",
-            quote: verifiedTriggerQuote,
-            url: "https://metalab.com"
+            fact: "The company name is Metalab.",
+            quote: "Metalab | We make interfaces",
+            url: "metalab.com"
+          },
+          {
+            fact: "Their tagline is 'We make interfaces'.",
+            quote: "We make interfaces",
+            url: "metalab.com"
+          },
+          {
+            fact: "Metalab works with top companies such as Slack and Google.",
+            quote: "Metalab helps some of the world's top companies — like Slack and Google — design, build, and ship amazing products and services.",
+            url: "metalab.com"
+          },
+          {
+            fact: "The firm has been operating since 2006.",
+            quote: "Since 2006, we’ve helped the most innovative startups and reputable brands design, build, and ship products worth talking about.",
+            url: "metalab.com"
           }
         ]
       }
@@ -424,26 +455,37 @@ async function main() {
   }).eq("id", LEAD_2_ID);
 
   const testCases = [
-    { id: LEAD_1_ID, name: "Resend", hasTrigger: false },
-    { id: LEAD_2_ID, name: "MetaLab", hasTrigger: true }
+    { id: LEAD_1_ID, name: "Resend" },
+    { id: LEAD_2_ID, name: "MetaLab" }
   ];
+
+  let hasAnyTrigger = false;
+  for (const tc of testCases) {
+    const { data: l } = await sb.from("leads").select("buying_trigger").eq("id", tc.id).single();
+    if (l?.buying_trigger) hasAnyTrigger = true;
+  }
+  if (!hasAnyTrigger) {
+    console.log("ℹ No trigger lead available (all clean test leads have buying_trigger: null). Timing principle omitted as required.");
+  }
 
   const generatedDrafts = [];
 
   for (const tc of testCases) {
-    console.log(`\n--------------------------------------------------------------------------------`);
-    console.log(`LEAD: ${tc.name} (${tc.hasTrigger ? "WITH BUYING TRIGGER" : "WITHOUT TRIGGER"})`);
-    console.log(`--------------------------------------------------------------------------------`);
-
     // D2 Angle Picker (CODE verification)
     const { data: leadDb } = await sb.from("leads").select("*").eq("id", tc.id).single();
+    const hasTrigger = Boolean(leadDb.buying_trigger);
+
+    console.log(`\n--------------------------------------------------------------------------------`);
+    console.log(`LEAD: ${tc.name} (${hasTrigger ? "WITH BUYING TRIGGER" : "WITHOUT TRIGGER"})`);
+    console.log(`--------------------------------------------------------------------------------`);
+
     const chosenAngle = pickAngle(leadDb.data, offerRow, aboutRow, leadDb.buying_trigger);
 
     console.log("Chosen Angle (Code):", chosenAngle.angle);
     console.log("Principles:", chosenAngle.principles);
     console.log("Why:", chosenAngle.why);
 
-    if (tc.hasTrigger) {
+    if (hasTrigger) {
       if (!chosenAngle.principles.includes("timing")) {
         console.error("❌ ERROR: Expected timing principle when buying trigger exists.");
       } else {
@@ -458,8 +500,8 @@ async function main() {
     }
 
     // D3 Real Writing Call
-    console.log("\nGenerating email via /api/ai task=emails (waiting 6s for token bucket refill)...");
-    await new Promise((r) => setTimeout(r, 6000));
+    console.log("\nGenerating email via /api/ai task=emails (waiting 12s for token bucket refill)...");
+    await new Promise((r) => setTimeout(r, 12000));
     const emailRes = await runApiAi({ task: "emails", ids: [tc.id], offerId: offerRow.id });
     console.log(`HTTP Status: ${emailRes.status}`);
 
@@ -482,7 +524,7 @@ async function main() {
     console.log(`Icebreaker: "${draft.icebreaker}"`);
     console.log(`Question: "${draft.question}"`);
     console.log(`Body:\n${bodyText}`);
-    console.log(`\nWord Count: ${wordCount} words (Target: 50-90 words) -> ${wordCount >= 45 && wordCount <= 100 ? "✓ IN RANGE" : "⚠️ CHECK"}`);
+    console.log(`\nWord Count: ${wordCount} words (Target: 50-90 words) -> ${wordCount >= 50 && wordCount <= 90 ? "✓ IN RANGE" : "⚠️ OUT OF RANGE"}`);
     console.log("QC Result:", JSON.stringify(draft.qc, null, 2));
     console.log("Saved Angle on Result:", doneItem.angle);
     console.log("Saved Angle Reason:", doneItem.angle_reason);
@@ -494,6 +536,9 @@ async function main() {
   console.log("\n================================================================================");
   console.log("TEST D4: FORCED ETHICS QC TEST (INJECT 'offer ends today')");
   console.log("================================================================================");
+
+  // Pause for Groq token bucket to refill
+  await new Promise((r) => setTimeout(r, 12000));
 
   if (generatedDrafts.length > 0) {
     const base = generatedDrafts[0].draft;
@@ -522,43 +567,76 @@ async function main() {
 
     if (groqKey) {
       console.log("\nRunning real Groq AI QC call on poisoned draft...");
-      const sysPrompt = `You are the Ethics & Quality QC checker for cold emails. Check one email (and its follow-ups) written for one lead, before anyone sends it.
+      const sysPrompt = `You are the Ethics & Quality QC checker for cold emails. Check one email written for one lead, before anyone sends it.
 Fail it only for a real problem:
 8. Fake urgency or artificial deadlines: "only today", "last chance", "expires today", "offer ends", "limited time", "don't miss out", "before tomorrow".
 9. Fake scarcity or artificial exclusivity: "only taking 2 clients", "only 1 spot left", "almost booked up".
-Each issue says exactly what to change, in one short sentence. Output JSON: {"pass": false, "issues": ["issue 1"]}`;
+Output JSON matching schema: {"pass": false, "issues": ["issue description"]}`;
 
       const checkPayload = {
         lead: { name: "Resend", website: "resend.com" },
         emails: [{ step: "first email", subject: poisonedDraft.subject, body: poisonedDraft.body }]
       };
 
-      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${groqKey}`,
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "openai/gpt-oss-20b",
-          messages: [
-            { role: "system", content: `${sysPrompt}\n\nAnswer with JSON only.` },
-            { role: "user", content: `<check>${JSON.stringify(checkPayload)}</check>` }
-          ]
-        })
-      });
+      let groqRes = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${groqKey}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "openai/gpt-oss-20b",
+            messages: [
+              { role: "system", content: `${sysPrompt}\n\nAnswer with JSON only.` },
+              { role: "user", content: `<check>${JSON.stringify(checkPayload)}</check>` }
+            ]
+          })
+        });
+        if (groqRes.status === 429 && attempt < 2) {
+          console.log("Groq TPM rate limit (429). Waiting 15s before retry...");
+          await new Promise((r) => setTimeout(r, 15000));
+          continue;
+        }
+        break;
+      }
 
-      const groqJson = await groqRes.json();
-      const rawText = groqJson.choices?.[0]?.message?.content || "";
-      const rawAnswer = JSON.parse(rawText.match(/\{[\s\S]*\}/)?.[0] || "{}");
-      const parsedAiQc = cleanQc(rawAnswer, poisonedDraft.body, extractedNotes);
-      console.log("Groq QC Raw Answer:", JSON.stringify(rawAnswer, null, 2));
-      console.log("Cleaned QC Output:", JSON.stringify(parsedAiQc, null, 2));
-
-      if (parsedAiQc?.pass === false) {
-        console.log("✓ PASS: Real Groq QC call + Ethics check blocked the draft.");
+      if (!groqRes.ok) {
+        const errText = await groqRes.text();
+        console.error(`❌ Groq QC API returned HTTP ${groqRes.status}: ${errText}`);
       } else {
-        console.error("❌ FAIL: Groq QC call did not block the draft.");
+        const groqJson = await groqRes.json();
+        const rawContent = groqJson.choices?.[0]?.message?.content || "";
+        console.log("Groq QC Raw Content:", rawContent);
+        let parsedJson = null;
+        try {
+          const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            let s = jsonMatch[0];
+            try {
+              parsedJson = JSON.parse(s);
+            } catch {
+              s = s.replace(/'\]"/g, "'\"]").replace(/,\s*([}\]])/g, "$1");
+              parsedJson = JSON.parse(s);
+            }
+          }
+        } catch (e) {
+          console.error("❌ Failed to parse Groq QC JSON:", e.message);
+        }
+
+        if (!parsedJson || typeof parsedJson.pass !== "boolean") {
+          console.error("❌ AI QC call failed: did not return valid schema with boolean 'pass'. Raw:", parsedJson);
+        } else {
+          const parsedAiQc = cleanQc(parsedJson, poisonedDraft.body, extractedNotes);
+          console.log("Parsed AI QC Output:", JSON.stringify(parsedAiQc, null, 2));
+
+          if (parsedAiQc?.pass === false) {
+            console.log("✓ PASS: Real Groq QC call + Ethics check blocked the draft.");
+          } else {
+            console.error("❌ FAIL: Groq QC call did not block the draft.");
+          }
+        }
       }
     }
   }

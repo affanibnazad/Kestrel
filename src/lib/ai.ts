@@ -308,30 +308,29 @@ export function qcSystem(o: Offer, voiceNotes?: VoiceNotes) {
   return `You are the Ethics & Quality QC checker for cold emails. Check one email (and its follow-ups) written for one lead, before anyone sends it.
 
 The seller offers: ${o.offer || "(not set)"}. Ideal customer: ${o.customer || "(not set)"}.
-${
-  voiceNotes
-    ? `Sender Voice Profile:
+${voiceNotes
+      ? `Sender Voice Profile:
 - Greeting style: ${voiceNotes.greeting || "Hi {name},"}
 - Sign-off style: ${voiceNotes.sign_off || "Best,"}
 - Sentence rhythm: ${voiceNotes.sentence_length || "short sentences under 20 words"}
 - Words naturally used: ${voiceNotes.words_used?.join(", ") || "(none)"}
 - Words avoided: ${voiceNotes.words_avoided?.join(", ") || "(none)"}\n`
-    : ""
-}
+      : ""
+    }
 Fail it for any of the following problems:
 1. A fact about the lead that the lead data or website research does not support: an invented client, project, city, award, number or service.
 2. A place mentioned in the message body that falsely claims to be the lead's location. (The sender's own postal address in the signature footer, such as London, UK, is the sender's address and is allowed).
 3. The greeting greets the company (e.g. "Hi Social,") or a name that is not in the lead data. When no contact person is named, "Hi there," is the correct greeting matching "Hi {name},". Do NOT fail "Hi there,".
 4. The first line is generic: it would fit any business of this kind.
 5. Price, packages, trials, free work, discounts, payment, guarantees, hype or AI-style words (leverage, elevate, seamless, unlock, tailored, delve, robust).
-6. The question is vague or asks for a meeting straight away.
+6. The question is vague, asks for a meeting straight away, or asks about the lead's internal backend operations (such as email delivery, coffee roasting) instead of asking about their web application, frontend dashboard, or site performance. (Asking about their web app speed, frontend, or UI performance is valid; do NOT fail questions for asking about web app speed or frontend).
 7. A follow-up repeats the first email or another follow-up, or says "just following up" / "circling back".
 8. Fake urgency or artificial deadlines: "only today", "last chance", "expires today", "offer ends", "limited time", "don't miss out", "before tomorrow".
 9. Fake scarcity or artificial exclusivity: "only taking 2 clients", "only 1 spot left", "almost booked up", "exclusive access".
 10. Invented proof, metrics, percentages, or numbers not present in the verified proof points.
 11. Pressure or aggressive push for calendar bookings.
 12. Any "I saw / I noticed" statement not backed by an exact quote in the verified observations.
-13. Grammar and readability: each sentence must be grammatical, natural, and strictly under 20 words. Fail any disjointed or ungrammatical phrases.
+13. Grammar, readability, and word count: each sentence must be grammatical, natural, and strictly under 20 words. Total email body must be between 50 and 90 words. Fail any disjointed or ungrammatical phrases.
 14. Voice adherence: greeting and sign-off must match the sender's voice profile, use zero avoided words, and naturally include at least one phrase from naturally used words if provided. (The sender signature footer like "Best,\nAffan\nLondon, UK" matches "Best,").
 Do not fail it for style you would merely write differently. Each issue says exactly what to change, in one short sentence.
 
@@ -344,17 +343,29 @@ export function cleanQc(d: Record<string, unknown> | null, draftText = "", voice
     rawPass = d.pass;
   } else if (typeof d.pass === "string") {
     rawPass = d.pass.toLowerCase() === "true";
+  } else if (typeof d.valid === "boolean") {
+    rawPass = d.valid;
+  } else if (typeof d.valid === "string") {
+    rawPass = d.valid.toLowerCase() === "true";
+  } else if (typeof d.ok === "boolean") {
+    rawPass = d.ok;
+  } else if (typeof d.ok === "string") {
+    rawPass = d.ok.toLowerCase() === "true";
   } else if (typeof d.result === "string") {
     rawPass = d.result.toLowerCase() === "pass";
   } else if (typeof d.status === "string") {
     rawPass = d.status.toLowerCase() === "pass";
   }
 
-  const issues = (Array.isArray(d.issues) ? d.issues : [])
+  const rawList = Array.isArray(d.issues) ? d.issues : Array.isArray(d.reasons) ? d.reasons : Array.isArray(d.failures) ? d.failures : [];
+  if (typeof d.pass !== "boolean" && typeof d.valid !== "boolean" && typeof d.ok !== "boolean" && !d.status && !d.result) {
+    if (rawList.length === 0) rawPass = true;
+  }
+  const issues = rawList
     .map((x) => {
       if (typeof x === "object" && x !== null) {
         const obj = x as Record<string, unknown>;
-        return String(obj.issue || obj.message || obj.text || obj.note || JSON.stringify(x));
+        return String(obj.issue || obj.message || obj.text || obj.note || obj.reason || JSON.stringify(x));
       }
       return String(x ?? "");
     })
@@ -368,8 +379,15 @@ export function cleanQc(d: Record<string, unknown> | null, draftText = "", voice
     issues.push(`Draft contains fake urgency or scarcity ('${matched}'). Remove all artificial pressure.`);
   }
 
-  // Grammar, readability & sentence length check: each sentence strictly under 20 words
+  // Grammar, readability, sentence length & word count checks
   if (draftText) {
+    const totalWords = draftText.trim().split(/\s+/).filter(Boolean).length;
+    if (totalWords < 50) {
+      issues.push(`Draft is too brief (${totalWords} words). Total email must be between 50 and 90 words.`);
+    } else if (totalWords > 90) {
+      issues.push(`Draft is too long (${totalWords} words). Total email must be under 90 words.`);
+    }
+
     const rawSentences = draftText
       .split(/(?<=[.!?])\s+|\n+/)
       .map((s) => s.trim())
@@ -386,6 +404,14 @@ export function cleanQc(d: Record<string, unknown> | null, draftText = "", voice
       if (/\b(?:showing your [a-z]+ [a-z]+ great|and performance today\?|great scalable [a-z]+ today)\b/i.test(sent)) {
         issues.push(`Awkward phrasing in "${sent.slice(0, 50)}...". Rewrite in clear, natural English.`);
       }
+    }
+
+    // Verify question relates to the matched service (e.g. Next.js, web apps, frontend, UI, dashboard, speed, performance, site)
+    const bodyWithoutFooter = draftText.replace(/not relevant\?\s*reply\s+"?no"?[\s\S]*/i, "");
+    const questionMatch = bodyWithoutFooter.match(/([^\n.!?]+\?)/g);
+    const questionText = questionMatch ? questionMatch[questionMatch.length - 1].trim() : "";
+    if (questionText && !/\b(next\.?js|web|app|frontend|site|dashboard|ui|interface|speed|performance|loading|load time)\b/i.test(questionText)) {
+      issues.push(`The question must ask about our matched service (Next.js web application/frontend performance) rather than the lead's internal backend operations.`);
     }
   }
 
@@ -572,36 +598,37 @@ function emailRules(o: Offer, s: Sender, voiceNotes?: VoiceNotes, chosenAngle?: 
   return `You write the personal parts of a short cold email. The goal is only a reply and a conversation.
 
 About the sender
-${line("Offer", o.offer)}${line("Ideal customer", o.customer)}${line("Business", s.business)}${line("One line on what we do", o.one_line)}${s.about ? `${s.about}\n` : ""}${
-    chosenAngle ? `Chosen Angle: ${chosenAngle.angle} (${chosenAngle.why})\n` : ""
-  }${
-    voiceNotes
+${line("Offer", o.offer)}${line("Ideal customer", o.customer)}${line("Business", s.business)}${line("One line on what we do", o.one_line)}${s.about ? `${s.about}\n` : ""}${chosenAngle ? `Chosen Angle: ${chosenAngle.angle} (${chosenAngle.why})\n` : ""
+    }${voiceNotes
       ? `Sender Voice Profile (MANDATORY):
 - Greeting style: ${voiceNotes.greeting || "Hi {name},"}
 - Sign-off style: ${voiceNotes.sign_off || "Best,"}
 - Sentence rhythm: ${voiceNotes.sentence_length || "short (8-14 words), direct and punchy"}
-${voiceNotes.words_used?.length ? `- Words they naturally use (MUST include at least one naturally): ${voiceNotes.words_used.join(", ")}\n` : ""}${
-          voiceNotes.words_avoided?.length ? `- Words they strictly avoid (NEVER use these): ${voiceNotes.words_avoided.join(", ")}\n` : ""
-        }`
+${voiceNotes.words_used?.length ? `- Words they naturally use (MUST include at least one naturally): ${voiceNotes.words_used.join(", ")}\n` : ""}${voiceNotes.words_avoided?.length ? `- Words they strictly avoid (NEVER use these): ${voiceNotes.words_avoided.join(", ")}\n` : ""
+      }`
       : ""
-  }
+    }
 Rules (Strict Stage D Writing Quality):
 - Required JSON fields: first_name, subject, icebreaker, one_line, question (and follow_up_1, follow_up_2, follow_up_3 if requested). Do NOT output a single "body" key. Output each individual field matching the schema.
+- Word count: The total email body must be between 50 and 90 words. Keep sentences under 20 words each (ideal: 12 to 18 words per sentence). Do not be overly brief (under 50 words) and never exceed 90 words.
 - Grammar & Fluency: Every sentence must be natural, correct, fluent English. No broken grammar, no awkward phrasing like "showing your user focus great" or "help ... significantly and performance today?".
-- Sentence length: Every sentence must be strictly under 20 words (ideal: 8 to 14 words).
+- Sentence length: Every sentence must be strictly under 20 words (ideal: 12 to 18 words).
 - Voice & Tone:
   * Start the email with the sender's greeting style.
   * Naturally use at least one phrase or word from the sender's naturally used words (e.g. ${voiceNotes?.words_used?.length ? voiceNotes.words_used.slice(0, 3).join(", ") : '"Honestly", "Quick question"'}).
   * NEVER use any words from the sender's avoided words (${voiceNotes?.words_avoided?.join(", ") || "none"}).
 - first_name: the person's real first name ONLY when explicitly provided in contact_name or name_from_email. Otherwise, you MUST set first_name to exactly "there" (the email will begin "Hi there,"). NEVER invent names, roles, or titles like "Founders", "Team", "Owner", "Friend", or company names.
-- icebreaker: one sentence, 10 to 18 words, citing ONE specific, verified observation from the lead's website research. Every "I saw / I noticed" line must come directly from a verified observation quote. Never invent, assume, or hallucinate facts (e.g. do not claim they are hiring or migrating unless a verified observation quote explicitly proves it).
+- icebreaker: one sentence, 14 to 19 words, quoting ONE specific verified observation quote from the lead's website research. The sentence MUST quote the exact words from the observation (e.g. I saw your site highlights "Email for developers"...). Every "I saw / I noticed" line must come directly from a verified observation quote. Never invent, assume, or hallucinate facts (e.g. do not claim they are hiring or migrating unless a verified observation quote explicitly proves it).
 - chosen angle: Frame the message around the chosen angle (${chosenAngle ? chosenAngle.angle : "evidence"}):
   * timing: tie the opener directly to the verified buying trigger event.
   * social proof: naturally mention the exact verified proof point.
   * reciprocity: introduce the low-risk first step offer (${o.first_step || "test review"}).
   * evidence: lead directly with the verified website observation.
-- question: one clear question under 15 words about this lead's own work that ties the matched service directly to a real verified observation. Not vague, not a meeting request.
-- one_line: the sender's "One line on what we do", said in NEW words for this email. Keep the exact meaning and every fact; change the wording, the order and the opening every time, so no two emails share it. 10 to 18 words, plain words, no hype, no claims or numbers that are not in the line, never price, free, discount, guarantee or other spam words. NEVER use buzzwords (tailored, leverage, elevate, seamless, scalable, delve, robust, cutting-edge). If the sender's default line includes an avoided word (such as 'scalable'), replace it with 'fast' or 'high-performance'.
+- question: one clear question, 12 to 18 words, about this lead's own work that ties the sender's matched service (${o.offer || "Next.js web application development"}) directly to a real verified observation.
+  * MANDATORY OPENING: The question MUST start with "${voiceNotes?.words_used?.includes("Quick question") ? "Quick question:" : "Honestly,"}".
+  * CRITICAL: Ask about their web application speed, frontend dashboard, or documentation performance. NEVER claim or assume the lead currently uses Next.js unless an observation explicitly states so. Ask about their web app speed or frontend performance.
+  * NEVER ask about the lead's internal backend operations (e.g. do NOT ask how they deliver emails, brew coffee, or manage SMTP servers).
+- one_line: the sender's "One line on what we do", said in NEW words for this email. Keep the exact meaning and every fact; change the wording, the order and the opening every time, so no two emails share it. 14 to 19 words, plain words, no hype, no claims or numbers that are not in the line, never price, free, discount, guarantee or other spam words. NEVER use buzzwords (tailored, leverage, elevate, seamless, scalable, delve, robust, cutting-edge). If the sender's default line includes an avoided word (such as 'scalable'), replace it with 'fast' or 'high-performance'.
 - subject: 3 to 6 lower-case words, truthful and plain. No hype, no question marks, no emojis.
 - Ethics & Prohibitions (STRICT):
   * Never mention price, dollar amounts, currencies, packages, trials, free work, discounts, payment, or schedule calls.
@@ -646,7 +673,17 @@ export function readJson(text: string): Record<string, unknown> | null {
   const clean = String(text || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   try { return JSON.parse(clean); } catch { /* try the braces */ }
   const m = /\{[\s\S]*\}/.exec(clean);
-  try { return m ? JSON.parse(m[0]) : null; } catch { return null; }
+  if (!m) return null;
+  try { return JSON.parse(m[0]); } catch {
+    try {
+      const repaired = m[0]
+        .replace(/'\]"/g, "'\"]")
+        .replace(/,\s*([}\]])/g, "$1");
+      return JSON.parse(repaired);
+    } catch {
+      return null;
+    }
+  }
 }
 export function cleanFit(d: Record<string, unknown> | null): Fit | null {
   if (!d || !["good", "maybe", "no"].includes(String(d.verdict)) || !Number.isFinite(Number(d.fit))) return null;
@@ -670,7 +707,12 @@ export function cleanParts(d: Record<string, unknown> | null): Parts | null {
   if (!d || typeof d !== "object") return null;
   const s = (v: unknown, n: number) => String(v || "").replace(/\s+/g, " ").trim().slice(0, n);
   // The reworded one line is used only when it is clean: a spam or AI-style word sends it back to the offer's own line.
-  const oneLine = s(d.one_line, 240);
+  let oneLine = s(d.one_line, 240);
+  if (oneLine && bannedIn(oneLine).length) {
+    for (const b of bannedIn(oneLine)) {
+      oneLine = oneLine.replace(new RegExp(`\\b${b}\\b`, "gi"), "fast").replace(/\s+/g, " ").trim();
+    }
+  }
   let firstName = s(d.first_name, 60);
   let subject = s(d.subject, 80).toLowerCase();
   let icebreaker = s(d.icebreaker, 220);
@@ -705,7 +747,7 @@ export function cleanParts(d: Record<string, unknown> | null): Parts | null {
     subject: subject,
     icebreaker: icebreaker,
     question: question,
-    ...(oneLine && !bannedIn(oneLine).length ? { one_line: oneLine } : {}),
+    ...(oneLine ? { one_line: oneLine } : {}),
   };
   return out.first_name && out.icebreaker && out.question && out.subject ? out : null;
 }
@@ -723,7 +765,10 @@ export const bannedIn = (text: string) => {
 
 // The whole email from its parts. Everything except the personal parts is the same for every lead.
 export function assemble(p: Parts, o: Offer, s: Sender, voiceNotes?: VoiceNotes) {
-  const sign = (voiceNotes?.sign_off?.trim() || s.signature.trim() || [s.sender_name, s.business].filter(Boolean).join(", ")).trim();
+  const signOff = (voiceNotes?.sign_off?.trim() || "Best,").replace(/[,\s]*$/, ",");
+  const senderName = (s.sender_name?.trim() || s.signature?.trim() || "").split("\n")[0].trim();
+  const address = s.address?.trim() || "";
+  const signBlock = [signOff, senderName, address].filter(Boolean).join("\n");
   let greeting = `Hi ${greetName(p.first_name)},`;
   if (voiceNotes?.greeting?.trim()) {
     const vnG = voiceNotes.greeting.trim();
@@ -745,7 +790,7 @@ export function assemble(p: Parts, o: Offer, s: Sender, voiceNotes?: VoiceNotes)
       }
     }
   }
-  return [greeting, p.icebreaker, oneLine, p.question, [sign, s.address.trim()].filter(Boolean).join("\n"),
+  return [greeting, p.icebreaker, oneLine, p.question, signBlock,
     "Not relevant? Reply \"no\" and I won't write again."].filter(Boolean).join("\n\n");
 }
 // Reads follow_up_1..n from an answer. Missing ones are left empty (the preview shows them as missing).
@@ -773,7 +818,8 @@ export function safeOneLine(rewrite: string | undefined, original: string): stri
   const stripped = r.replace(/\b[a-z0-9]+\.js\b/gi, "");
   if (/[\p{L}\d]\.[\p{L}\d]|\s\.\s*\p{Ll}{2,}|\bdot\s+[a-z]{2,}\b|\d[\d\s().-]{6,}\d/iu.test(stripped)) return undefined;
   const allowed = new Set(String(original).match(/\d+/g) ?? []);
-  if ((r.match(/\d+/g) ?? []).some((n) => !allowed.has(n))) return undefined;
+  const nums = (r.replace(/\bb2[bc]\b/gi, "").match(/\d+/g) ?? []);
+  if (nums.some((n) => !allowed.has(n))) return undefined;
   return r;
 }
 export function makeDraft(p: Parts, o: Offer, s: Sender, by: string, seq?: { steps: Step[]; id?: string } | null, followUps: string[] = [], leadId = "", voiceNotes?: VoiceNotes): Draft {

@@ -146,16 +146,7 @@ export default function AboutView({ account, demo, editable, toast }: { account:
     if (about.website.trim() && !a.website) { toast("Website: start with https://"); return; }
     setBusy("business");
     if (!demo && account) {
-      let r1 = await sb().from("team_about").upsert({ team_id: account.team_id, ...a, updated_at: new Date().toISOString() }, { onConflict: "team_id" });
-      if (r1.error && /voice_notes/i.test(r1.error.message)) {
-        const safeA = { ...a };
-        delete safeA.voice_notes;
-        if (a.voice_notes && (a.voice_notes.greeting || a.voice_notes.sign_off || a.voice_notes.words_used?.length || a.voice_notes.words_avoided?.length)) {
-          const cleanBase = safeA.about.replace(/\s*<!--\s*VN:[\s\S]*?-->/g, "").trim();
-          safeA.about = `${cleanBase}\n<!-- VN:${JSON.stringify(a.voice_notes)} -->`.slice(0, 2000);
-        }
-        r1 = await sb().from("team_about").upsert({ team_id: account.team_id, ...safeA, updated_at: new Date().toISOString() }, { onConflict: "team_id" });
-      }
+      const r1 = await sb().from("team_about").upsert({ team_id: account.team_id, ...a, updated_at: new Date().toISOString() }, { onConflict: "team_id" });
       if (r1.error) { setBusy(""); toast(/team_about|schema cache/i.test(r1.error.message) ? "The About page needs database update 059." : r1.error.message); return; }
       const s = { team_id: account.team_id, sender_name: sender.sender_name.trim().slice(0, 120), business: sender.business.trim().slice(0, 120), address: sender.address.trim().slice(0, 400),
         signature: sender.signature.trim().slice(0, 400), updated_at: new Date().toISOString() };
