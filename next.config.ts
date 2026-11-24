@@ -40,6 +40,7 @@ const nextConfig: NextConfig = {
   // The private downloads (extension and Claude Code kit) ship with the download route only.
   outputFileTracingIncludes: { "/app/download/[file]": ["./downloads-private/**"], "/connect/update": ["./downloads-private/kestrel-mcp.*"] },
   /* config options here */
+  devIndicators: false,
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

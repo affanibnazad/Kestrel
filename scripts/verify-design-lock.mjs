@@ -33,7 +33,7 @@ const updateScreens = updateScreensArg ? updateScreensArg.split("=")[1].split(",
 /** Decodes a PNG buffer into raw uncompressed RGBA pixel data */
 function decodePng(buf) {
   let idx = 8;
-  let width = 0, height = 0;
+  let width = 0, height = 0, colorType = 6;
   const idats = [];
   while (idx < buf.length) {
     const len = buf.readUInt32BE(idx);
@@ -41,6 +41,7 @@ function decodePng(buf) {
     if (type === "IHDR") {
       width = buf.readUInt32BE(idx + 8);
       height = buf.readUInt32BE(idx + 12);
+      colorType = buf[idx + 17];
     } else if (type === "IDAT") {
       idats.push(buf.subarray(idx + 8, idx + 8 + len));
     } else if (type === "IEND") {
@@ -49,16 +50,19 @@ function decodePng(buf) {
     idx += 12 + len;
   }
   const raw = zlib.inflateSync(Buffer.concat(idats));
-  const stride = width * 4;
+  const channels = colorType === 2 ? 3 : 4;
+  const stride = width * channels;
   const pixels = Buffer.alloc(width * height * 4);
   let srcPos = 0, dstPos = 0;
+  let prevRow = Buffer.alloc(stride);
   for (let y = 0; y < height; y++) {
     const filter = raw[srcPos++];
+    const rowBuf = Buffer.alloc(stride);
     for (let x = 0; x < stride; x++) {
       let b = raw[srcPos++];
-      const left = x >= 4 ? pixels[dstPos - 4] : 0;
-      const up = y > 0 ? pixels[dstPos - stride] : 0;
-      const upLeft = (y > 0 && x >= 4) ? pixels[dstPos - stride - 4] : 0;
+      const left = x >= channels ? rowBuf[x - channels] : 0;
+      const up = y > 0 ? prevRow[x] : 0;
+      const upLeft = (y > 0 && x >= channels) ? prevRow[x - channels] : 0;
       if (filter === 1) b = (b + left) & 0xff;
       else if (filter === 2) b = (b + up) & 0xff;
       else if (filter === 3) b = (b + Math.floor((left + up) / 2)) & 0xff;
@@ -68,8 +72,22 @@ function decodePng(buf) {
         const pr = (pa <= pb && pa <= pc) ? left : (pb <= pc) ? up : upLeft;
         b = (b + pr) & 0xff;
       }
-      pixels[dstPos++] = b;
+      rowBuf[x] = b;
     }
+    for (let x = 0; x < width; x++) {
+      if (channels === 3) {
+        pixels[dstPos++] = rowBuf[x * 3];
+        pixels[dstPos++] = rowBuf[x * 3 + 1];
+        pixels[dstPos++] = rowBuf[x * 3 + 2];
+        pixels[dstPos++] = 255;
+      } else {
+        pixels[dstPos++] = rowBuf[x * 4];
+        pixels[dstPos++] = rowBuf[x * 4 + 1];
+        pixels[dstPos++] = rowBuf[x * 4 + 2];
+        pixels[dstPos++] = rowBuf[x * 4 + 3];
+      }
+    }
+    prevRow = rowBuf;
   }
   return { width, height, pixels };
 }
@@ -94,7 +112,7 @@ function comparePixels(imgA, imgB) {
 
 async function main() {
   console.log("================================================================================");
-  console.log("DESIGN LOCK BASELINE VERIFICATION (27 SCREENSHOTS: 9 PAGES × LIGHT, DARK & GRADIENT)");
+  console.log("DESIGN LOCK BASELINE VERIFICATION (30 SCREENSHOTS: 10 PAGES × LIGHT, DARK & GRADIENT)");
   console.log(`Target: ${BASE_URL} | Mode: ${isUpdate ? "UPDATE BASELINES" : "VERIFY AGAINST BASELINES"}`);
   console.log("================================================================================\n");
 
@@ -195,6 +213,14 @@ async function main() {
     img {
       visibility: hidden !important;
     }
+    /* Hide Next.js dev indicator */
+    nextjs-portal,
+    [data-nextjs-toast],
+    #__next-build-watcher,
+    div[data-nextjs-dialog-overlay] {
+      display: none !important;
+      visibility: hidden !important;
+    }
   `;
 
   const SCREENS = [
@@ -207,6 +233,7 @@ async function main() {
     { name: "ai", path: "/app?view=ai", selector: ".as-page, .as-chat-wrap" },
     { name: "plan", path: "/app?view=plan", selector: ".plan-grid" },
     { name: "about", path: "/app?view=about", selector: ".about-page", fullPage: true },
+    { name: "connections", path: "/app?view=settings&tab=connections", selector: ".u-list-group, .u-group" },
   ];
 
   const THEMES = ["light", "dark", "gradient"];
@@ -237,10 +264,12 @@ async function main() {
       const shot = await page.screenshot({ fullPage: screen.fullPage ?? false });
 
       const shouldUpdate = updateScreens.includes("all") || updateScreens.includes(screen.name);
-      if (shouldUpdate || !fs.existsSync(baselinePath)) {
+      if (shouldUpdate) {
         fs.writeFileSync(baselinePath, shot);
         console.log(`📸 [Baseline Saved] ${baselineName}`);
         passed++;
+      } else if (!fs.existsSync(baselinePath)) {
+        console.log(`⚠️ PENDING BASELINE | ${screen.name.padEnd(16)} [${theme.padEnd(5)}] (run --update-screens=${screen.name} after review)`);
       } else {
         const baselineBuf = fs.readFileSync(baselinePath);
         const imgCurrent = decodePng(shot);

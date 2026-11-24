@@ -64,6 +64,7 @@ export default function ConnectionsView({
   const [search, setSearch] = useState("");
   const [savedKeys, setSavedKeys] = useState<TeamKey[]>([]);
   const [mailboxCount, setMailboxCount] = useState<number>(0);
+  const [webhookCount, setWebhookCount] = useState<number>(0);
   const [extStatus, setExtStatus] = useState<ExtReply | null | undefined>(undefined);
   const [extBusy, setExtBusy] = useState(false);
   const [extMsg, setExtMsg] = useState("");
@@ -87,16 +88,18 @@ export default function ConnectionsView({
     if (demo || !account) {
       setSavedKeys([]);
       setMailboxCount(0);
+      setWebhookCount(0);
       setExtStatus(null);
       setAi({ provider: "anthropic", model: AUTO });
       return;
     }
 
     const sb = supabaseBrowser();
-    const [k, t, mb, ext] = await Promise.all([
+    const [k, t, mb, wh, ext] = await Promise.all([
       sb.rpc("list_team_keys"),
       sb.from("team_ai").select("provider,model").maybeSingle(),
       sb.from("mailboxes").select("id").eq("team_id", account.team_id),
+      sb.from("team_webhooks").select("id").eq("team_id", account.team_id),
       askExtension({ type: "kestrel-ping" }),
     ]);
 
@@ -104,6 +107,7 @@ export default function ConnectionsView({
     const cur = (t.data as { provider: Provider; model: string } | null) ?? { provider: "anthropic" as Provider, model: AUTO };
     setAi(cur);
     setMailboxCount((mb.data as { id: string }[] | null)?.length ?? 0);
+    setWebhookCount((wh.data as { id: string }[] | null)?.length ?? 0);
     setExtStatus(ext);
   }, [account, demo]);
 
@@ -223,7 +227,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 1 as const,
-      connected: Boolean(extStatus?.connected),
       actionType: "panel",
     },
     {
@@ -236,7 +239,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 2 as const,
-      connected: Boolean(savedKeys.find((k) => k.service === "hunter" && (k.check_ok === true || k.check_ok === null))),
       actionType: "panel",
     },
     {
@@ -249,7 +251,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 3 as const,
-      connected: Boolean(savedKeys.find((k) => k.service === "apollo" && (k.check_ok === true || k.check_ok === null))),
       actionType: "panel",
     },
     {
@@ -262,7 +263,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 4 as const,
-      connected: Boolean(savedKeys.find((k) => k.service === "findymail" && (k.check_ok === true || k.check_ok === null))),
       actionType: "panel",
     },
     {
@@ -275,7 +275,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 5 as const,
-      connected: Boolean(savedKeys.find((k) => k.service === "companiesHouse" && (k.check_ok === true || k.check_ok === null))),
       actionType: "panel",
     },
     {
@@ -288,7 +287,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 6 as const,
-      connected: Boolean(savedKeys.find((k) => k.service === "listenNotes" && (k.check_ok === true || k.check_ok === null))),
       actionType: "panel",
     },
   ];
@@ -304,7 +302,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 4 as const,
-      connected: mailboxCount > 0,
       actionType: "link",
       onClick: () => go?.("settings", "mailboxes"),
     },
@@ -318,7 +315,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 5 as const,
-      connected: Boolean(savedKeys.find((k) => k.service === "hubspot" && (k.check_ok === true || k.check_ok === null))),
       actionType: "panel",
     },
     {
@@ -331,7 +327,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 6 as const,
-      connected: Boolean(savedKeys.find((k) => k.service === "pipedrive" && (k.check_ok === true || k.check_ok === null))),
       actionType: "panel",
     },
     {
@@ -344,7 +339,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 1 as const,
-      connected: false,
       actionType: "panel",
     },
   ];
@@ -360,7 +354,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 5 as const,
-      connected: false,
       btnLabel: "Set up",
       actionType: "panel",
     },
@@ -374,7 +367,6 @@ export default function ConnectionsView({
         </svg>
       ),
       washIndex: 2 as const,
-      connected: false,
       btnLabel: "Set up",
       actionType: "panel",
     },
@@ -385,8 +377,131 @@ export default function ConnectionsView({
     list.filter((item) => !q || item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q));
 
   const filteredFindLeads = useMemo(() => filterList(findLeadsItems), [q, extStatus, savedKeys]);
-  const filteredSendAndTrack = useMemo(() => filterList(sendAndTrackItems), [q, mailboxCount, savedKeys]);
+  const filteredSendAndTrack = useMemo(() => filterList(sendAndTrackItems), [q, mailboxCount, webhookCount, savedKeys]);
   const filteredUseElsewhere = useMemo(() => filterList(useElsewhereItems), [q]);
+
+  function renderItemAction(item: {
+    id: string;
+    btnLabel?: string;
+    actionType?: string;
+    onClick?: () => void;
+  }) {
+    // 1. Chrome extension: real status only
+    if (item.id === "extension") {
+      if (extStatus?.connected) {
+        return <Badge variant="connected">Connected</Badge>;
+      }
+      return (
+        <Button
+          variant="solid"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedService("extension");
+          }}
+        >
+          Install
+        </Button>
+      );
+    }
+
+    // 2. Email accounts
+    if (item.id === "emailAccounts") {
+      if (mailboxCount > 0) {
+        return <Badge variant="connected">Connected</Badge>;
+      }
+      return (
+        <Button
+          variant="solid"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            go?.("settings", "mailboxes");
+          }}
+        >
+          Set up
+        </Button>
+      );
+    }
+
+    // 3. Webhooks: show Connected when at least one webhook exists
+    if (item.id === "webhooks") {
+      if (webhookCount > 0) {
+        return <Badge variant="connected">Connected</Badge>;
+      }
+      return (
+        <Button
+          variant="solid"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedService("webhooks");
+          }}
+        >
+          Connect
+        </Button>
+      );
+    }
+
+    // 4. Kestrel MCP
+    if (item.id === "mcp") {
+      return (
+        <Button
+          variant="solid"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedService("mcp");
+          }}
+        >
+          Set up
+        </Button>
+      );
+    }
+
+    // 5. AI Kit
+    if (item.id === "aiKit") {
+      return (
+        <Button
+          variant="solid"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedService("aiKit");
+          }}
+        >
+          Set up
+        </Button>
+      );
+    }
+
+    // 6. Key-backed services (Hunter, Apollo, Findymail, Companies House, Listen Notes, HubSpot, Pipedrive)
+    const keyData = savedKeys.find((k) => k.service === item.id);
+    if (keyData) {
+      if (keyData.check_ok === true) {
+        return <Badge variant="connected">Connected</Badge>;
+      }
+      if (keyData.check_ok === null) {
+        return <Badge variant="untested">Saved, not tested</Badge>;
+      }
+      if (keyData.check_ok === false) {
+        return <Badge variant="error">Key not working</Badge>;
+      }
+    }
+
+    return (
+      <Button
+        variant="solid"
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedService(item.id);
+        }}
+      >
+        {item.btnLabel || "Connect"}
+      </Button>
+    );
+  }
 
   // Current active service for SidePanel
   const activeKeyData = selectedService && (selectedService in SERVICES) ? savedKeys.find((k) => k.service === selectedService) : null;
@@ -417,26 +532,7 @@ export default function ConnectionsView({
               icon={item.icon}
               name={item.name}
               description={item.description}
-              action={
-                item.connected ? (
-                  <Badge variant="connected">Connected</Badge>
-                ) : (
-                  <Button
-                    variant="solid"
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (item.id === "extension") {
-                        setSelectedService("extension");
-                      } else {
-                        setSelectedService(item.id);
-                      }
-                    }}
-                  >
-                    Connect
-                  </Button>
-                )
-              }
+              action={renderItemAction(item)}
               clickable
               onClick={() => {
                 if (item.id === "extension") {
@@ -459,26 +555,7 @@ export default function ConnectionsView({
               icon={item.icon}
               name={item.name}
               description={item.description}
-              action={
-                item.connected ? (
-                  <Badge variant="connected">Connected</Badge>
-                ) : (
-                  <Button
-                    variant="solid"
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (item.actionType === "link" && item.onClick) {
-                        item.onClick();
-                      } else {
-                        setSelectedService(item.id);
-                      }
-                    }}
-                  >
-                    Connect
-                  </Button>
-                )
-              }
+              action={renderItemAction(item)}
               clickable
               onClick={() => {
                 if (item.actionType === "link" && item.onClick) {
@@ -501,18 +578,7 @@ export default function ConnectionsView({
               icon={item.icon}
               name={item.name}
               description={item.description}
-              action={
-                <Button
-                  variant="solid"
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedService(item.id);
-                  }}
-                >
-                  {item.btnLabel || "Set up"}
-                </Button>
-              }
+              action={renderItemAction(item)}
               clickable
               onClick={() => setSelectedService(item.id)}
             />
@@ -811,7 +877,13 @@ export default function ConnectionsView({
               <div style={{ padding: "14px 16px", borderRadius: 12, background: "var(--u-selected)", border: "1px solid var(--u-border)" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <span style={{ fontWeight: 600, fontSize: "14px" }}>Status</span>
-                  <Badge variant="connected">Connected</Badge>
+                  {activeKeyData.check_ok === true ? (
+                    <Badge variant="connected">Connected</Badge>
+                  ) : activeKeyData.check_ok === null ? (
+                    <Badge variant="untested">Saved, not tested</Badge>
+                  ) : (
+                    <Badge variant="error">Key not working</Badge>
+                  )}
                 </div>
                 <div style={{ fontSize: "13px", color: "var(--u-text-secondary)" }}>
                   Key ending in <b>····{activeKeyData.last4}</b>

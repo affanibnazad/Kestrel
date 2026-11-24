@@ -78,6 +78,16 @@ async function main() {
 
   const themes = ["light", "dark", "gradient"];
 
+  const HIDE_DEV_INDICATOR_CSS = `
+    nextjs-portal,
+    [data-nextjs-toast],
+    #__next-build-watcher,
+    div[data-nextjs-dialog-overlay] {
+      display: none !important;
+      visibility: hidden !important;
+    }
+  `;
+
   for (const theme of themes) {
     console.log(`--- Capturing Theme: ${theme.toUpperCase()} ---`);
 
@@ -91,12 +101,17 @@ async function main() {
     console.log(`✓ Reference captured (${theme})`);
 
     // 2. Capture Real App
-    await page.goto(realUrl, { waitUntil: "networkidle" });
+    const realUrlWithTheme = `${realUrl}&theme=${theme}`;
+    await page.goto(realUrlWithTheme, { waitUntil: "networkidle" });
     await page.evaluate((t) => {
       document.documentElement.setAttribute("data-theme", t);
+      try {
+        localStorage.setItem("kestrel-look", JSON.stringify({ theme: t, accent: "peri", reduceMotion: false }));
+      } catch {}
       const banner = document.querySelector(".cookie-banner, .consent-banner, [aria-label*=\"cookie\" i]");
       if (banner) banner.remove();
     }, theme);
+    await page.addStyleTag({ content: HIDE_DEV_INDICATOR_CSS });
     await page.waitForTimeout(800);
     const realBuf = await page.screenshot({ fullPage: true });
     console.log(`✓ Real App captured (${theme})`);

@@ -30342,8 +30342,7 @@ a {
 
 /* Badge */
 .u-badge,
-:root .u-badge,
-:root .badge {
+:root .u-badge {
   display: inline-flex !important;
   align-items: center !important;
   gap: 6px !important;
@@ -30351,67 +30350,151 @@ a {
   font-weight: 500 !important;
   padding: 5px 12px !important;
   border-radius: 999px !important;
-  background: var(--u-ok-bg) !important;
-  color: var(--u-ok-text) !important;
   white-space: nowrap !important;
-  border: 0.2px solid transparent !important;
   line-height: 1 !important;
 }
 
 .u-badge::before,
-:root .u-badge::before,
-:root .badge::before {
+:root .u-badge::before {
   content: "" !important;
   width: 6px !important;
   height: 6px !important;
   border-radius: 999px !important;
-  background: var(--u-ok-dot) !important;
   flex: none !important;
 }
 
+/* 1. Connected Badge */
+.u-badge-connected,
+:root .u-badge-connected,
 [data-theme="light"] .u-badge,
-[data-theme="light"] .badge,
+[data-theme="light"] .u-badge-connected,
 :root[data-theme="light"] .u-badge,
-:root[data-theme="light"] .badge {
+:root[data-theme="light"] .u-badge-connected,
+:root:not([data-theme="dark"]):not([data-theme="gradient"]) .u-badge-connected,
+:root:not([data-theme="dark"]):not([data-theme="gradient"]) .u-badge {
   background: #111113 !important;
   color: #ffffff !important;
   border: 0.2px solid #111113 !important;
 }
+.u-badge-connected::before,
+:root .u-badge-connected::before,
 [data-theme="light"] .u-badge::before,
-[data-theme="light"] .badge::before,
+[data-theme="light"] .u-badge-connected::before,
 :root[data-theme="light"] .u-badge::before,
-:root[data-theme="light"] .badge::before {
+:root[data-theme="light"] .u-badge-connected::before,
+:root:not([data-theme="dark"]):not([data-theme="gradient"]) .u-badge-connected::before,
+:root:not([data-theme="dark"]):not([data-theme="gradient"]) .u-badge::before {
   background: #ffffff !important;
 }
 
 [data-theme="dark"] .u-badge,
-[data-theme="dark"] .badge,
+[data-theme="dark"] .u-badge-connected,
 :root[data-theme="dark"] .u-badge,
-:root[data-theme="dark"] .badge {
+:root[data-theme="dark"] .u-badge-connected {
   background: #ffffff !important;
   color: #111113 !important;
   border: 0.2px solid #ffffff !important;
 }
 [data-theme="dark"] .u-badge::before,
-[data-theme="dark"] .badge::before,
+[data-theme="dark"] .u-badge-connected::before,
 :root[data-theme="dark"] .u-badge::before,
-:root[data-theme="dark"] .badge::before {
+:root[data-theme="dark"] .u-badge-connected::before {
   background: #111113 !important;
 }
 
 [data-theme="gradient"] .u-badge,
-[data-theme="gradient"] .badge,
+[data-theme="gradient"] .u-badge-connected,
 :root[data-theme="gradient"] .u-badge,
-:root[data-theme="gradient"] .badge {
+:root[data-theme="gradient"] .u-badge-connected {
   background: linear-gradient(90deg, #ffffff 0%, var(--tint, #bcecd2) 100%) !important;
   border: 0.2px solid color-mix(in srgb, var(--tint, #bcecd2) 92%, #000000) !important;
   color: #1d1d22 !important;
 }
 [data-theme="gradient"] .u-badge::before,
-[data-theme="gradient"] .badge::before,
+[data-theme="gradient"] .u-badge-connected::before,
 :root[data-theme="gradient"] .u-badge::before,
-:root[data-theme="gradient"] .badge::before {
+:root[data-theme="gradient"] .u-badge-connected::before {
   background: color-mix(in srgb, var(--tint, #bcecd2) 45%, #000000) !important;
+}
+
+/* 2. Untested Badge ("Saved, not tested") */
+.u-badge-untested,
+:root .u-badge-untested,
+[data-theme="light"] .u-badge-untested,
+:root[data-theme="light"] .u-badge-untested,
+:root:not([data-theme="dark"]) .u-badge-untested {
+  background: #f1f2f5 !important;
+  color: #5f6470 !important;
+  border: 0.2px solid #d6d8df !important;
+}
+.u-badge-untested::before,
+:root .u-badge-untested::before,
+[data-theme="light"] .u-badge-untested::before,
+:root[data-theme="light"] .u-badge-untested::before,
+:root:not([data-theme="dark"]) .u-badge-untested::before {
+  background: #8a8d96 !important;
+}
+
+[data-theme="dark"] .u-badge-untested,
+:root[data-theme="dark"] .u-badge-untested {
+  background: #262626 !important;
+  color: #a3a3a3 !important;
+  border: 0.2px solid #4a4a4a !important;
+}
+[data-theme="dark"] .u-badge-untested::before,
+:root[data-theme="dark"] .u-badge-untested::before {
+  background: #8a8a8a !important;
+}
+
+[data-theme="gradient"] .u-badge-untested,
+:root[data-theme="gradient"] .u-badge-untested {
+  background: #ffffff !important;
+  color: #5f6470 !important;
+  border: 0.2px solid #d6d8df !important;
+}
+[data-theme="gradient"] .u-badge-untested::before,
+:root[data-theme="gradient"] .u-badge-untested::before {
+  background: #8a8d96 !important;
+}
+
+/* 3. Error Badge ("Key not working") */
+.u-badge-error,
+:root .u-badge-error,
+[data-theme="light"] .u-badge-error,
+:root[data-theme="light"] .u-badge-error,
+:root:not([data-theme="dark"]) .u-badge-error {
+  background: #ffebe9 !important;
+  color: #cf222e !important;
+  border: 0.2px solid #cf222e !important;
+}
+.u-badge-error::before,
+:root .u-badge-error::before,
+[data-theme="light"] .u-badge-error::before,
+:root[data-theme="light"] .u-badge-error::before,
+:root:not([data-theme="dark"]) .u-badge-error::before {
+  background: #cf222e !important;
+}
+
+[data-theme="dark"] .u-badge-error,
+:root[data-theme="dark"] .u-badge-error {
+  background: #3d1a1a !important;
+  color: #ff7b72 !important;
+  border: 0.2px solid #ff7b72 !important;
+}
+[data-theme="dark"] .u-badge-error::before,
+:root[data-theme="dark"] .u-badge-error::before {
+  background: #ff7b72 !important;
+}
+
+[data-theme="gradient"] .u-badge-error,
+:root[data-theme="gradient"] .u-badge-error {
+  background: #ffebe9 !important;
+  color: #cf222e !important;
+  border: 0.2px solid #cf222e !important;
+}
+[data-theme="gradient"] .u-badge-error::before,
+:root[data-theme="gradient"] .u-badge-error::before {
+  background: #cf222e !important;
 }
 
 /* Groups */
@@ -30646,16 +30729,51 @@ a {
 .u-btn-solid,
 :root .u-btn.solid,
 :root .u-btn-solid,
-:root button.u-btn-solid {
-  border-color: transparent !important;
+:root button.u-btn-solid,
+[data-theme="light"] .u-btn.solid,
+[data-theme="light"] .u-btn-solid,
+:root[data-theme="light"] .u-btn.solid,
+:root[data-theme="light"] .u-btn-solid,
+:root[data-theme="light"] button.u-btn-solid,
+[data-theme="gradient"] .u-btn.solid,
+[data-theme="gradient"] .u-btn-solid,
+:root[data-theme="gradient"] .u-btn.solid,
+:root[data-theme="gradient"] .u-btn-solid,
+:root[data-theme="gradient"] button.u-btn-solid,
+:root:not([data-theme="dark"]) .u-btn.solid,
+:root:not([data-theme="dark"]) .u-btn-solid,
+:root:not([data-theme="dark"]) button.u-btn-solid {
+  background: #ffffff !important;
+  color: #1d1d22 !important;
+  border: 0.2px solid #8a8d96 !important;
+}
+
+.u-btn.solid:hover,
+.u-btn-solid:hover,
+:root .u-btn.solid:hover,
+:root .u-btn-solid:hover,
+:root button.u-btn-solid:hover,
+[data-theme="light"] .u-btn.solid:hover,
+[data-theme="light"] .u-btn-solid:hover,
+:root[data-theme="light"] .u-btn.solid:hover,
+:root[data-theme="light"] .u-btn-solid:hover,
+:root[data-theme="light"] button.u-btn-solid:hover,
+[data-theme="gradient"] .u-btn.solid:hover,
+[data-theme="gradient"] .u-btn-solid:hover,
+:root[data-theme="gradient"] .u-btn.solid:hover,
+:root[data-theme="gradient"] .u-btn-solid:hover,
+:root[data-theme="gradient"] button.u-btn-solid:hover,
+:root:not([data-theme="dark"]) .u-btn.solid:hover,
+:root:not([data-theme="dark"]) .u-btn-solid:hover,
+:root:not([data-theme="dark"]) button.u-btn-solid:hover {
+  background: #f4f4f7 !important;
+  filter: none !important;
 }
 
 [data-theme="dark"] .u-btn.solid,
 [data-theme="dark"] .u-btn-solid,
-[data-theme="dark"] .btn.solid,
 :root[data-theme="dark"] .u-btn.solid,
 :root[data-theme="dark"] .u-btn-solid,
-:root[data-theme="dark"] .btn.solid,
 :root[data-theme="dark"] button.u-btn-solid {
   background: #3a3a3a !important;
   color: #ececec !important;
@@ -30663,48 +30781,10 @@ a {
 }
 [data-theme="dark"] .u-btn.solid:hover,
 [data-theme="dark"] .u-btn-solid:hover,
-[data-theme="dark"] .btn.solid:hover,
 :root[data-theme="dark"] .u-btn.solid:hover,
 :root[data-theme="dark"] .u-btn-solid:hover,
-:root[data-theme="dark"] .btn.solid:hover,
 :root[data-theme="dark"] button.u-btn-solid:hover {
   background: #454545 !important;
-  filter: none !important;
-}
-
-[data-theme="light"] .u-btn.solid,
-[data-theme="light"] .u-btn-solid,
-[data-theme="light"] .btn.solid,
-:root[data-theme="light"] .u-btn.solid,
-:root[data-theme="light"] .u-btn-solid,
-:root[data-theme="light"] .btn.solid,
-:root[data-theme="light"] button.u-btn-solid,
-[data-theme="gradient"] .u-btn.solid,
-[data-theme="gradient"] .u-btn-solid,
-[data-theme="gradient"] .btn.solid,
-:root[data-theme="gradient"] .u-btn.solid,
-:root[data-theme="gradient"] .u-btn-solid,
-:root[data-theme="gradient"] .btn.solid,
-:root[data-theme="gradient"] button.u-btn-solid {
-  background: #ffffff !important;
-  color: #1d1d22 !important;
-  border: 0.2px solid #8a8d96 !important;
-}
-[data-theme="light"] .u-btn.solid:hover,
-[data-theme="light"] .u-btn-solid:hover,
-[data-theme="light"] .btn.solid:hover,
-:root[data-theme="light"] .u-btn.solid:hover,
-:root[data-theme="light"] .u-btn-solid:hover,
-:root[data-theme="light"] .btn.solid:hover,
-:root[data-theme="light"] button.u-btn-solid:hover,
-[data-theme="gradient"] .u-btn.solid:hover,
-[data-theme="gradient"] .u-btn-solid:hover,
-[data-theme="gradient"] .btn.solid:hover,
-:root[data-theme="gradient"] .u-btn.solid:hover,
-:root[data-theme="gradient"] .u-btn-solid:hover,
-:root[data-theme="gradient"] .btn.solid:hover,
-:root[data-theme="gradient"] button.u-btn-solid:hover {
-  background: #f4f4f7 !important;
   filter: none !important;
 }
 
