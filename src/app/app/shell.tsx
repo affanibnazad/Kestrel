@@ -246,9 +246,9 @@ export default function AppShell({ email, loading = false, preview = false, acco
       const v = params.get("view");
       const t = params.get("tab");
       if (t) {
-        setSettingsTab(t);
+        Promise.resolve().then(() => setSettingsTab(t));
       } else if (v && v in SETTINGS_TAB_MAP) {
-        setSettingsTab(SETTINGS_TAB_MAP[v]);
+        Promise.resolve().then(() => setSettingsTab(SETTINGS_TAB_MAP[v]));
       }
       if (v) {
         const resolved = resolveView(v);
@@ -256,7 +256,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
       }
     } else if (initialView) {
       if (initialView in SETTINGS_TAB_MAP) {
-        setSettingsTab(SETTINGS_TAB_MAP[initialView]);
+        Promise.resolve().then(() => setSettingsTab(SETTINGS_TAB_MAP[initialView]));
       }
       Promise.resolve().then(() => setView(resolveView(initialView)));
     }
@@ -275,6 +275,15 @@ export default function AppShell({ email, loading = false, preview = false, acco
   }, [userMenu]);
   const [, setRecent] = useState<RecentItem[]>([]);
   const [open, setOpen] = useState(false);          // phone: the left bar slides over the page
+  useEffect(() => {
+    const handleResize = () => {
+      if (typeof window !== "undefined" && window.innerWidth >= 768 && open) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [open]);
   const touchStartX = useRef(0);                    // swipe to open/close the sidebar (no collapse button)
   const [collapsed, setCollapsed] = useState(false); // computer: the left bar folds to a slim row of icons
   const [kitFilters, setKitFilters] = useState(false);   // v2 Leads: the filter row under the search box   // the new design (?look=v2): the Figma kit's layouts
@@ -1127,7 +1136,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
           </SettingsShell>
         </div>
       ) : (
-      <main className="pane" id="content" tabIndex={-1}>
+      <main className="main u-main pane" id="content" tabIndex={-1}>
         <div className="app-band" aria-hidden="true" />
         {(isDemoMode || account?.team_id === "demo") ? (
           <div className="demo-mode-band" role="status" style={{

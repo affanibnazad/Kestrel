@@ -714,7 +714,7 @@ export function cleanParts(d: Record<string, unknown> | null): Parts | null {
     }
   }
   let firstName = s(d.first_name, 60);
-  let subject = s(d.subject, 80).toLowerCase();
+  const subject = s(d.subject, 80).toLowerCase();
   let icebreaker = s(d.icebreaker, 220);
   let question = s(d.question, 160);
 
