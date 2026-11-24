@@ -27,6 +27,8 @@ if (!fs.existsSync(diffsDir)) {
 }
 
 const isUpdate = process.argv.includes("--update-baselines");
+const updateScreensArg = process.argv.find((a) => a.startsWith("--update-screens="));
+const updateScreens = updateScreensArg ? updateScreensArg.split("=")[1].split(",").map((s) => s.trim()) : isUpdate ? ["all"] : [];
 
 /** Decodes a PNG buffer into raw uncompressed RGBA pixel data */
 function decodePng(buf) {
@@ -234,7 +236,8 @@ async function main() {
 
       const shot = await page.screenshot({ fullPage: screen.fullPage ?? false });
 
-      if (isUpdate || !fs.existsSync(baselinePath)) {
+      const shouldUpdate = updateScreens.includes("all") || updateScreens.includes(screen.name);
+      if (shouldUpdate || !fs.existsSync(baselinePath)) {
         fs.writeFileSync(baselinePath, shot);
         console.log(`📸 [Baseline Saved] ${baselineName}`);
         passed++;
@@ -250,11 +253,6 @@ async function main() {
 
         if (diffRatio <= threshold) {
           console.log(`✅ PASS | ${screen.name.padEnd(16)} [${theme.padEnd(5)}] diff: ${diffPct} (under 0.2%)`);
-          passed++;
-        } else if (screen.name === "about") {
-          const diffPath = path.join(diffsDir, `diff-about-${theme}.png`);
-          fs.writeFileSync(diffPath, shot);
-          console.log(`📸 ABOUT (New Section) | [${theme.padEnd(5)}] diff: ${diffPct} -> Saved diff to tests/visual-diffs/diff-about-${theme}.png (Awaiting Affan's approval)`);
           passed++;
         } else {
           console.error(`❌ FAIL | ${screen.name.padEnd(16)} [${theme.padEnd(5)}] diff: ${diffPct} EXCEEDS threshold 0.2%`);
