@@ -181,7 +181,10 @@ export async function POST(request: Request) {
     const domain = b.email.split("@")[1] || "unknown";
     try {
       const r = await scanBox(b);
-      await sb.rpc("mail_inbox_report", { server_secret: secret, box_id: b.id, validity: r.validity, last_uid: r.last, items: r.items });
+      const rep = await sb.rpc("mail_inbox_report", { server_secret: secret, box_id: b.id, validity: r.validity, last_uid: r.last, items: r.items });
+      if (!rep.error) {
+        await sb.rpc("mail_scan_ok", { server_secret: secret, box_id: b.id });
+      }
       scanned++;
     } catch (err) {
       const msg = plain(err);
