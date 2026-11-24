@@ -92,7 +92,7 @@ function comparePixels(imgA, imgB) {
 
 async function main() {
   console.log("================================================================================");
-  console.log("DESIGN LOCK BASELINE VERIFICATION (16 SCREENSHOTS: 8 PAGES × LIGHT & DARK)");
+  console.log("DESIGN LOCK BASELINE VERIFICATION (18 SCREENSHOTS: 9 PAGES × LIGHT & DARK)");
   console.log(`Target: ${BASE_URL} | Mode: ${isUpdate ? "UPDATE BASELINES" : "VERIFY AGAINST BASELINES"}`);
   console.log("================================================================================\n");
 
@@ -234,12 +234,7 @@ async function main() {
 
       const shot = await page.screenshot({ fullPage: screen.fullPage ?? false });
 
-      if (screen.name === "about" && !fs.existsSync(baselinePath)) {
-        const diffPath = path.join(diffsDir, `diff-about-${theme}.png`);
-        fs.writeFileSync(diffPath, shot);
-        console.log(`📸 ABOUT (New Screen) | [${theme.padEnd(5)}] Saved diff to tests/visual-diffs/diff-about-${theme}.png (Awaiting Affan's approval)`);
-        passed++;
-      } else if (isUpdate || !fs.existsSync(baselinePath)) {
+      if (isUpdate || !fs.existsSync(baselinePath)) {
         fs.writeFileSync(baselinePath, shot);
         console.log(`📸 [Baseline Saved] ${baselineName}`);
         passed++;

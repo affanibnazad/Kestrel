@@ -49,3 +49,13 @@ In accordance with r9, parked features have been moved out of the active user in
 - Single source of truth per topic: `docs/DESIGN.md`, `docs/PROGRESS.md`, `docs/BLUEPRINT.md`.
 - Legacy and duplicate audit files preserved in `docs/archive/`.
 - Universal developer rules and boundaries maintained in `AGENTS.md`.
+
+---
+
+## 5. UI Polish List
+
+Pending visual polish items approved for future iteration:
+- **Service Catalog Group Spacing**: 16px gap between field groups in Service Catalog (`about-view.tsx`).
+- **Service Catalog Section Titles**: Bigger, more distinct section title typography.
+- **Proof Row Inputs**: Wider proof row inputs (text is currently cut off in client/result inputs).
+
