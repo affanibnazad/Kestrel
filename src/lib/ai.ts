@@ -64,10 +64,12 @@ export type Fit = {
 // one_line: the offer's "one line on what we do", reworded by the AI for this email (Affan, 19 Nov 2026: never the same
 // line in every email). Empty = the offer's own line is used.
 export type Parts = { first_name: string; subject: string; icebreaker: string; question: string; one_line?: string };
-export type Draft = { firstName: string; subject: string; icebreaker: string; question: string; body: string; by: string; at: number; flags: string[];
+export type Draft = {
+  firstName: string; subject: string; icebreaker: string; question: string; body: string; by: string; at: number; flags: string[];
   // Mail phase 2 (optional, so older drafts and the extension's drafts still work): the AI's follow-up texts and every step filled in.
   followUps?: string[]; steps?: { day: number; subject: string; body: string; variant?: string }[]; sequence?: string; variant?: string;
-  qc?: Qc };   // Phase 4C: what the QC bot found
+  qc?: Qc
+};   // Phase 4C: what the QC bot found
 // The QC bot's check of one written email (Phase 4C, 19 Nov 2026). "hold": QC could not get it right in the fix rounds, so
 // campaigns leave it out until a person approves it ("approved") or it is rewritten. "unchecked": no time or no AI left.
 export type Qc = { status: "passed" | "hold" | "approved" | "unchecked"; issues: string[]; rounds: number; at: number; fixed?: string[] };
@@ -97,12 +99,14 @@ export const EMPTY_OFFER: Offer = {
 export const EMPTY_SENDER: Sender = { sender_name: "", business: "", address: "", signature: "", booking_link: "" };
 
 export const PROVIDERS: Record<Provider, { label: string; maker: string; keyUrl: string; models: { id: string; label: string; input: number | null; output: number | null }[] }> = {
-  anthropic: { label: "Claude", maker: "Anthropic", keyUrl: "https://console.anthropic.com/settings/keys", models: [
-    { id: AUTO, label: "Auto by job (Haiku 5.5 judges, Sonnet 5.5 writes)", input: null, output: null },
-    { id: "claude-haiku-5-5", label: "Claude Haiku 5.5 (cheapest)", input: 0.1, output: 0.5 },
-    { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 (balanced)", input: 2, output: 10 },
-    { id: "claude-opus-5-5", label: "Claude Opus 5.5 (best)", input: 4, output: 20 },
-  ] },
+  anthropic: {
+    label: "Claude", maker: "Anthropic", keyUrl: "https://console.anthropic.com/settings/keys", models: [
+      { id: AUTO, label: "Auto by job (Haiku 5.5 judges, Sonnet 5.5 writes)", input: null, output: null },
+      { id: "claude-haiku-5-5", label: "Claude Haiku 5.5 (cheapest)", input: 0.1, output: 0.5 },
+      { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 (balanced)", input: 2, output: 10 },
+      { id: "claude-opus-5-5", label: "Claude Opus 5.5 (best)", input: 4, output: 20 },
+    ]
+  },
   openai: { label: "ChatGPT", maker: "OpenAI", keyUrl: "https://platform.openai.com/api-keys", models: [] },
   gemini: { label: "Gemini", maker: "Google", keyUrl: "https://aistudio.google.com/apikey", models: [] },
   openrouter: { label: "OpenRouter", maker: "Any model", keyUrl: "https://openrouter.ai/keys", models: [] },
@@ -304,7 +308,7 @@ export const EMAIL_SCHEMA = {
 export function sequenceSchema(followUps: number) {
   if (followUps <= 0) return EMAIL_SCHEMA;
   const extra = Object.fromEntries(Array.from({ length: followUps }, (_, i) => [`follow_up_${i + 1}`,
-    { type: "string", description: `Follow-up ${i + 1}: 1 or 2 short sentences for this lead, under 40 words, no greeting.` }]));
+  { type: "string", description: `Follow-up ${i + 1}: 1 or 2 short sentences for this lead, under 40 words, no greeting.` }]));
   return { ...EMAIL_SCHEMA, properties: { ...EMAIL_SCHEMA.properties, ...extra }, required: [...EMAIL_SCHEMA.required, ...Object.keys(extra)] };
 }
 const STRICT = {
@@ -424,14 +428,13 @@ function emailRules(o: Offer, s: Sender) {
 About the sender
 ${line("Offer", o.offer)}${line("Ideal customer", o.customer)}${line("Business", s.business)}${line("One line on what we do", o.one_line)}${s.about ? `${s.about}
 ` : ""}
-Rules
-- first_name: the person's first name when you know it: the first word of contact_name, else name_from_email. Otherwise exactly "there" (the email then starts "Hi there,"). Never use the company name or "team".
-- one_line: the sender's "One line on what we do", said in NEW words for this email. Keep the exact meaning and every fact; change the wording, the order and the opening every time, so no two emails share it (for example, "We're a small post-production studio…", "Agencies send us their video edits when…", "Our small editing team picks up…"). 10 to 22 words, plain words, no hype, no claims or numbers that are not in the line, never price, free, discount, guarantee or other spam words. You may connect it lightly to this lead.
+Rules (Strict):
+- first_name: the person's real first name ONLY when explicitly provided in contact_name or name_from_email. Otherwise, you MUST set first_name to exactly "there" (the email will begin "Hi there,"). NEVER invent names, roles, or titles like "Founders", "Team", "Owner", "Friend", or company names.
+- icebreaker: one sentence, 10 to 22 words, citing ONE specific, verified observation from the lead's website research. Every "I saw / I noticed" line must come directly from a verified observation quote. Never invent, assume, or hallucinate facts (e.g. do not claim they are hiring or migrating unless a verified observation quote explicitly proves it).
+- question: one clear question under 15 words about this lead's own work that ties the matched service directly to a real verified observation. Not vague, not a meeting request.
+- one_line: the sender's "One line on what we do", said in NEW words for this email. Keep the exact meaning and every fact; change the wording, the order and the opening every time, so no two emails share it. 10 to 22 words, plain words, no hype, no claims or numbers that are not in the line, never price, free, discount, guarantee or other spam words.
 - subject: 3 to 6 lower-case words, truthful and plain. No hype, no question marks, no emojis.
-- icebreaker: one sentence, 10 to 22 words, about ONE specific, true detail only this lead has: a client or project they show, something they made, posted or launched, a job they are hiring for, an award, or the narrow niche they focus on. Never just restate their list of services, their city or their industry ("handles content creation and Facebook ads in Manchester" is not personal). It must not fit any other lead. Do not flatter. Never invent a detail: if the lead data has nothing specific, write one short, honest line about the kind of work they do instead.
-- question: one clear question about their own work that ties to the offer, under 15 words. Not vague, not a meeting request.
-- When the lead data has website_detail, likely_problem and how_offer_helps (from reading their website): build the icebreaker on website_detail and the question on likely_problem. Never copy those words exactly, and never say you "researched" or "visited" their site.
-- Never mention price, packages, trials, free work, discounts or payment.
+- Never mention price, packages, trials, free work, discounts, payment, or schedule calls.
 - Plain, everyday English. No AI-style words (leverage, elevate, seamless, unlock, tailored, delve, robust), no spam words, nothing that looks like phishing.
 - Never invent clients, results, numbers or testimonials.
 
@@ -460,8 +463,10 @@ export function emailPayload(l: LeadData) {
   const person = (l.contacts || []).find((c) => c && c.name);
   const fromEmail = person?.name ? "" : nameFromEmail(typeof l.email === "string" ? l.email : "", l.name);
   const r = l.research;
-  return { ...leadPayload(l), contact_name: person?.name || "", contact_role: person ? person.position || person.role || "" : "", name_from_email: fromEmail, fit_reason: l.ai?.reason || "",
-    ...(r ? { website_detail: r.detail, likely_problem: r.problem, how_offer_helps: r.how } : {}) };
+  return {
+    ...leadPayload(l), contact_name: person?.name || "", contact_role: person ? person.position || person.role || "" : "", name_from_email: fromEmail, fit_reason: l.ai?.reason || "",
+    ...(r ? { website_detail: r.detail, likely_problem: r.problem, how_offer_helps: r.how } : {})
+  };
 }
 
 // Finds the JSON answer even if a model wraps it in text or a code fence.
@@ -516,6 +521,10 @@ export function cleanParts(d: Record<string, unknown> | null): Parts | null {
     }
   }
 
+  // Never allow invented greetings like "Founders", "Team", etc.
+  if (firstName && /^(founders?|team|owner|friend|sir|madam|all|there)$/i.test(firstName)) {
+    firstName = "there";
+  }
   if (!firstName) firstName = "there";
 
   const out = {
@@ -573,15 +582,19 @@ export function safeOneLine(rewrite: string | undefined, original: string): stri
 }
 export function makeDraft(p: Parts, o: Offer, s: Sender, by: string, seq?: { steps: Step[]; id?: string } | null, followUps: string[] = [], leadId = ""): Draft {
   p = { ...p, one_line: safeOneLine(p.one_line, o.one_line) };
-  const base: Draft = { firstName: p.first_name, subject: p.subject, icebreaker: p.icebreaker, question: p.question, body: assemble(p, o, s), by, at: Date.now(),
-    flags: bannedIn(`${p.subject} ${p.icebreaker} ${p.question} ${followUps.join(" ")}`) };
+  const base: Draft = {
+    firstName: p.first_name, subject: p.subject, icebreaker: p.icebreaker, question: p.question, body: assemble(p, o, s), by, at: Date.now(),
+    flags: bannedIn(`${p.subject} ${p.icebreaker} ${p.question} ${followUps.join(" ")}`)
+  };
   if (!seq) return base;
   const v = variantFor(leadId, variantCount(seq.steps));
   const rendered = renderAll(seq.steps, { ...p, follow_ups: followUps }, o.one_line, s, v);
   const steps = rendered.map((r) => ({ day: r.day, subject: r.subject, body: r.body, ...(r.variant ? { variant: r.variant } : {}), ...(r.kind ? { kind: r.kind } : {}) }));
   const letter = rendered.find((r) => r.variant)?.variant;
-  return { ...base, subject: steps[0]?.subject || p.subject, body: steps[0]?.body || base.body, followUps: followUps.slice(0, Math.max(0, steps.length - 1)), steps,
-    ...(seq.id ? { sequence: seq.id } : {}), ...(letter ? { variant: letter } : {}) };
+  return {
+    ...base, subject: steps[0]?.subject || p.subject, body: steps[0]?.body || base.body, followUps: followUps.slice(0, Math.max(0, steps.length - 1)), steps,
+    ...(seq.id ? { sequence: seq.id } : {}), ...(letter ? { variant: letter } : {})
+  };
 }
 // What is still missing before emails can be written.
 export function emailMissing(o: Offer, s: Sender) {
@@ -593,17 +606,21 @@ export const VERDICT_COLUMN = { good: "Good", maybe: "Maybe", no: "No" } as cons
 // ---- Claude Code / Codex job files (no API key): the same files the extension saves, for /score-leads and /write-emails.
 type JobLead = { id: string; data: LeadData };
 export function fitJob(o: Offer, leads: JobLead[]) {
-  return { type: "quarry-fit-job", version: 1, createdAt: new Date().toISOString(), profileHash: profileHash(o),
+  return {
+    type: "quarry-fit-job", version: 1, createdAt: new Date().toISOString(), profileHash: profileHash(o),
     profile: { offer: o.offer, customer: o.customer, good: o.good, bad: o.bad, criteria: o.criteria, strictness: STRICT[o.strictness] || STRICT.balanced },
-    leads: leads.map((l) => ({ id: l.id, ...leadPayload(l.data) })) };
+    leads: leads.map((l) => ({ id: l.id, ...leadPayload(l.data) }))
+  };
 }
 // With a sequence that has follow-ups, the job asks for follow_up_1..n too (version 2). Tools that only know version 1
 // still read it: the type, rules, fields and leads are where they were; the extra fields are listed in `fields`.
 export function emailJob(o: Offer, s: Sender, leads: JobLead[], steps?: Step[]) {
   const n = steps ? followUpCount(steps) : 0;
-  return { type: "quarry-email-job", version: n ? 2 : 1, createdAt: new Date().toISOString(), rules: emailSystem(o, s, steps), fields: Object.keys(sequenceSchema(n).properties),
+  return {
+    type: "quarry-email-job", version: n ? 2 : 1, createdAt: new Date().toISOString(), rules: emailSystem(o, s, steps), fields: Object.keys(sequenceSchema(n).properties),
     ...(n ? { followUps: n, sequence: steps!.map((x) => ({ day: x.day, subject: x.subject, body: x.body })) } : {}),
-    leads: leads.map((l) => ({ id: l.id, ...emailPayload(l.data) })) };
+    leads: leads.map((l) => ({ id: l.id, ...emailPayload(l.data) }))
+  };
 }
 // Reads a results file from Claude Code or Codex. Returns only well-formed answers.
 export function readResults(d: unknown): { kind: "fit"; profile: string; results: (Fit & { id: string })[] } | { kind: "email"; results: (SeqParts & { id: string })[] } {

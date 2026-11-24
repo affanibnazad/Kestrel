@@ -5,8 +5,10 @@ import { modelForTask } from "./ai-models";
 import { DEFAULT_STEPS, checkSequence, cleanSteps, emailStepsProblem, followUpCount, type Step } from "./sequence";
 import { readSite } from "./site-read";
 import { trustedFirstName } from "./email-check";
-import { EMPTY_SENDER, FIT_SCHEMA, PROVIDERS, QC_SCHEMA, RESEARCH_SCHEMA, VERDICT_COLUMN, cleanFit, cleanQc, cleanResearch, qcPayload, qcSystem, researchSystem, type Draft, type Qc, cleanFollowUps, cleanParts, emailMissing, emailPayload, emailSystem, fitSystem, leadPayload,
-  makeDraft, offerReady, profileHash, readJson, sequenceSchema, type LeadData, type Offer, type Provider, type Sender } from "./ai";
+import {
+  EMPTY_SENDER, FIT_SCHEMA, PROVIDERS, QC_SCHEMA, RESEARCH_SCHEMA, VERDICT_COLUMN, cleanFit, cleanQc, cleanResearch, qcPayload, qcSystem, researchSystem, type Draft, type Qc, cleanFollowUps, cleanParts, emailMissing, emailPayload, emailSystem, fitSystem, leadPayload,
+  makeDraft, offerReady, profileHash, readJson, sequenceSchema, type LeadData, type Offer, type Provider, type Sender
+} from "./ai";
 import { hostOf, hunterPick, hunterUrl, mergeContacts, setEmails, type Contact } from "./hunter";
 import { applyRules, cleanRules, type ScoreLead } from "./scoring";
 import { apolloFind, findymailFind } from "./finders";
@@ -43,9 +45,11 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
     if (checkSequence(seq.steps).blocked) return { error: "That sequence has red items in its spam check (prices, payment words or unknown fields). Fix it in Sequences first." };
   }
   const followUps = seq ? followUpCount(seq.steps) : 0;
-  return { task, provider, key, model: pick.model, effort: provider === "anthropic" ? pick.effort : undefined, offer, sender: s, hash: profileHash(offer),
+  return {
+    task, provider, key, model: pick.model, effort: provider === "anthropic" ? pick.effort : undefined, offer, sender: s, hash: profileHash(offer),
     system: task === "score" ? fitSystem(offer, s.about ?? "", activeServices) : task === "research" ? researchSystem(offer, s.about ?? "") : task === "qc" ? qcSystem(offer) : emailSystem(offer, s, seq?.steps),
-    schema: task === "score" ? FIT_SCHEMA : task === "research" ? RESEARCH_SCHEMA : task === "qc" ? QC_SCHEMA : sequenceSchema(followUps), followUps, seq, activeServices };
+    schema: task === "score" ? FIT_SCHEMA : task === "research" ? RESEARCH_SCHEMA : task === "qc" ? QC_SCHEMA : sequenceSchema(followUps), followUps, seq, activeServices
+  };
 }
 
 export type LeadIn = { id: string; email: string | null; data: LeadData | null };
@@ -75,8 +79,8 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
     const user = p.task === "research"
       ? `<website host="${site!.host}">\n${site!.text.replace(/<\/?website/gi, "")}\n</website>`
       : `<lead>${JSON.stringify(p.task === "score" ? leadPayload(data) : emailPayload({ ...data, email: l.email ?? (data as { email?: string }).email }))}</lead>`
-        // Phase 4C: the QC bot's notes on the last draft, for the rewrite.
-        + (fix.length ? `\n<qc_notes>\nA checker found these problems in your last version. Write it again and fix every one:\n${fix.map((x) => `- ${x}`).join("\n")}\n</qc_notes>` : "");
+      // Phase 4C: the QC bot's notes on the last draft, for the rewrite.
+      + (fix.length ? `\n<qc_notes>\nA checker found these problems in your last version. Write it again and fix every one:\n${fix.map((x) => `- ${x}`).join("\n")}\n</qc_notes>` : "");
     const a = await ask(p.provider, p.key, p.model, p.system, user, p.schema, p.task === "emails" ? 600 + p.followUps * 250 : p.task === "research" ? 800 : 1500, p.effort);
     const cost = costOf(a.usage, p.provider, p.model);
     if (a.skip) return { ok: false, why: a.skip, cost };
@@ -160,8 +164,10 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
   const parts = cleanParts(answer), fu = cleanFollowUps(answer, p.followUps);
   if (!parts || fu.some((x) => !x)) return { ok: false, why: "unreadable answer", cost };
   // Only a real person's name Kestrel has for this lead, never the company name (19 Nov 2026).
-  parts.first_name = trustedFirstName(parts.first_name, { name: (data as { name?: string }).name, email: l.email ?? (data as { email?: string }).email,
-    contacts: (data as { contacts?: { name?: string }[] }).contacts });
+  parts.first_name = trustedFirstName(parts.first_name, {
+    name: (data as { name?: string }).name, email: l.email ?? (data as { email?: string }).email,
+    contacts: (data as { contacts?: { name?: string }[] }).contacts
+  });
   const outreach = { ...makeDraft(parts, p.offer, p.sender, p.provider, p.seq, fu, l.id), ...(p.by ? { by: p.by } : {}) };
   // Never save a draft that would send a visible [FIELD] (e.g. no booking link set) or price / trial / money words.
   const emails = (outreach.steps ?? [{ body: outreach.body, subject: outreach.subject }]).filter((x) => !("kind" in x) || !x.kind || x.kind === "email");
@@ -220,8 +226,10 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
 
 // ---------- Find emails: Hunter, then Apollo / Findymail for a named person
 export type FinderKeys = { hunter?: string; apollo?: string; findymail?: string };
-export type FindLead = { id: string; name: string | null; website: string | null; email: string | null;
-  data: (ScoreLead & { emails?: string[]; contacts?: Contact[]; hunterAt?: number }) | null };
+export type FindLead = {
+  id: string; name: string | null; website: string | null; email: string | null;
+  data: (ScoreLead & { emails?: string[]; contacts?: Contact[]; hunterAt?: number }) | null
+};
 export type FindResult =
   | { ok: true; patch: { email: string | null; website: string | null; named: boolean; data: Record<string, unknown> } }
   | { ok: false; why: string };

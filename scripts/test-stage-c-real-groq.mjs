@@ -28,19 +28,19 @@ const sb = createClient(url, anonKey);
 
 const TEST_LEADS = [
   {
-    id: "c3333333-3333-3333-3333-333333333333",
+    id: "23a6e662-00c7-4c04-a47e-f8c9c22f219a",
     name: "Resend",
     website: "https://resend.com",
     expected: "no or maybe (no proven trigger on homepage)"
   },
   {
-    id: "f4074c8d-2b65-4a2d-83bd-9017d69e51a6",
+    id: "7c208c58-1f2d-4496-9d63-4704e3ac22ef",
     name: "Stumptown Coffee Roasters",
     website: "https://www.stumptowncoffee.com",
     expected: "no (retail / coffee shop, no positive signal)"
   },
   {
-    id: "b692268e-eea0-4126-8e48-45d08b63d3db",
+    id: "75b174e8-e7eb-4651-854f-d630cb12277c",
     name: "MetaLab",
     website: "https://metalab.com",
     expected: "maybe at most"
@@ -164,43 +164,58 @@ async function main() {
     console.log("Matched Service Name:", leadRow?.data?.ai?.matched_service_name || "(none)");
   }
 
-  // 4. Run Step 3.3: Outreach Approval Gate Test
+  // 4. Run Step 3.3: Outreach Approval Gate & Email Writing Test
   console.log("\n================================================================================");
-  console.log("STEP 3.3: HUMAN OUTREACH APPROVAL GATE VERIFICATION");
+  console.log("STEP 3.3: HUMAN OUTREACH APPROVAL GATE & EMAIL WRITING VERIFICATION");
   console.log("================================================================================");
 
-  const testLead = TEST_LEADS[0]; // Resend
-  console.log(`Testing approval gate on lead: ${testLead.name} (${testLead.id})`);
+  // Check which leads scored good or maybe
+  const { data: scoredRows } = await sb.from("leads").select("id, name, verdict, score, data").in("id", TEST_LEADS.map(l => l.id));
+  const qualified = (scoredRows || []).filter(l => l.verdict === "Good" || l.verdict === "Maybe");
 
-  // Attempt to write email before approval
-  console.log("\n[Gate Test 1] Attempting /api/ai task=emails BEFORE approval...");
-  const preApproval = await runApiAi({ task: "emails", ids: [testLead.id], offerId: "current", sequence: "default" });
-  console.log("Pre-approval response:", JSON.stringify(preApproval.json, null, 2));
-  const isGated = preApproval.json?.skipped?.some((s) => s.why.includes("Needs human review"));
-  console.log("✓ Outreach blocked before approval:", isGated ? "PASS" : "FAIL");
+  if (!qualified.length) {
+    console.log("ℹ No clean leads scored maybe or good (all scored no). As requested: reporting none qualified.");
+  } else {
+    for (const testLead of qualified) {
+      console.log(`\nTesting outreach on qualified lead: ${testLead.name} (${testLead.id}, verdict=${testLead.verdict})`);
 
-  // Approve lead
-  console.log("\n[Gate Test 2] Human approves opportunity report...");
-  const { data: cur } = await sb.from("leads").select("data").eq("id", testLead.id).single();
-  const curData = cur?.data || {};
-  let { error: appErr } = await sb.from("leads").update({
-    outreach_approved: true,
-    outreach_approved_at: new Date().toISOString(),
-    data: { ...curData, outreach_approved: true }
-  }).eq("id", testLead.id);
-  if (appErr && /outreach_approved/i.test(appErr.message)) {
-    await sb.from("leads").update({
-      data: { ...curData, outreach_approved: true }
-    }).eq("id", testLead.id);
+      // Attempt to write email before approval
+      console.log("\n[Gate Test 1] Attempting /api/ai task=emails BEFORE approval...");
+      const preApproval = await runApiAi({ task: "emails", ids: [testLead.id], offerId: "current", sequence: "default" });
+      console.log("Pre-approval response:", JSON.stringify(preApproval.json, null, 2));
+      const isGated = preApproval.json?.skipped?.some((s) => s.why.includes("Needs human review"));
+      console.log("✓ Outreach blocked before approval:", isGated ? "PASS" : "FAIL");
+
+      // Approve lead
+      console.log("\n[Gate Test 2] Human approves opportunity report...");
+      const { data: cur } = await sb.from("leads").select("data").eq("id", testLead.id).single();
+      const curData = cur?.data || {};
+      await sb.from("leads").update({
+        outreach_approved: true,
+        outreach_approved_at: new Date().toISOString(),
+        data: { ...curData, outreach_approved: true }
+      }).eq("id", testLead.id);
+      console.log("✓ Approved lead for outreach");
+
+      // Attempt to write email after approval
+      console.log("\n[Gate Test 3] Attempting /api/ai task=emails AFTER approval...");
+      const postApproval = await runApiAi({ task: "emails", ids: [testLead.id], offerId: "current", sequence: "default" });
+      console.log("Post-approval response:", JSON.stringify(postApproval.json, null, 2));
+      const isUnlocked = Boolean(postApproval.json?.done?.length > 0);
+      console.log("✓ Outreach gate unlocked and written after approval:", isUnlocked ? "PASS" : "FAIL");
+
+      if (postApproval.json?.done?.[0]?.draft) {
+        const d = postApproval.json.done[0].draft;
+        console.log("\n--- Written Cold Email Draft ---");
+        console.log(`Greeting / First Name: "${d.firstName}"`);
+        console.log(`Subject: "${d.subject}"`);
+        console.log(`Icebreaker: "${d.icebreaker}"`);
+        console.log(`Question: "${d.question}"`);
+        console.log(`Body:\n${d.body}`);
+        console.log("\nQC Result on Draft:", JSON.stringify(d.qc, null, 2));
+      }
+    }
   }
-  console.log("✓ Approved lead for outreach");
-
-  // Attempt to write email after approval
-  console.log("\n[Gate Test 3] Attempting /api/ai task=emails AFTER approval...");
-  const postApproval = await runApiAi({ task: "emails", ids: [testLead.id], offerId: "current", sequence: "default" });
-  console.log("Post-approval response:", JSON.stringify(postApproval.json, null, 2));
-  const isUnlocked = Boolean(postApproval.json?.done?.length > 0 || (postApproval.json?.skipped && !postApproval.json.skipped.some((s) => s.why.includes("Needs human review"))));
-  console.log("✓ Outreach gate unlocked after approval:", isUnlocked ? "PASS" : "FAIL");
 
   console.log("\n================================================================================");
   console.log("ALL REAL GROQ STAGE C TESTS COMPLETED SUCCESSFULLY");
