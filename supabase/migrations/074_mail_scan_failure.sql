@@ -6,6 +6,8 @@
 alter table public.mailboxes add column if not exists scan_failures integer not null default 0;
 alter table public.mailboxes add column if not exists scan_error text;
 
+grant select (scan_failures, scan_error) on public.mailboxes to authenticated;
+
 create or replace function public.mail_scan_failure(server_secret text, box_id uuid, err text) returns json
 language plpgsql security definer set search_path = public as $$
 declare m mailboxes;
@@ -43,6 +45,8 @@ end $$;
 
 revoke all on function public.mail_scan_ok(text, uuid) from public, anon, authenticated;
 grant execute on function public.mail_scan_ok(text, uuid) to anon, authenticated;
+
+notify pgrst, 'reload schema';
 
 -- ============================================================================
 -- AFTER CHECK: verify columns and functions exist
