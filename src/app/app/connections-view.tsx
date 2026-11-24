@@ -29,6 +29,17 @@ import type { Account } from "./shell";
 type Acct = Account | null;
 type Model = { id: string; label: string };
 
+interface ConnectionItem {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  washIndex: 1 | 2 | 3 | 4 | 5 | 6;
+  actionType: "panel" | "link" | "extension";
+  btnLabel?: string;
+  onClick?: () => void;
+}
+
 const EXTENSION_IDS = [EXTENSION.storeId, EXTENSION.devId].filter(Boolean);
 type ExtReply = { ok: boolean; version?: string; connected?: boolean; team?: string; email?: string; error?: string };
 
@@ -216,7 +227,7 @@ export default function ConnectionsView({
   }
 
   // Items definition matching reference groups
-  const findLeadsItems = [
+  const findLeadsItems: ConnectionItem[] = [
     {
       id: "extension",
       name: "Chrome extension",
@@ -291,7 +302,7 @@ export default function ConnectionsView({
     },
   ];
 
-  const sendAndTrackItems = [
+  const sendAndTrackItems: ConnectionItem[] = [
     {
       id: "emailAccounts",
       name: "Email accounts",
@@ -343,7 +354,7 @@ export default function ConnectionsView({
     },
   ];
 
-  const useElsewhereItems = [
+  const useElsewhereItems: ConnectionItem[] = [
     {
       id: "mcp",
       name: "Kestrel MCP",
