@@ -8753,7 +8753,7 @@ main#content:focus {
 }
 
 /* Review mode: one lead at a time on the soft grey page, three big keys to decide. */
-div.review[role="dialog"] {
+.review-mode {
   position: fixed;
   inset: 0;
   z-index: 80;
@@ -9016,7 +9016,7 @@ div.review[role="dialog"] {
 
 @media (prefers-reduced-motion: reduce) {
 
-  div.review[role="dialog"],
+  .review-mode,
   .rv-card {
     animation: none;
   }
@@ -26249,12 +26249,12 @@ body:has(.kinbox-page) .ask-fab {
   box-shadow: 0 0 6px rgba(239, 68, 68, 0.45) !important;
 }
 
-.klead-verdict.review {
+.klead-verdict.to-review {
   background: transparent !important;
   color: #64748B !important;
 }
 
-.klead-verdict.review .klead-verdict-dot {
+.klead-verdict.to-review .klead-verdict-dot {
   background: #94A3B8 !important;
 }
 
@@ -26270,7 +26270,7 @@ body:has(.kinbox-page) .ask-fab {
   color: #F87171 !important;
 }
 
-:root[data-theme="dark"] .klead-verdict.review {
+:root[data-theme="dark"] .klead-verdict.to-review {
   color: #94A3B8 !important;
 }
 
@@ -31573,6 +31573,7 @@ a {
     align-self: flex-start !important;
     transform: none !important;
     border-right: 1px solid var(--u-border) !important;
+    overflow-y: auto !important;
   }
   :root .u-side .u-side-close {
     display: none !important;
@@ -31616,7 +31617,7 @@ a {
     transform: none !important;
     border-right: 1px solid var(--u-border) !important;
     align-items: center !important;
-    overflow: visible !important;
+    overflow-y: auto !important;
   }
   :root .u-side .brand,
   :root .u-side .u-brand {

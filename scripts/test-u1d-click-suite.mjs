@@ -59,43 +59,74 @@ async function main() {
   await page.goto(`${BASE_URL}/app?view=new`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1500);
 
-  // Diagnostic: check elementFromPoint at sidebar and table
+  // Diagnostic: check elementFromPoint at sidebar, table, buttons
   const elementCheck = await page.evaluate(() => {
     function describe(el) {
       if (!el) return "null";
       const tag = el.tagName.toLowerCase();
       const cls = el.className && typeof el.className === "string" ? `.${el.className.trim().split(/\s+/).join(".")}` : "";
-      return `<${tag} class="${cls}"> text="${(el.textContent || "").slice(0, 40).trim()}"`;
+      const isVerdict = el.closest(".klead-verdict") !== null;
+      return `<${tag} class="${cls}"> [isVerdict=${isVerdict}] text="${(el.textContent || "").slice(0, 40).trim()}"`;
     }
+
+    // Coordinates of sidebar items
+    const sidebarHome = document.querySelector('.u-side a[href*="home"], .u-side .u-side-link:first-child');
+    const homeRect = sidebarHome ? sidebarHome.getBoundingClientRect() : { x: 80, y: 100 };
+
+    const sidebarSettings = document.querySelector('.u-side a[href*="settings"], .u-side button[data-tooltip*="Settings"]');
+    const setRect = sidebarSettings ? sidebarSettings.getBoundingClientRect() : { x: 80, y: 1320 };
+
+    // Coordinates of table header and action buttons
+    const exportBtn = document.querySelector('.kcard-tools button, .kcard-tools .btn, .kpill-btn');
+    const exportRect = exportBtn ? exportBtn.getBoundingClientRect() : { x: 500, y: 150 };
+
+    const firstCard = document.querySelector('.klead-card');
+    const cardRect = firstCard ? firstCard.getBoundingClientRect() : { x: 500, y: 250 };
+
+    const reviewBtn = document.querySelector('.klead-review-btn');
+    const revBtnRect = reviewBtn ? reviewBtn.getBoundingClientRect() : { x: 2350, y: 250 };
+
+    const fitPill = document.querySelector('.klead-verdict');
+    const pillRect = fitPill ? fitPill.getBoundingClientRect() : { x: 2230, y: 250 };
+
     return {
-      sidebarTop: describe(document.elementFromPoint(80, 100)),
-      sidebarMid: describe(document.elementFromPoint(80, 220)),
-      sidebarSettings: describe(document.elementFromPoint(80, 1320)),
-      sidebarUser: describe(document.elementFromPoint(80, 1370)),
-      tableHeader: describe(document.elementFromPoint(500, 150)),
-      tableRow1: describe(document.elementFromPoint(500, 250)),
-      fitColumn: describe(document.elementFromPoint(2230, 340)),
-      point1280_125: describe(document.elementFromPoint(1280, 125)),
+      sidebarHome: { point: [Math.round(homeRect.x + 10), Math.round(homeRect.y + 10)], desc: describe(document.elementFromPoint(homeRect.x + 10, homeRect.y + 10)) },
+      sidebarSettings: { point: [Math.round(setRect.x + 10), Math.round(setRect.y + 10)], desc: describe(document.elementFromPoint(setRect.x + 10, setRect.y + 10)) },
+      tableActionBtn: { point: [Math.round(exportRect.x + 10), Math.round(exportRect.y + 10)], desc: describe(document.elementFromPoint(exportRect.x + 10, exportRect.y + 10)) },
+      tableRow: { point: [Math.round(cardRect.x + 50), Math.round(cardRect.y + 20)], desc: describe(document.elementFromPoint(cardRect.x + 50, cardRect.y + 20)) },
+      reviewBtn: { point: [Math.round(revBtnRect.x + 10), Math.round(revBtnRect.y + 10)], desc: describe(document.elementFromPoint(revBtnRect.x + 10, revBtnRect.y + 10)) },
+      point1280_125: { point: [1280, 125], desc: describe(document.elementFromPoint(1280, 125)) },
+      fitPillActual: { point: [Math.round(pillRect.x + 5), Math.round(pillRect.y + 5)], desc: describe(document.elementFromPoint(pillRect.x + 5, pillRect.y + 5)) },
     };
   });
 
   console.log("\n[DIAGNOSTIC] elementFromPoint check at key coordinates:");
+  let verdictBlocked = false;
   for (const [k, v] of Object.entries(elementCheck)) {
-    console.log(`  ${k.padEnd(18)}: ${v}`);
+    console.log(`  ${k.padEnd(18)} at (${v.point[0]}, ${v.point[1]}): ${v.desc}`);
+    if (k !== "fitPillActual" && v.desc.includes("isVerdict=true")) {
+      verdictBlocked = true;
+    }
   }
 
-  // Verify that no fixed overlay covers the page
-  const hasOverlay = await page.evaluate(() => {
-    const el = document.elementFromPoint(80, 100);
-    const style = el ? window.getComputedStyle(el) : null;
-    return style && style.position === "fixed" && style.zIndex === "80";
-  });
-
-  if (hasOverlay) {
-    console.error("❌ FAILED: A fixed z-index 80 overlay is still intercepting clicks!");
+  if (verdictBlocked) {
+    console.error("❌ FAILED: .klead-verdict was returned outside of the fit column!");
     process.exit(1);
   }
-  console.log("✅ PASSED: No blocking fixed overlay on the page.\n");
+  console.log("✅ PASSED: document.elementFromPoint at sidebar, table, buttons does NOT return .klead-verdict.\n");
+
+  // Verify Settings link visibility without scrolling
+  const settingsVisibleWithoutScroll = await page.evaluate(() => {
+    const settingsLink = document.querySelector('.u-side a[href*="settings"], .u-side button[data-tooltip*="Settings"]');
+    if (!settingsLink) return false;
+    const r = settingsLink.getBoundingClientRect();
+    return r.top >= 0 && r.bottom <= window.innerHeight;
+  });
+  if (!settingsVisibleWithoutScroll) {
+    console.error("❌ FAILED: Settings is not visible in sidebar without scrolling!");
+    process.exit(1);
+  }
+  console.log("✅ PASSED: Settings link is visible in sidebar without scrolling.\n");
 
   // Step 2: Click every sidebar item and check view changes
   console.log("--> Testing clicks on every sidebar navigation item...");

@@ -87,7 +87,7 @@ export default function Review({ list, editable, demo, onChange, onClose }: {
   const now = decided[lead.id] ?? lead.verdict;
 
   return (
-    <div ref={box} className="review" role="dialog" aria-modal="true" aria-label="Review leads" tabIndex={-1}>
+    <div ref={box} className="review-mode" role="dialog" aria-modal="true" aria-label="Review leads" tabIndex={-1}>
       <header className="rv-top">
         <span className="rv-pos" aria-live="polite">{at + 1} of {ids.length}</span>
         <div className="rv-bar" aria-hidden="true"><i style={{ transform: `scaleX(${(at + 1) / ids.length})` }} /></div>

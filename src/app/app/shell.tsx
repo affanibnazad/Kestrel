@@ -1479,7 +1479,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
                                                                       <span>Bad fit</span>
                                                                     </span>
                                                                   ) : (
-                                                                    <span className="klead-verdict review">
+                                                                    <span className="klead-verdict to-review">
                                                                       <span className="klead-verdict-dot" />
                                                                       <span>To review</span>
                                                                     </span>
