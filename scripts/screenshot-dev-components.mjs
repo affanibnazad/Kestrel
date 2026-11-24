@@ -74,25 +74,32 @@ async function main() {
     } catch {}
   });
 
-  const targetUrl = `${BASE_URL}/app/dev/components`;
-  console.log(`Navigating to ${targetUrl}...`);
-  await page.goto(targetUrl, { waitUntil: "networkidle" });
-  await page.waitForTimeout(1000);
-
   // 1. Light mode screenshot
+  const lightUrl = `${BASE_URL}/app/dev/components?theme=light`;
+  console.log(`Navigating to ${lightUrl}...`);
+  await page.goto(lightUrl, { waitUntil: "networkidle" });
   await page.evaluate(() => {
     document.documentElement.setAttribute("data-theme", "light");
+    try {
+      localStorage.setItem("kestrel-consent", JSON.stringify({ v: 1, analytics: false, marketing: false, at: "2026-11-23T12:00:00Z" }));
+    } catch {}
   });
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1000);
   const lightPath = path.join(diffsDir, "dev-components-light.png");
   await page.screenshot({ path: lightPath, fullPage: true });
   console.log(`📸 Saved light mode screenshot: ${lightPath}`);
 
   // 2. Dark mode screenshot
+  const darkUrl = `${BASE_URL}/app/dev/components?theme=dark`;
+  console.log(`Navigating to ${darkUrl}...`);
+  await page.goto(darkUrl, { waitUntil: "networkidle" });
   await page.evaluate(() => {
     document.documentElement.setAttribute("data-theme", "dark");
+    try {
+      localStorage.setItem("kestrel-consent", JSON.stringify({ v: 1, analytics: false, marketing: false, at: "2026-11-23T12:00:00Z" }));
+    } catch {}
   });
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1000);
   const darkPath = path.join(diffsDir, "dev-components-dark.png");
   await page.screenshot({ path: darkPath, fullPage: true });
   console.log(`📸 Saved dark mode screenshot: ${darkPath}`);

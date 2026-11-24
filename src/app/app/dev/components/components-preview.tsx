@@ -31,8 +31,14 @@ import {
   FolderOpen,
 } from "lucide-react";
 
-export default function ComponentsPreview({ userEmail }: { userEmail: string }) {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+export default function ComponentsPreview({
+  userEmail,
+  initialTheme = "dark",
+}: {
+  userEmail: string;
+  initialTheme?: "dark" | "light";
+}) {
+  const [theme, setTheme] = useState<"dark" | "light">(initialTheme);
   const [searchVal, setSearchVal] = useState("Search leads...");
   const [switchOn, setSwitchOn] = useState(true);
   const [switchOff, setSwitchOff] = useState(false);

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { currentUser, supabaseServer } from "@/lib/supabase/server";
@@ -10,8 +11,15 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function DevComponentsPage() {
+async function AuthenticatedShowcase({
+  searchParamsPromise,
+}: {
+  searchParamsPromise: Promise<{ theme?: string }>;
+}) {
   await connection();
+  const searchParams = await searchParamsPromise;
+  const theme = searchParams?.theme === "light" ? "light" : "dark";
+
   const user = await currentUser();
   if (!user) {
     redirect("/login?next=/app/dev/components");
@@ -27,5 +35,15 @@ export default async function DevComponentsPage() {
     redirect("/app");
   }
 
-  return <ComponentsPreview userEmail={user.email || ""} />;
+  return <ComponentsPreview userEmail={user.email || ""} initialTheme={theme} />;
+}
+
+export default function DevComponentsPage(props: {
+  searchParams: Promise<{ theme?: string }>;
+}) {
+  return (
+    <Suspense fallback={<div style={{ minHeight: "100vh", background: "var(--u-page, #1a1a1a)" }} />}>
+      <AuthenticatedShowcase searchParamsPromise={props.searchParams} />
+    </Suspense>
+  );
 }
