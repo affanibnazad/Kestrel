@@ -17,6 +17,17 @@ export const maxDuration = 60;
 const PER_CALL = 10;
 
 const same = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
+// Consecutive scan failures per mailbox in this instance
+const scanFailures = new Map<string, number>();
+
+function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(msg)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 // Reporting back must not be lost after a real send: try three times.
 type Rpc = { rpc: (fn: "mail_result", args: Record<string, unknown>) => PromiseLike<{ error: unknown }> };
 async function report(sb: Rpc, args: Record<string, unknown>) {
@@ -55,44 +66,51 @@ async function readMessages(client: ImapFlow, uids: number[], mailbox: string): 
 async function replied(e: DueEmail) {
   if (!e.box.imap_host) throw new Error("This mailbox has no IMAP (reading) settings, so replies cannot be checked. Add them in Mailboxes.");
   if (!e.first_sent_at) return false;
-  const client = await imapFor(e.box);
-  try {
-    await client.connect();
-    await client.mailboxOpen("INBOX", { readOnly: true });
-    const found = await client.search({ from: e.to, since: new Date(e.first_sent_at) }, { uid: true });
-    if (!Array.isArray(found) || !found.length) return false;
-    const items = await readMessages(client, found.slice(-10), e.box.email);
-    return items.some((i) => i.kind !== "auto");
-  } finally { try { await client.logout(); } catch { /* already closed */ } }
+  const sentAt = e.first_sent_at;
+  return await withTimeout((async () => {
+    const client = await imapFor(e.box);
+    try {
+      await client.connect();
+      await client.mailboxOpen("INBOX", { readOnly: true });
+      const found = await client.search({ from: e.to, since: new Date(sentAt) }, { uid: true });
+      if (!Array.isArray(found) || !found.length) return false;
+      const items = await readMessages(client, found.slice(-10), e.box.email);
+      return items.some((i) => i.kind !== "auto");
+    } finally { try { await client.logout(); } catch { /* already closed */ } }
+  })(), 10_000, "IMAP check timed out (10s)");
 }
 
 // Phase 4: read new messages in one mailbox since the last read (or since its first campaign email) and report them.
 type ScanBox = Login & { id: string; scan_uid: number | null; scan_validity: string | null; since: string | null };
 async function scanBox(b: ScanBox) {
-  const client = await imapFor(b);
-  try {
-    await client.connect();
-    const box = await client.mailboxOpen("INBOX", { readOnly: true });
-    const validity = String(box.uidValidity ?? "");
-    const fresh = !b.scan_uid || b.scan_validity !== validity;
-    const found = fresh
-      ? await client.search({ since: new Date(b.since || Date.now() - 86400000) }, { uid: true })
-      : await client.search({ uid: `${Number(b.scan_uid) + 1}:*` }, { uid: true });
-    const uids = (Array.isArray(found) ? found : []).filter((u) => fresh || u > Number(b.scan_uid)).sort((x, y) => x - y).slice(-100);
-    const items = await readMessages(client, uids, b.email);
-    const last = uids.length ? uids[uids.length - 1] : Math.max(Number(b.scan_uid || 0), Number(box.uidNext || 1) - 1);
-    return { validity, last, items };
-  } finally { try { await client.logout(); } catch { /* already closed */ } }
+  return await withTimeout((async () => {
+    const client = await imapFor(b);
+    try {
+      await client.connect();
+      const box = await client.mailboxOpen("INBOX", { readOnly: true });
+      const validity = String(box.uidValidity ?? "");
+      const fresh = !b.scan_uid || b.scan_validity !== validity;
+      const found = fresh
+        ? await client.search({ since: new Date(b.since || Date.now() - 86400000) }, { uid: true })
+        : await client.search({ uid: `${Number(b.scan_uid) + 1}:*` }, { uid: true });
+      const uids = (Array.isArray(found) ? found : []).filter((u) => fresh || u > Number(b.scan_uid)).sort((x, y) => x - y).slice(-100);
+      const items = await readMessages(client, uids, b.email);
+      const last = uids.length ? uids[uids.length - 1] : Math.max(Number(b.scan_uid || 0), Number(box.uidNext || 1) - 1);
+      return { validity, last, items };
+    } finally { try { await client.logout(); } catch { /* already closed */ } }
+  })(), 15_000, "IMAP scan timed out (15s)");
 }
 
 async function sendOne(e: DueEmail, origin: string) {
-  const transport = await smtpTransport(e.box);
-  try {
-    // With open tracking (team's own checked domain only) the email also gets an HTML copy with a 1×1 image.
-    const html = e.track ? trackedHtml(e.body, `https://${e.track.domain}/api/mail/o?t=${encodeURIComponent(e.track.token)}&s=${e.step}`) : undefined;
-    const info = await transport.sendMail({ from: fromHeader(e.box.from_name, e.box.email), to: e.to, subject: e.subject, text: e.body, html, headers: campaignHeaders(e, origin) });
-    return String(info.messageId || "");
-  } finally { transport.close(); }
+  return await withTimeout((async () => {
+    const transport = await smtpTransport(e.box);
+    try {
+      // With open tracking (team's own checked domain only) the email also gets an HTML copy with a 1×1 image.
+      const html = e.track ? trackedHtml(e.body, `https://${e.track.domain}/api/mail/o?t=${encodeURIComponent(e.track.token)}&s=${e.step}`) : undefined;
+      const info = await transport.sendMail({ from: fromHeader(e.box.from_name, e.box.email), to: e.to, subject: e.subject, text: e.body, html, headers: campaignHeaders(e, origin) });
+      return String(info.messageId || "");
+    } finally { transport.close(); }
+  })(), 15_000, "SMTP send timed out (15s)");
 }
 
 export async function POST(request: Request) {
@@ -111,30 +129,34 @@ export async function POST(request: Request) {
   const due = (data ?? []) as DueEmail[];
   const origin = new URL(request.url).origin;
 
-  const results = await Promise.all(due.map(async (e) => {
+  const results: string[] = [];
+  for (const e of due) {
+    if (left() < 15_000) break;
     try {
       if (e.step > 0 && (await replied(e))) {
         await report(sb, { server_secret: secret, cl_id: e.id, kind: "replied", message_id: null, err: null, box_error: false });
-        return "replied";
+        results.push("replied");
+        continue;
       }
       // M1: verify the address before the first email when the campaign asks for it (Hunter, team key).
       if (e.step === 0 && e.verify_key) {
-        const v = await fetch(`https://api.hunter.io/v2/email-verifier?${new URLSearchParams({ email: e.to, api_key: e.verify_key })}`, { signal: AbortSignal.timeout(20000) })
+        const v = await fetch(`https://api.hunter.io/v2/email-verifier?${new URLSearchParams({ email: e.to, api_key: e.verify_key })}`, { signal: AbortSignal.timeout(10000) })
           .then((r) => (r.ok ? r.json() : null)).catch(() => null);
         if (v && verdictOf(v) === "invalid") {
           await report(sb, { server_secret: secret, cl_id: e.id, kind: "invalid", message_id: null, err: `Hunter: ${String(v?.data?.status)}`, box_error: false });
-          return "invalid";
+          results.push("invalid");
+          continue;
         }
       }
       const id = await sendOne(e, origin);
       await report(sb, { server_secret: secret, cl_id: e.id, kind: "sent", message_id: id, err: null, box_error: false });
-      return "sent";
+      results.push("sent");
     } catch (err) {
       const msg = plain(err);
       await report(sb, { server_secret: secret, cl_id: e.id, kind: "failed", message_id: null, err: msg, box_error: isLoginError(msg) });
-      return "failed";
+      results.push("failed");
     }
-  }));
+  }
 
   // Scheduled answers (database 055): the database checked every gate again just now and hands over what to send.
   // Missing function (055 not run yet) = nothing to do. A failed send is retried by the database (3 tries).
@@ -159,11 +181,30 @@ export async function POST(request: Request) {
   let scanned = 0;
   const { data: boxes } = left() > 25_000 ? await sb.rpc("mail_scan_due", { server_secret: secret, max_n: 5 }) : { data: [] };
   await Promise.all(((boxes ?? []) as ScanBox[]).map(async (b) => {
+    const domain = b.email.split("@")[1] || "unknown";
     try {
       const r = await scanBox(b);
       await sb.rpc("mail_inbox_report", { server_secret: secret, box_id: b.id, validity: r.validity, last_uid: r.last, items: r.items });
       scanned++;
-    } catch (err) { console.error("inbox read failed for a mailbox:", plain(err)); }
+      scanFailures.delete(b.id);
+    } catch (err) {
+      const msg = plain(err);
+      console.error(`inbox read failed for mailbox ${b.id} (${domain}):`, msg);
+      const strikes = (scanFailures.get(b.id) || 0) + 1;
+      scanFailures.set(b.id, strikes);
+      if (strikes >= 3) {
+        console.error(`mailbox ${b.id} (${domain}) failed inbox read 3 times in a row, marked Problem: can't read inbox:`, msg);
+        const lastErr = `Problem: can't read inbox (${msg || "timeout"})`.slice(0, 500);
+        try {
+          const { error: rpcErr } = await sb.rpc("mail_scan_failure", { server_secret: secret, box_id: b.id, err: msg });
+          if (rpcErr) {
+            await sb.from("mailboxes").update({ status: "error", imap_ok: false, last_error: lastErr }).eq("id", b.id);
+          }
+        } catch {
+          try { await sb.from("mailboxes").update({ status: "error", imap_ok: false, last_error: lastErr }).eq("id", b.id); } catch { /* ignore */ }
+        }
+      }
+    }
   }));
   // Spam Guard B: check one sending domain against public blacklists when its last check is a day old.
   let monitored = 0;

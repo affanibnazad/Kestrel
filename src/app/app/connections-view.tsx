@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Button,
   Badge,
@@ -8,7 +8,6 @@ import {
   ListGroup,
   ListRow,
   SidePanel,
-  Tip,
 } from "@/components/ui";
 import {
   SERVICES,
@@ -21,7 +20,6 @@ import { AUTO } from "@/lib/ai-models";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { askConfirm } from "@/components/dialog";
 import { EXTENSION, storeUrl } from "@/lib/site";
-import downloads from "@/lib/downloads";
 import McpView from "./mcp-view";
 import Webhooks from "./webhooks-card";
 import type { Account } from "./shell";
@@ -161,40 +159,32 @@ export default function ConnectionsView({
     if (r.error) { toast(r.error); return; }
     if (r.models?.length) setModels((x) => ({ ...x, [id]: r.models }));
     toast(r.note || (r.ok ? "Working." : "Not working."));
-    load();
+    await load();
   }
 
   async function saveKey(id: ServiceId) {
-    if (!panelKeyValue.trim()) return;
+    const v = panelKeyValue.trim();
+    if (v.length < 8) { toast("That does not look like a key. Copy the whole key."); return; }
     if (demo) { toast("Saving needs a signed-in team."); return; }
     setPanelBusy("save");
-    const r = await fetch("/api/connections/save", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ service: id, key: panelKeyValue.trim() }),
-    }).then((x) => x.json()).catch(() => ({ error: "Could not save." })) as { error?: string; models?: Model[] };
+    const { error } = await supabaseBrowser().rpc("set_team_key", { service: id, value: v });
     setPanelBusy("");
-    if (r.error) { toast(r.error); return; }
+    if (error) { toast(error.message); return; }
     setPanelKeyValue("");
     toast("Key saved. Running test…");
-    if (r.models?.length) setModels((x) => ({ ...x, [id]: r.models }));
     await testKey(id);
-    load();
+    await load();
   }
 
   async function removeKey(id: ServiceId) {
     const s = SERVICES[id];
     if (demo || !await askConfirm(`Remove your ${s.name} key? It stops being used at once.`)) return;
     setPanelBusy("remove");
-    const r = await fetch("/api/connections/remove", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ service: id }),
-    }).then((x) => x.json()).catch(() => ({ error: "Could not remove." })) as { error?: string };
+    const { error } = await supabaseBrowser().rpc("remove_team_key", { service: id });
     setPanelBusy("");
-    if (r.error) { toast(r.error); return; }
+    if (error) { toast(error.message); return; }
     toast(`${s.name} key removed.`);
-    load();
+    await load();
   }
 
   // Extension connect handler
@@ -387,9 +377,9 @@ export default function ConnectionsView({
   const filterList = (list: typeof findLeadsItems) =>
     list.filter((item) => !q || item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q));
 
-  const filteredFindLeads = useMemo(() => filterList(findLeadsItems), [q, extStatus, savedKeys]);
-  const filteredSendAndTrack = useMemo(() => filterList(sendAndTrackItems), [q, mailboxCount, webhookCount, savedKeys]);
-  const filteredUseElsewhere = useMemo(() => filterList(useElsewhereItems), [q]);
+  const filteredFindLeads = filterList(findLeadsItems);
+  const filteredSendAndTrack = filterList(sendAndTrackItems);
+  const filteredUseElsewhere = filterList(useElsewhereItems);
 
   function renderItemAction(item: {
     id: string;

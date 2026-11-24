@@ -117,8 +117,7 @@ export async function POST(request: Request) {
       }
     }
     console.log(`[ai-route] start task=${task} lead=${l.id}`);
-    const leadStart = Date.now();
-    const r = task === "emails" ? await writeChecked(plan, qc, l, dnc, 2, () => Date.now() - leadStart < 65_000) : await aiOne(plan, l, dnc);
+    const r = task === "emails" ? await writeChecked(plan, qc, l, dnc, 2, () => Date.now() - started < 45_000) : await aiOne(plan, l, dnc);
     cost = cost === null || r.cost === null ? null : cost + r.cost;
     if (!r.ok) {
       console.log(`[ai-route] task=${task} lead=${l.id} not ok: ${r.why || r.fatal}`);
@@ -146,6 +145,21 @@ export async function POST(request: Request) {
       done.push(r.result);
     }
   };
-  for (let i = 0; i < leads.length; i += AT_ONCE) await Promise.all(leads.slice(i, i + AT_ONCE).map(one));
-  return NextResponse.json({ done, skipped, cost, error: fatal || undefined });
+  let stoppedEarly = false;
+  let remainingIds: string[] = [];
+  for (let i = 0; i < leads.length; i += AT_ONCE) {
+    if (Date.now() - started > 45_000) {
+      stoppedEarly = true;
+      remainingIds = leads.slice(i).map((l) => l.id);
+      break;
+    }
+    await Promise.all(leads.slice(i, i + AT_ONCE).map(one));
+  }
+  return NextResponse.json({
+    done,
+    skipped,
+    cost,
+    ...(stoppedEarly ? { continue: true, remaining: remainingIds } : {}),
+    error: fatal || undefined,
+  });
 }

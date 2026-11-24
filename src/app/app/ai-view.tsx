@@ -63,6 +63,9 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
   const ready = Boolean(account && !demo);
   const sb = supabaseBrowser;
 
+  const initialAddressRef = useRef<string>("");
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     if (!ready) return;
     const [o, s, k, q] = await Promise.all([
@@ -72,8 +75,14 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
       sb().from("sequences").select("id,name,offer_id,steps").order("name"), // database 015; before it this fails and only the default exists
     ]);
     setSeqs(q.error ? [] : ((q.data ?? []) as Seq[]).map((x) => ({ ...x, steps: cleanSteps(x.steps) })));
-    if (o.error) { setMsg("AI is coming soon to your workspace."); return; }
+    if (o.error || s.error) {
+      const err = o.error?.message || s.error?.message || "Could not load AI settings.";
+      setLoadError(err);
+      setMsg("Could not load AI settings. Saving is disabled to protect your data.");
+      return;
+    }
     const list = (o.data ?? []) as Offer[], set = { ...DEFAULTS, ...((s.data as Partial<Settings> | null) ?? {}) };
+    initialAddressRef.current = set.address ?? "";
     setOffers(list); setSettings(set); setKeys((k.data as TeamKey[] | null) ?? []);
     setOffer(list.find((x) => x.id === set.offer_id) ?? list[0] ?? EMPTY_OFFER);
   }, [ready, sb]);
@@ -117,17 +126,32 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
     </label>
   );
 
-  async function saveSettings(next: Settings) {
-    setSettings(next);
+  async function saveSettings(patch: Partial<Settings>) {
+    if (loadError) { setMsg("Could not load AI settings. Saving is disabled to protect your data."); return false; }
+    setSettings((cur) => ({ ...cur, ...patch }));
     if (!ready || !account) return true;
-    const { provider, model, offer_id, sender_name, business, address, signature } = next;
-    const link = String(next.booking_link ?? "").trim();
-    if (link && !/^https:\/\/[^\s<>"]+$/.test(link)) { setMsg("The booking link must start with https:// (for example https://cal.com/you/15min)."); return false; }
-    const row = { team_id: account.team_id, provider, model: model.trim() || AUTO, offer_id, sender_name, business, address, signature, updated_at: new Date().toISOString() };
-    let { error } = await sb().from("team_ai").upsert({ ...row, booking_link: link });
+    const row: Record<string, unknown> = {
+      team_id: account.team_id,
+      updated_at: new Date().toISOString(),
+    };
+    if (patch.provider !== undefined) row.provider = patch.provider;
+    if (patch.model !== undefined) row.model = patch.model.trim() || AUTO;
+    if (patch.offer_id !== undefined) row.offer_id = patch.offer_id;
+    if (patch.sender_name !== undefined) row.sender_name = patch.sender_name;
+    if (patch.business !== undefined) row.business = patch.business;
+    if (patch.address !== undefined) row.address = patch.address;
+    if (patch.signature !== undefined) row.signature = patch.signature;
+    if (patch.booking_link !== undefined) {
+      const link = String(patch.booking_link ?? "").trim();
+      if (link && !/^https:\/\/[^\s<>"]+$/.test(link)) { setMsg("The booking link must start with https:// (for example https://cal.com/you/15min)."); return false; }
+      row.booking_link = link;
+    }
+    let { error } = await sb().from("team_ai").upsert(row);
     if (error && /booking_link/.test(error.message)) {   // before database 037
-      ({ error } = await sb().from("team_ai").upsert(row));
-      if (!error && link) { setMsg("Saved. The booking link is coming soon to your workspace."); return true; }
+      const withoutBooking = { ...row };
+      delete withoutBooking.booking_link;
+      ({ error } = await sb().from("team_ai").upsert(withoutBooking));
+      if (!error && patch.booking_link) { setMsg("Saved. The booking link is coming soon to your workspace."); return true; }
     }
     if (error) { setMsg(error.message); return false; }
     return true;
@@ -147,7 +171,7 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
     const saved = data as Offer;
     setOffers([...offers.filter((x) => x.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name)));
     setOffer(saved);
-    await saveSettings({ ...settings, offer_id: saved.id ?? null });
+    await saveSettings({ offer_id: saved.id ?? null });
     toast(`Saved "${name}".`);
   }
   async function deleteOffer() {
@@ -159,7 +183,7 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
   async function chooseOffer(id: string) {
     const o = offers.find((x) => x.id === id) ?? EMPTY_OFFER;
     setOffer(o);
-    if (o.id) await saveSettings({ ...settings, offer_id: o.id });
+    if (o.id) await saveSettings({ offer_id: o.id });
   }
 
   // Runs on the App's server with the team key, a few leads per call, until done or stopped.
@@ -170,7 +194,7 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
     // Redo rewrites first emails people may have edited by hand: ask first (UX audit row 33).
     const rewrites = task === "emails" && redo ? list.filter((l) => marks[l.id]?.drafted).length : 0;
     if (rewrites && !(await askConfirm(`${rewrites} ${rewrites === 1 ? "lead already has" : "leads already have"} a first email.\nWriting the follow-ups rewrites their first email too, including any changes you made by hand. Continue?`, { ok: "Rewrite them" }))) return;
-    if (!(await saveSettings(settings))) return;
+    if (settings.booking_link && !/^https:\/\/[^\s<>"]+$/.test(settings.booking_link.trim())) { setMsg("The booking link must start with https:// (for example https://cal.com/you/15min)."); return; }
     stop.current = false; setMsg("");
     let done = 0, skipped = 0, cost: number | null = 0;
     setRun({ task, done, total: list.length, skipped, cost });
@@ -300,16 +324,27 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
             <b>AI company <Tip text={HELP.ai} /></b>
             <div className="row2">
               <label className="in"><span>Company</span>
-                <select value={settings.provider} disabled={!editable} onChange={(e) => { const p = e.target.value as Provider; setSettings({ ...settings, provider: p, model: p === "anthropic" ? AUTO : PROVIDERS[p].models[0]?.id ?? "" }); }}>
+                <select value={settings.provider} disabled={!editable || Boolean(loadError)} onChange={(e) => {
+                  const p = e.target.value as Provider;
+                  const m = p === "anthropic" ? AUTO : PROVIDERS[p].models[0]?.id ?? "";
+                  setSettings({ ...settings, provider: p, model: m });
+                  void saveSettings({ provider: p, model: m });
+                }}>
                   {(Object.keys(PROVIDERS) as Provider[]).map((p) => <option key={p} value={p}>{PROVIDERS[p].label} ({PROVIDERS[p].maker})</option>)}
                 </select>
               </label>
               <label className="in"><span>Model</span>
                 {models.length ? (
-                  <select value={settings.model} disabled={!editable} onChange={(e) => setSettings({ ...settings, model: e.target.value })}>
+                  <select value={settings.model} disabled={!editable || Boolean(loadError)} onChange={(e) => {
+                    const m = e.target.value;
+                    setSettings({ ...settings, model: m });
+                    void saveSettings({ model: m });
+                  }}>
                     {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                   </select>
-                ) : <input value={settings.model} disabled={!editable} placeholder={settings.provider === "gemini" ? "gemini model name" : "model name, for example gpt-…"} onChange={(e) => setSettings({ ...settings, model: e.target.value })} />}
+                ) : <input value={settings.model} disabled={!editable || Boolean(loadError)} placeholder={settings.provider === "gemini" ? "gemini model name" : "model name, for example gpt-…"}
+                      onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+                      onBlur={(e) => { void saveSettings({ model: e.target.value }); }} />}
               </label>
             </div>
             <p className="ai-key">{key ? <>Team key for {PROVIDERS[settings.provider].label} ends in <b>{key.last4}</b>.</> : <>No {PROVIDERS[settings.provider].label} key for the team yet. <button type="button" className="link-btn" onClick={() => go("connections")}>Add it in Integrations → Services</button>, or use Claude Code below.</>}</p>
@@ -324,8 +359,23 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
             {senderField("Postal address (email footer)", "address", "e.g. 12 High Street, Leeds LS1 4AB, United Kingdom", 2)}
             {senderField("Signature (optional)", "signature", "e.g. Best,\nAlex", 2)}
             <label className="in"><span>Booking link (optional) <Tip text="Your Calendly, Cal.com or Google booking page. Use {{BOOKING_LINK}} in a sequence step, or insert it into an answer in Replies, so interested leads can pick a time themselves." /></span>
-              <input value={settings.booking_link ?? ""} placeholder="https://cal.com/you/15min" disabled={!editable} inputMode="url" onChange={(e) => setSettings({ ...settings, booking_link: e.target.value })} /></label>
-            <div className="join-row"><button type="button" className="btn glass" disabled={!editable} onClick={async () => { if (await saveSettings(settings)) toast("Saved."); }}>Save</button></div>
+              <input value={settings.booking_link ?? ""} placeholder="https://cal.com/you/15min" disabled={!editable || Boolean(loadError)} inputMode="url" onChange={(e) => setSettings({ ...settings, booking_link: e.target.value })} /></label>
+            <div className="join-row"><button type="button" className="btn glass" disabled={!editable || Boolean(loadError)} onClick={async () => {
+              if (initialAddressRef.current.trim() && !settings.address.trim()) {
+                const ok = await askConfirm("Remove your postal address? Email laws require a valid postal address in the footer.", { danger: true, ok: "Remove postal address" });
+                if (!ok) return;
+              }
+              if (await saveSettings({
+                sender_name: settings.sender_name,
+                business: settings.business,
+                address: settings.address,
+                signature: settings.signature,
+                booking_link: settings.booking_link,
+              })) {
+                initialAddressRef.current = settings.address.trim();
+                toast("Saved.");
+              }
+            }}>Save</button></div>
           </section>
         </div>
       </div>

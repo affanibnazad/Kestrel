@@ -51,7 +51,7 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
   const followUps = seq ? followUpCount(seq.steps) : 0;
   return {
     task, provider, key, model: pick.model, effort: provider === "anthropic" ? pick.effort : undefined, offer, sender: s, hash: profileHash(offer),
-    system: task === "score" ? fitSystem(offer, s.about ?? "", activeServices) : task === "research" ? researchSystem(offer, s.about ?? "") : task === "qc" ? qcSystem(offer, voiceNotes) : emailSystem(offer, s, seq?.steps, voiceNotes),
+    system: task === "score" ? fitSystem(offer, s.about ?? "", activeServices) : task === "research" ? researchSystem() : task === "qc" ? qcSystem(offer, voiceNotes) : emailSystem(offer, s, seq?.steps, voiceNotes),
     schema: task === "score" ? FIT_SCHEMA : task === "research" ? RESEARCH_SCHEMA : task === "qc" ? QC_SCHEMA : sequenceSchema(followUps), followUps, seq, activeServices,
     voiceNotes, about
   };

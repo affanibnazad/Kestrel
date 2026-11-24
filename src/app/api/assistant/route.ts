@@ -612,15 +612,23 @@ export async function POST(req: Request) {
     turn.activity.push = (...lines: string[]) => { for (const l of lines) if (!turn.activity.includes(l)) step(l); return record(...lines); };
     let text = "";
     try {
-      const out = await runAssistant({
+      const assistantPromise = runAssistant({
         provider: ai.provider, key: ai.key, model: ai.model, effort: ai.effort,
         system: `${SYSTEM}${ai.included ? `\n\n## Your name\nYou are ${ai.label}, Kestrel's own assistant. If someone asks what you are, say you are ${ai.label}, built into Kestrel. Do not bring up other AI companies or model names yourself.` : ""}${whereNow}\n\n## This person\n${personal}`, history,
         tools: TOOLS.map((t): NeutralTool => ({ name: t.name, description: t.description, schema: t.input_schema })),
         runTool: (name, input) => runTool(sb, name, input, turn), maxRounds: MAX_ROUNDS, images,
       });
+      let timer: NodeJS.Timeout;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("TIMEOUT_50S")), 50_000);
+      });
+      const out = await Promise.race([assistantPromise, timeoutPromise]).finally(() => clearTimeout(timer));
       text = out.refused ? "I can't help with that one. Ask me anything about Kestrel or your outreach."
         : out.outOfRounds ? "That took more steps than I can do at once. Ask me again with one thing at a time." : out.text;
     } catch (e) {
+      if ((e as Error)?.message === "TIMEOUT_50S" || (e instanceof EngineError && e.kind === "rate") || /timeout|abort/i.test((e as Error)?.message ?? "")) {
+        return { error: "Kestrel AI is busy, try again" };
+      }
       const msg = e instanceof EngineError ? (e.kind === "key" && ai.included ? "Kestrel AI's key is not working. The Kestrel owner can fix it in the Owner panel."
         : e.kind === "key" ? `${e.message} Change it in Connections, or switch to Kestrel's AI in Kestrel AI → Personalize.` : e.message) : "Kestrel AI could not answer just now. Try again.";
       return { error: msg };

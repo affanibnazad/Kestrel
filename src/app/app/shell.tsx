@@ -131,6 +131,17 @@ export const SETTINGS_TAB_MAP: Record<string, string> = {
   privacy: "privacy",
 };
 
+export const SETTINGS_MENU_TABS = new Set([
+  "general",
+  "about",
+  "team",
+  "plan",
+  "connections",
+  "mailboxes",
+  "notifications",
+  "privacy",
+]);
+
 const PAGES: Record<string, string> = {
   about: "Your business", pipeline: "Pipeline", ai: "Kestrel AI", autopilot: "Autopilot",
   mailboxes: "Email accounts", campaigns: "Campaigns", inbox: "Replies", tasks: "Tasks",
@@ -141,17 +152,7 @@ const PAGES: Record<string, string> = {
   deliverability: "Email accounts", general: "General", notifications: "Notifications", privacy: "Privacy and data",
 };
 
-// The left bar's groups; the group of the page you are on opens (one at a time, see kgroup).
-type GroupId = "leads" | "mail" | "find" | "settings";
-const MAIL_VIEWS = ["campaigns", "inbox", "tasks", "sequences", "mailboxes", "analytics", "placement"];
-const SETTINGS_VIEWS = ["team", "plan", "connections", "get", "mcp", "dnc", "import", "settings"];
-function groupOf(view: string): GroupId | null {
-  if (SMART.some((x) => x[0] === view) || view === "rules" || view === "activity" || view === "pipeline" || view.startsWith("list:")) return "leads";
-  if (MAIL_VIEWS.includes(view)) return "mail";
-  if (view === "progress" || SOURCES.some((x) => x[0] === view)) return "find";
-  if (SETTINGS_VIEWS.includes(view) || view in SETTINGS_TAB_MAP) return "settings";
-  return null;
-}
+
 
 const VALID_VIEWS = new Set([
   ...SMART.map(([id]) => id),
@@ -176,22 +177,7 @@ function pageList(page: number, pages: number) {
   return out;
 }
 
-// Design v2 side bar items (the Figma kit's): icon + label, a filled block and an edge bar when on; sub items with a dot.
-function KNav({ icon, label, count, on, onClick }: { icon: string; label: string; count?: number; on?: boolean; onClick?: () => void }) {
-  return (
-    <button type="button" className={`knav${on ? " on" : ""}`} onClick={onClick} aria-current={on ? "page" : undefined} title={label}>
-      <span className="knav-ic"><Line name={icon} filled={on} /></span><span className="knav-lb">{label}</span>
-      {count ? <span className="knav-badge">{count > 99 ? "99+" : count}</span> : null}
-    </button>
-  );
-}
-function KSub({ label, count, on, onClick }: { label: string; count?: number; on?: boolean; onClick?: () => void }) {
-  return (
-    <button type="button" className={`ksub${on ? " on" : ""}`} onClick={onClick} aria-current={on ? "page" : undefined}>
-      <span className="ksub-dot" aria-hidden="true" /><span className="knav-lb">{label}</span>{count ? <small>{count.toLocaleString()}</small> : null}
-    </button>
-  );
-}
+
 
 
 export default function AppShell({ email, loading = false, preview = false, account: initialAccount = null, demo, initialView = "home", isDemoMode = false }: { email: string; loading?: boolean; preview?: boolean; account?: Account | null; demo?: LeadRow[]; initialView?: string; isDemoMode?: boolean }) {
@@ -232,7 +218,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
       const params = new URLSearchParams(window.location.search);
       const v = params.get("view");
       const t = params.get("tab");
-      if (t) return t;
+      if (t) return SETTINGS_MENU_TABS.has(t) ? t : "general";
       if (v && v in SETTINGS_TAB_MAP) return SETTINGS_TAB_MAP[v];
     }
     if (initialView && initialView in SETTINGS_TAB_MAP) return SETTINGS_TAB_MAP[initialView];
@@ -245,22 +231,29 @@ export default function AppShell({ email, loading = false, preview = false, acco
       const params = new URLSearchParams(window.location.search);
       const v = params.get("view");
       const t = params.get("tab");
-      if (t) {
-        Promise.resolve().then(() => setSettingsTab(t));
-      } else if (v && v in SETTINGS_TAB_MAP) {
-        Promise.resolve().then(() => setSettingsTab(SETTINGS_TAB_MAP[v]));
+      const targetTab = t ? (SETTINGS_MENU_TABS.has(t) ? t : "general") : v && v in SETTINGS_TAB_MAP ? SETTINGS_TAB_MAP[v] : null;
+      if (targetTab && targetTab !== settingsTab) {
+        Promise.resolve().then(() => setSettingsTab(targetTab));
       }
       if (v) {
         const resolved = resolveView(v);
-        Promise.resolve().then(() => setView(resolved));
+        if (resolved !== view) {
+          Promise.resolve().then(() => setView(resolved));
+        }
       }
     } else if (initialView) {
       if (initialView in SETTINGS_TAB_MAP) {
-        Promise.resolve().then(() => setSettingsTab(SETTINGS_TAB_MAP[initialView]));
+        const mapped = SETTINGS_TAB_MAP[initialView];
+        if (mapped !== settingsTab) {
+          Promise.resolve().then(() => setSettingsTab(mapped));
+        }
       }
-      Promise.resolve().then(() => setView(resolveView(initialView)));
+      const resolved = resolveView(initialView);
+      if (resolved !== view) {
+        Promise.resolve().then(() => setView(resolved));
+      }
     }
-  }, [initialView, resolveView]);
+  }, [initialView, resolveView, settingsTab, view]);
   const [userMenu, setUserMenu] = useState(() => (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("menu") === "1"));     // the avatar menu at the bottom of the sidebar
   const userMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -284,7 +277,6 @@ export default function AppShell({ email, loading = false, preview = false, acco
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [open]);
-  const touchStartX = useRef(0);                    // swipe to open/close the sidebar (no collapse button)
   const [collapsed, setCollapsed] = useState(false); // computer: the left bar folds to a slim row of icons
   const [kitFilters, setKitFilters] = useState(false);   // v2 Leads: the filter row under the search box   // the new design (?look=v2): the Figma kit's layouts
   const [look, setLook] = useState<Look>(readLook);   // read once from localStorage
@@ -434,8 +426,6 @@ export default function AppShell({ email, loading = false, preview = false, acco
   // Design v2, like the kit's Mail page: on Replies the left bar shows icons only, so the three mail columns have room.
   // The menu button opens it for this visit (railPeek); it folds again next time Replies opens. Not saved.
   const [railPeek, setRailPeek] = useState(false);
-  const [kOpen, setKOpen] = useState<string | null | undefined>(undefined);   // design v2: the side bar group opened by hand
-  useEffect(() => { Promise.resolve().then(() => setKOpen(undefined)); }, [view]);
   useEffect(() => { Promise.resolve().then(() => setRailPeek(false)); }, [view]);
   const autoRail = view === "inbox" && !railPeek;
   const folded = collapsed || autoRail;
@@ -886,20 +876,6 @@ export default function AppShell({ email, loading = false, preview = false, acco
     <button type="button" className="btn small go" disabled={!shown.length} onClick={() => setReview((picked.size ? shown.filter((l) => picked.has(l.id)) : shown).slice(0, 2000))} title="Review these leads one by one (keys 1, 2, 3)">{picked.size ? `Review ${picked.size} selected` : "Review"}</button>
     <button type="button" className="btn small glass" disabled={!shown.length} onClick={exportCsv}>{picked.size ? `Export ${picked.size} selected` : "Export CSV"}</button>
   </div> : null;
-  // Design v2 groups: an item with a chevron that opens into dot-bullet sub items (the kit's E-Commerce).
-  // Like Claude's sidebar: one group open at a time (the page you are on, unless you open another), sliding open and shut.
-  const kgroup = (id: GroupId, icon: string, label: string, items: React.ReactNode) => {
-    const here = groupOf(view) === id, isOpen = (kOpen === undefined ? groupOf(view) : kOpen) === id;
-    const flip = () => { if (folded) { toggleSide(); return; } setKOpen(isOpen ? null : id); };
-    return (
-      <div className={`kside-g${isOpen ? " open" : ""}${here ? " here" : ""}`}>
-        <button type="button" className={`knav${here ? " on" : ""}`} aria-expanded={isOpen} onClick={flip} title={label}>
-          <span className="knav-ic"><Line name={icon} filled={here} /></span><span className="knav-lb">{label}</span><span className="knav-chev" aria-hidden="true"><Line name="chevron" /></span>
-        </button>
-        <div className="kside-subwrap" inert={!isOpen}><div className="kside-sub">{items}</div></div>
-      </div>
-    );
-  };
 
   return (
     <div className={`app u-app${open ? " open" : ""}${folded ? " collapsed" : ""}${chatFrame ? " chat-frame" : ""}`}>
@@ -942,7 +918,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
                 id: "leads",
                 label: "Leads",
                 icon: <LeadsIcon />,
-                count: loaded && leads.length > 0 ? leads.length : null,
+                count: loaded && leads.filter(live).length > 0 ? leads.filter(live).length : null,
                 onClick: () => pick("all"),
                 ariaCurrent:
                   SMART.some((x) => x[0] === view) ||

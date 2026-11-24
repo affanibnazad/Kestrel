@@ -177,7 +177,7 @@ export const RESEARCH_SCHEMA = {
   required: ["observations", "hypotheses", "unknowns", "problem", "how", "detail", "sure"],
   additionalProperties: false,
 };
-export function researchSystem(_o?: Offer, _about = "") {
+export function researchSystem() {
   return `You research one business solely from the text of the business's own website.
 Do not pitch any service. Describe the company objectively based only on what is written on their website.
 Extract grounded evidence, neutral hypotheses, and unknowns.

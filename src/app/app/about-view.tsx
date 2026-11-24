@@ -3,7 +3,7 @@
 // Your business (Phase 2, Affan 18 Nov 2026): everything the AI should know about the team in one place. How you use
 // Kestrel (mode), your business and sender details, your offers, proof and tone of voice. The AI reads it to judge leads,
 // write emails and answer in Kestrel AI. Saved in team_about (059), team_ai (007, 037) and offer_profiles (007).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { askConfirm } from "@/components/dialog";
 import { Tip } from "@/components/ui";
@@ -74,7 +74,8 @@ export default function AboutView({ account, demo, editable, toast }: { account:
   const [offer, setOffer] = useState<OfferRow>(EMPTY_OFFER);
   const [defaultOffer, setDefaultOffer] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [missing, setMissing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const initialAddressRef = useRef<string>("");
   const [busy, setBusy] = useState("");
   const sb = supabaseBrowser;
 
@@ -88,10 +89,17 @@ export default function AboutView({ account, demo, editable, toast }: { account:
     Promise.all([sb().from("team_about").select("*").eq("team_id", account.team_id).maybeSingle(), sb().from("team_ai").select("*").maybeSingle(),
       sb().from("offer_profiles").select("*").order("name")]).then(([a, t, o]) => {
       if (!live) return;
-      if (a.error) setMissing(true);
+      if (a.error || t.error) {
+        const err = t.error?.message || a.error?.message || "Failed to load team data.";
+        setLoadError(err);
+        setLoaded(true);
+        return;
+      }
       setAbout(cleanAbout(a.data));
       const ai = (t.data ?? {}) as Partial<Sender> & { offer_id?: string | null };
-      setSender({ sender_name: ai.sender_name ?? "", business: ai.business ?? "", address: ai.address ?? "", signature: ai.signature ?? "", booking_link: ai.booking_link ?? "" });
+      const addr = ai.address ?? "";
+      initialAddressRef.current = addr;
+      setSender({ sender_name: ai.sender_name ?? "", business: ai.business ?? "", address: addr, signature: ai.signature ?? "", booking_link: ai.booking_link ?? "" });
       const list = (o.data ?? []) as OfferRow[];
       setOffers(list); setDefaultOffer(ai.offer_id ?? null);
       setOffer(list.find((x) => x.id === ai.offer_id) ?? list[0] ?? EMPTY_OFFER);
@@ -101,7 +109,7 @@ export default function AboutView({ account, demo, editable, toast }: { account:
   }, [account, demo, sb]);
 
   const [emailSamples, setEmailSamples] = useState("");
-  const off = !editable || Boolean(busy);
+  const off = !editable || Boolean(busy) || Boolean(loadError);
   const setProof = (i: number, patch: Partial<Proof>) => setAbout({ ...about, proof: about.proof.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
 
   async function analyzeVoice() {
@@ -142,8 +150,13 @@ export default function AboutView({ account, demo, editable, toast }: { account:
 
   async function saveBusiness() {
     if (!account && !demo) return;
+    if (loadError) { toast("Cannot save: team settings could not be loaded."); return; }
     const a = cleanAbout(about);
     if (about.website.trim() && !a.website) { toast("Website: start with https://"); return; }
+    if (initialAddressRef.current.trim() && !sender.address.trim()) {
+      const ok = await askConfirm("Remove your postal address? Email laws require a valid postal address in the footer.", { danger: true, ok: "Remove postal address" });
+      if (!ok) return;
+    }
     setBusy("business");
     if (!demo && account) {
       const r1 = await sb().from("team_about").upsert({ team_id: account.team_id, ...a, updated_at: new Date().toISOString() }, { onConflict: "team_id" });
@@ -153,6 +166,7 @@ export default function AboutView({ account, demo, editable, toast }: { account:
       let r2 = await sb().from("team_ai").upsert({ ...s, booking_link: (sender.booking_link ?? "").trim().slice(0, 300) });
       if (r2.error && /booking_link/.test(r2.error.message)) r2 = await sb().from("team_ai").upsert(s);
       if (r2.error) { setBusy(""); toast(r2.error.message); return; }
+      initialAddressRef.current = sender.address.trim();
     }
     setAbout(a); setBusy(""); toast("Saved. The AI uses this from now on.");
   }
@@ -231,7 +245,7 @@ export default function AboutView({ account, demo, editable, toast }: { account:
       <header className="khead">
         <h1>Your business <Tip text="Everything the AI should know about you, in one place. Kestrel's AI reads this page to judge leads, write personal emails and answer in Kestrel AI. Only people who can change leads can edit it." /></h1>
       </header>
-      {missing ? <p className="plan-msg">The About page needs database update 059. You can fill it in, but it cannot be saved yet.</p> : null}
+      {loadError ? <p className="plan-msg" role="alert" style={{ color: "var(--bad)" }}>Could not load your business settings from the server. Saving is disabled to protect your data.</p> : null}
 
       <section className="join-card about-sec">
         <b>How you use Kestrel <Tip text="This changes how the AI writes: as a team (we), as you (I), or for the client you work for." /></b>
