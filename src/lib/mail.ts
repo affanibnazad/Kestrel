@@ -4,6 +4,7 @@ export type Mailbox = {
   id: string; email: string; from_name: string; provider: string; smtp_host: string; smtp_port: number; imap_host: string | null; imap_port: number | null;
   username: string; daily_limit: number; signature: string; status: "new" | "ok" | "error" | "paused"; last_error: string | null;
   smtp_ok: boolean | null; imap_ok: boolean | null; tested_at: string | null; created_at: string;
+  scan_failures?: number; scan_error?: string | null;
 };
 export const MAILBOX_COLUMNS = "id,email,from_name,provider,smtp_host,smtp_port,imap_host,imap_port,username,daily_limit,signature,status,last_error,smtp_ok,imap_ok,tested_at,created_at";
 

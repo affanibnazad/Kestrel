@@ -14,7 +14,8 @@ import type { Monitor } from "./blacklist-card";
 // click an account for its panel (Settings · Domain health). Warmup was removed on 14 Nov 2026 (archived). Domain checks run by themselves when the page opens.
 type Acct = { team_id: string; role: string } | null;
 type Filter = "all" | "ok" | "error" | "paused";
-const COLUMNS = `${MAILBOX_COLUMNS},warmup_started_at,warmup_override,ramp_up`;
+const COLUMNS_074 = `${MAILBOX_COLUMNS},warmup_started_at,warmup_override,ramp_up,scan_failures,scan_error`;
+const COLUMNS_FALLBACK = `${MAILBOX_COLUMNS},warmup_started_at,warmup_override,ramp_up`;
 const now = () => new Date().toISOString();
 const DEMO: Box[] = [
   { id: "demo-1", email: "alex@northlight-studio.test", from_name: "Alex Example", provider: "google", smtp_host: "smtp.gmail.com", smtp_port: 465, imap_host: "imap.gmail.com", imap_port: 993,
@@ -80,8 +81,17 @@ export default function MailboxesView({ account, demo, toast }: { account: Acct;
     }
     const sb = supabaseBrowser();
     const boxQ = (cols: string) => sb.from("mailboxes").select(cols).eq("team_id", account.team_id).order("created_at");
-    const [b, t, m] = await Promise.all([boxQ(COLUMNS), sb.rpc("mailbox_today"),
-      sb.from("domain_monitor").select("domain,results").eq("team_id", account.team_id)]);   // empty before database 031
+    const [bRes, t, m] = await Promise.all([
+      boxQ(COLUMNS_074).then(async (res) => {
+        if (res.error && /scan_failures|scan_error/i.test(res.error.message)) {
+          return await boxQ(COLUMNS_FALLBACK);
+        }
+        return res;
+      }),
+      sb.rpc("mailbox_today"),
+      sb.from("domain_monitor").select("domain,results").eq("team_id", account.team_id),
+    ]);
+    const b = bRes;
     setMon(Object.fromEntries(((m.data as { domain: string; results: Monitor }[] | null) ?? []).filter((r) => r.results?.lists).map((r) => [r.domain, r.results])));
     if (b.error) setMissing(true);
     setBoxes((b.data as Box[] | null) ?? []);
@@ -170,7 +180,14 @@ export default function MailboxesView({ account, demo, toast }: { account: Acct;
             return (
               <tr key={b.id} className="acct-row" onClick={() => setOpen(b.id)}>
                 <td><button type="button" className="acct-open biz" onClick={(e) => { e.stopPropagation(); setOpen(b.id); }}><BizAvatar name={b.from_name || b.email} /><span className="biz-txt"><b>{b.email}</b>{b.from_name ? <small>{b.from_name}</small> : null}</span></button></td>
-                <td><em className={`pill ${STATUS[b.status][1]}`}>{STATUS[b.status][0]}</em></td>
+                <td>
+                  <em className={`pill ${STATUS[b.status][1]}`}>{STATUS[b.status][0]}</em>
+                  {(b.scan_failures ?? 0) >= 3 ? (
+                    <span className="pill warn" style={{ marginLeft: 6 }} title={b.scan_error || "Can't read inbox"}>
+                      Can&apos;t read inbox — replies may be missed
+                    </span>
+                  ) : null}
+                </td>
                 <td>{t ? <span className="acct-sent"><span className="acct-meter" aria-hidden="true"><i style={{ width: `${Math.min(100, (t.sent_24h / Math.max(1, t.limit_today)) * 100)}%` }} /></span>{t.sent_24h} / {t.limit_today}</span> : "—"}</td>
                 <td><b className={`health h${score === null ? "x" : score >= 90 ? "g" : score >= 60 ? "m" : "b"}`}>{score === null ? "—" : `${score}%`}</b></td>
                 <td>{b.daily_limit}</td>

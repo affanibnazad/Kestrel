@@ -104,6 +104,11 @@ export default function AccountPanel({ box, today, dns, monitor, monitorBusy, ma
             <div><small>Health <Tip text={HEALTH_HELP} /></small><b className={`health h${score === null ? "x" : score >= 90 ? "g" : score >= 60 ? "m" : "b"}`}>{score === null ? "—" : `${score}%`}</b></div>
           </div>
           {box.last_error ? <p className="dr-dnc mb-err" role="status">{box.last_error}</p> : null}
+          {(box.scan_failures ?? 0) >= 3 ? (
+            <p className="dr-dnc mb-err" role="status" style={{ background: "rgba(217, 119, 6, 0.12)", color: "var(--warning, #d97706)", borderColor: "rgba(217, 119, 6, 0.3)" }}>
+              Can&apos;t read inbox — replies may be missed{box.scan_error ? ` (${box.scan_error})` : ""}
+            </p>
+          ) : null}
           {manage ? (
             <div className="dr-actions acct-actions">
               <button type="button" className="btn small glass" disabled={Boolean(busy)} onClick={() => test(box.id, false)}>{busy === "test" ? "Testing…" : "Test connection"}</button>

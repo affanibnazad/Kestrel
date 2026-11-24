@@ -17,8 +17,6 @@ export const maxDuration = 60;
 const PER_CALL = 10;
 
 const same = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
-// Consecutive scan failures per mailbox in this instance
-const scanFailures = new Map<string, number>();
 
 function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
   let timer: NodeJS.Timeout;
@@ -102,15 +100,13 @@ async function scanBox(b: ScanBox) {
 }
 
 async function sendOne(e: DueEmail, origin: string) {
-  return await withTimeout((async () => {
-    const transport = await smtpTransport(e.box);
-    try {
-      // With open tracking (team's own checked domain only) the email also gets an HTML copy with a 1×1 image.
-      const html = e.track ? trackedHtml(e.body, `https://${e.track.domain}/api/mail/o?t=${encodeURIComponent(e.track.token)}&s=${e.step}`) : undefined;
-      const info = await transport.sendMail({ from: fromHeader(e.box.from_name, e.box.email), to: e.to, subject: e.subject, text: e.body, html, headers: campaignHeaders(e, origin) });
-      return String(info.messageId || "");
-    } finally { transport.close(); }
-  })(), 15_000, "SMTP send timed out (15s)");
+  const transport = await smtpTransport(e.box);
+  try {
+    // With open tracking (team's own checked domain only) the email also gets an HTML copy with a 1×1 image.
+    const html = e.track ? trackedHtml(e.body, `https://${e.track.domain}/api/mail/o?t=${encodeURIComponent(e.track.token)}&s=${e.step}`) : undefined;
+    const info = await transport.sendMail({ from: fromHeader(e.box.from_name, e.box.email), to: e.to, subject: e.subject, text: e.body, html, headers: campaignHeaders(e, origin) });
+    return String(info.messageId || "");
+  } finally { transport.close(); }
 }
 
 export async function POST(request: Request) {
@@ -131,7 +127,7 @@ export async function POST(request: Request) {
 
   const results: string[] = [];
   for (const e of due) {
-    if (left() < 15_000) break;
+    if (left() < 20_000) break;
     try {
       if (e.step > 0 && (await replied(e))) {
         await report(sb, { server_secret: secret, cl_id: e.id, kind: "replied", message_id: null, err: null, box_error: false });
@@ -148,6 +144,7 @@ export async function POST(request: Request) {
           continue;
         }
       }
+      if (left() < 20_000) break;
       const id = await sendOne(e, origin);
       await report(sb, { server_secret: secret, cl_id: e.id, kind: "sent", message_id: id, err: null, box_error: false });
       results.push("sent");
@@ -186,23 +183,13 @@ export async function POST(request: Request) {
       const r = await scanBox(b);
       await sb.rpc("mail_inbox_report", { server_secret: secret, box_id: b.id, validity: r.validity, last_uid: r.last, items: r.items });
       scanned++;
-      scanFailures.delete(b.id);
     } catch (err) {
       const msg = plain(err);
       console.error(`inbox read failed for mailbox ${b.id} (${domain}):`, msg);
-      const strikes = (scanFailures.get(b.id) || 0) + 1;
-      scanFailures.set(b.id, strikes);
-      if (strikes >= 3) {
-        console.error(`mailbox ${b.id} (${domain}) failed inbox read 3 times in a row, marked Problem: can't read inbox:`, msg);
-        const lastErr = `Problem: can't read inbox (${msg || "timeout"})`.slice(0, 500);
-        try {
-          const { error: rpcErr } = await sb.rpc("mail_scan_failure", { server_secret: secret, box_id: b.id, err: msg });
-          if (rpcErr) {
-            await sb.from("mailboxes").update({ status: "error", imap_ok: false, last_error: lastErr }).eq("id", b.id);
-          }
-        } catch {
-          try { await sb.from("mailboxes").update({ status: "error", imap_ok: false, last_error: lastErr }).eq("id", b.id); } catch { /* ignore */ }
-        }
+      try {
+        await sb.rpc("mail_scan_failure", { server_secret: secret, box_id: b.id, err: msg });
+      } catch (e) {
+        console.error("mail_scan_failure rpc error:", plain(e));
       }
     }
   }));
