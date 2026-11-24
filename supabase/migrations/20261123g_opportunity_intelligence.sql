@@ -1,6 +1,22 @@
--- Migration 20261123g: Opportunity Intelligence & Human Outreach Approval
+-- LIVE: Stage C: Opportunity Intelligence & Human Outreach Approval
 -- Blueprint Stage C: Additive columns on public.leads for Opportunity Approval and Matcher Tracking
 -- Additive only. No existing columns or RLS dropped.
+
+-- ============================================================================
+-- PRE-CHECK: Verify target table exists and existing column count
+-- ============================================================================
+SELECT
+  count(*) as existing_stage_c_columns
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'leads'
+  AND column_name IN (
+    'outreach_approved',
+    'outreach_approved_at',
+    'outreach_approved_by',
+    'matched_service_id',
+    'buying_trigger'
+  );
 
 BEGIN;
 
@@ -19,3 +35,31 @@ create index if not exists leads_matched_service_idx on public.leads (matched_se
 COMMIT;
 
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- POST-CHECK: Verify all 5 columns and 2 indexes are present
+-- ============================================================================
+SELECT
+  column_name,
+  data_type,
+  is_nullable,
+  column_default
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'leads'
+  AND column_name IN (
+    'outreach_approved',
+    'outreach_approved_at',
+    'outreach_approved_by',
+    'matched_service_id',
+    'buying_trigger'
+  )
+ORDER BY column_name;
+
+SELECT
+  indexname,
+  indexdef
+FROM pg_indexes
+WHERE schemaname = 'public'
+  AND tablename = 'leads'
+  AND indexname IN ('leads_team_outreach_approved_idx', 'leads_matched_service_idx');

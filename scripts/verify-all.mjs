@@ -418,9 +418,14 @@ async function runTests() {
     await page.goto("http://localhost:3333/app?demo=true&view=leads", { waitUntil: "networkidle" });
 
     // Open first lead drawer
-    const firstLead = page.locator(".krow, .lead-row, tbody tr").first();
+    const firstLead = page.locator(".klead-card, .krow, .lead-row, tbody tr").first();
     if (await firstLead.count() > 0) {
-      await firstLead.click();
+      const reviewBtn = firstLead.locator(".klead-review-btn");
+      if (await reviewBtn.count() > 0) {
+        await reviewBtn.click();
+      } else {
+        await firstLead.click();
+      }
       await page.waitForTimeout(500);
 
       // Verify Opportunity report or research trigger button

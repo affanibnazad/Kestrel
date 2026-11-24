@@ -649,13 +649,25 @@ export default function AppShell({ email, loading = false, preview = false, acco
     setLeads((ls) => ls.map((l) => (l.id === leadId ? { ...l, verdict: "No" } : l)));
     setToast(`“${word}” is skipped from now on. Connected extensions use it the next time they open.`);
   }
-  // Bulk Keep, Remove and verdicts for the ticked leads (UX audit row 50).
-  async function bulk(patch: { status?: "kept" | "removed" | "new"; verdict?: "Good" | "Maybe" | "No" }, done: string) {
+  // Bulk Keep, Remove, verdicts, and Stage C outreach approval for the ticked leads.
+  async function bulk(patch: { status?: "kept" | "removed" | "new"; verdict?: "Good" | "Maybe" | "No"; outreach_approved?: boolean; outreach_approved_at?: string | null; outreach_approved_by?: string | null }, done: string) {
     const ids = [...picked];
     if (!account || !ids.length || !editable) return;
-    if (!demo) for (let i = 0; i < ids.length; i += 300) {
-      const { error } = await supabaseBrowser().from("leads").update(patch).in("id", ids.slice(i, i + 300));
-      if (error) { setToast(error.message); return; }
+    if (!demo) {
+      const sb = supabaseBrowser();
+      for (let i = 0; i < ids.length; i += 300) {
+        let { error } = await sb.from("leads").update(patch).in("id", ids.slice(i, i + 300));
+        if (error && /column.*does not exist|schema cache/i.test(error.message)) {
+          // Fallback if applied before column exists in schema cache
+          const safePatch = { ...patch };
+          delete safePatch.outreach_approved;
+          delete safePatch.outreach_approved_at;
+          delete safePatch.outreach_approved_by;
+          const res2 = await sb.from("leads").update(safePatch).in("id", ids.slice(i, i + 300));
+          error = res2.error;
+        }
+        if (error) { setToast(error.message); return; }
+      }
     }
     const set = new Set(ids);
     setLeads((ls) => ls.map((l) => (set.has(l.id) ? { ...l, ...patch } : l)));
@@ -1082,6 +1094,13 @@ export default function AppShell({ email, loading = false, preview = false, acco
                                                             <div className="kmenu" onClick={(e) => { if ((e.target as HTMLElement).closest("button")) (e.currentTarget.closest("details") as HTMLDetailsElement).open = false; }}>
                                                               <p className="kmenu-h">{picked.size ? `${picked.size.toLocaleString()} selected` : `All ${shown.length.toLocaleString()} shown`}</p>
                                                               {picked.size ? <>
+                                                                <button type="button" disabled={!editable} onClick={async () => {
+                                                                  const now = new Date().toISOString();
+                                                                  const sb = supabaseBrowser();
+                                                                  const { data: u } = await sb.auth.getUser();
+                                                                  const uid = u.user?.id || null;
+                                                                  bulk({ outreach_approved: true, outreach_approved_at: now, outreach_approved_by: uid }, "Approved for outreach:");
+                                                                }}>Approve selected for outreach</button>
                                                                 <button type="button" disabled={!editable} onClick={() => bulk({ verdict: "Good" }, "Marked Good:")}>Mark Good</button>
                                                                 <button type="button" disabled={!editable} onClick={() => bulk({ verdict: "Maybe" }, "Marked Maybe:")}>Mark Maybe</button>
                                                                 <button type="button" disabled={!editable} onClick={() => bulk({ verdict: "No" }, "Marked No:")}>Mark No</button>

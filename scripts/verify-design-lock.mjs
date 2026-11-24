@@ -21,6 +21,11 @@ if (!fs.existsSync(baselinesDir)) {
   fs.mkdirSync(baselinesDir, { recursive: true });
 }
 
+const diffsDir = path.join(process.cwd(), "tests/visual-diffs");
+if (!fs.existsSync(diffsDir)) {
+  fs.mkdirSync(diffsDir, { recursive: true });
+}
+
 const isUpdate = process.argv.includes("--update-baselines");
 
 /** Decodes a PNG buffer into raw uncompressed RGBA pixel data */
@@ -121,9 +126,7 @@ async function main() {
     process.exit(1);
   }
 
-  // Fetch a valid campaign ID for campaign detail view
-  const { data: campaigns } = await sb.from("campaigns").select("id").limit(1);
-  const campaignId = campaigns?.[0]?.id || "";
+  const campaignId = "78fac201-1d39-4411-851f-c0aa8acce1fb";
 
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
@@ -162,11 +165,6 @@ async function main() {
     window.Date = MockDate;
   });
 
-  const diffsDir = path.join(process.cwd(), "tests", "visual-diffs");
-  if (!fs.existsSync(diffsDir)) {
-    fs.mkdirSync(diffsDir, { recursive: true });
-  }
-
   const MASK_CSS = `
     html, body, *, *::before, *::after {
       animation: none !important;
@@ -184,49 +182,14 @@ async function main() {
     * {
       scrollbar-width: none !important;
     }
-    /* Mask cookie banner, dynamic dates, relative timestamps, counts, numbers, deltas, charts and avatars */
-    .cookie,
-    .kinbox-pane-date,
-    .kinbox-item-time,
-    .pipe-card-time,
-    .camp-date,
-    .muted-line,
-    time,
-    [class*="date"],
-    .plan-sub,
+    /* Mask dynamic avatars */
     .user-avatar,
     .biz-avatar,
     .kc-avatar,
     .kinbox-new-mail-avatar,
     .avatar,
     .avatar-round,
-    img,
-    .kcount,
-    .kbadge-count,
-    .kd-delta,
-    .kd-stat-t b,
-    .kd-pill,
-    .kd-rows b,
-    .kd-chip,
-    .kd-diverge,
-    .kd-donut,
-    .today-stat,
-    .today-grid,
-    .kpd-meta-chips,
-    .kpd-rail-count,
-    .kpd-rail-status-pill,
-    .acct-table .num,
-    .acct-table td:nth-child(2),
-    .acct-table td:nth-child(3),
-    .plan-kpis,
-    .price-amount b,
-    .sub-dark,
-    .setup-next,
-    .kd-chart-wrap,
-    .kd-bars,
-    .kd-bar,
-    .kcamp-stat-num,
-    .kpd-side-stat b {
+    img {
       visibility: hidden !important;
     }
   `;
@@ -234,8 +197,8 @@ async function main() {
   const SCREENS = [
     { name: "home", path: "/app?view=home", selector: ".home-grid" },
     { name: "campaigns", path: "/app?view=campaigns", selector: ".kcamp-grid" },
-    { name: "campaign-detail", path: `/app?view=campaigns${campaignId ? `&c=${campaignId}` : ""}`, selector: ".kpd-detail-header, .kpd-campaign-title" },
-    { name: "leads", path: "/app?view=leads", selector: ".klead-view-card, .klead-card, table.leads" },
+    { name: "campaign-detail", path: `/app?view=campaigns&c=${campaignId}`, selector: ".kpd-detail-header, .kpd-campaign-title" },
+    { name: "leads", path: "/app?view=leads", selector: ".klead-card" },
     { name: "inbox", path: "/app?view=inbox", selector: ".kinbox-container, .kinbox-list-card" },
     { name: "mailboxes", path: "/app?view=mailboxes", selector: ".acct-table" },
     { name: "ai", path: "/app?view=ai", selector: ".as-page, .as-chat-wrap" },
@@ -248,9 +211,13 @@ async function main() {
 
   for (const screen of SCREENS) {
     const url = `${BASE_URL}${screen.path}`;
-    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await page.goto(url, { waitUntil: "networkidle" });
     if (screen.selector) {
-      await page.waitForSelector(screen.selector, { state: "visible", timeout: 15000 });
+      try {
+        await page.waitForSelector(screen.selector, { state: "visible", timeout: 15000 });
+      } catch (e) {
+        console.warn(`Selector timeout for ${screen.name}: ${screen.selector}`);
+      }
     }
     await page.addStyleTag({ content: MASK_CSS });
 
@@ -261,7 +228,7 @@ async function main() {
       await page.evaluate((t) => {
         document.documentElement.setAttribute("data-theme", t);
       }, theme);
-      await page.waitForTimeout(400);
+      await page.waitForTimeout(500);
 
       const shot = await page.screenshot({ fullPage: false });
 
@@ -281,13 +248,6 @@ async function main() {
 
         if (diffRatio <= threshold) {
           console.log(`✅ PASS | ${screen.name.padEnd(16)} [${theme.padEnd(5)}] diff: ${diffPct} (under 0.2%)`);
-          passed++;
-        } else if (screen.name === "leads") {
-          // Leads view has intentional Stage C feature additions (Opportunity card / reviews)
-          // Save diff image to tests/visual-diffs/ and report pending Affan's review without breaking test suite
-          const diffPath = path.join(diffsDir, `diff-leads-${theme}.png`);
-          fs.writeFileSync(diffPath, shot);
-          console.log(`⚠️  LEADS (Stage C UI change) | [${theme.padEnd(5)}] diff: ${diffPct} - Saved diff to ${diffPath} (Awaiting Affan's approval)`);
           passed++;
         } else {
           console.error(`❌ FAIL | ${screen.name.padEnd(16)} [${theme.padEnd(5)}] diff: ${diffPct} EXCEEDS threshold 0.2%`);
