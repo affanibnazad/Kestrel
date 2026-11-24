@@ -25,7 +25,6 @@ import {
   OwnerIcon,
   SettingsIcon,
 } from "@/components/ui";
-import ConnectionsView from "./connections-view";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { fetchAll } from "@/lib/fetch-all";
 import LeadPanel from "./lead-panel";
@@ -961,7 +960,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
   };
 
   return (
-    <div className={`app${open ? " open" : ""}${folded ? " collapsed" : ""}${dragging ? " resizing" : ""}${chatFrame ? " chat-frame" : ""}`} style={{ "--side-w": `${sideW}px` } as React.CSSProperties}>
+    <div className={`app u-app${open ? " open" : ""}${folded ? " collapsed" : ""}${dragging ? " resizing" : ""}${chatFrame ? " chat-frame" : ""}`} style={{ "--side-w": `${sideW}px` } as React.CSSProperties}>
       <div className="side-resize" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" aria-valuemin={SIDE_MIN} aria-valuemax={SIDE_MAX} aria-valuenow={collapsed ? 68 : sideW}
         tabIndex={0} title="Drag to resize · double-click to reset" onPointerDown={startDrag} onKeyDown={keyDrag}
         onDoubleClick={() => { setCollapsed(false); setSideW(SIDE_W); saveW(SIDE_W); try { localStorage.setItem("kestrel-side", "0"); } catch { /* ignore */ } }} />
@@ -1121,32 +1120,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
 
       {view === "settings" ? (
         <div className="main u-main" id="content" tabIndex={-1}>
-          <div className="topbar u-topbar" role="group" aria-label="Theme">
-            <button
-              type="button"
-              className={`btn u-btn ${look.theme === "light" ? "primary" : ""}`}
-              aria-pressed={look.theme === "light"}
-              onClick={() => { const l = { ...look, theme: "light" as const }; setLook(l); saveLook(l); }}
-            >
-              Light
-            </button>
-            <button
-              type="button"
-              className={`btn u-btn ${look.theme === "dark" ? "primary solid" : ""}`}
-              aria-pressed={look.theme === "dark"}
-              onClick={() => { const l = { ...look, theme: "dark" as const }; setLook(l); saveLook(l); }}
-            >
-              Dark
-            </button>
-            <button
-              type="button"
-              className={`btn u-btn ${look.theme === "gradient" ? "primary solid" : ""}`}
-              aria-pressed={look.theme === "gradient"}
-              onClick={() => { const l = { ...look, theme: "gradient" as const }; setLook(l); saveLook(l); }}
-            >
-              Gradient
-            </button>
-          </div>
+          
           <SettingsShell
             items={[
               { id: "general", label: "General" },
@@ -1195,7 +1169,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
             ) : settingsTab === "plan" ? (
               <PlanView account={account} />
             ) : settingsTab === "connections" ? (
-              <ConnectionsView account={account} demo={Boolean(demo)} toast={setToast} />
+              <IntegrationsView tab="connections" go={pick} account={account} email={email} demo={Boolean(demo)} toast={setToast} />
             ) : settingsTab === "mailboxes" ? (
               <MailboxesView account={account} demo={Boolean(demo)} toast={setToast} />
             ) : settingsTab === "notifications" ? (

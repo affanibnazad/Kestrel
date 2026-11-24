@@ -267,8 +267,8 @@
   color-scheme: light;
 
   /* UI Redesign Tokens (U0 Gradient Mode — Section 0 & Reference v2) */
-  --u-page: #eef0f3 !important;
-  --u-panel: rgba(255, 255, 255, 0.72) !important;
+  --u-page: #fbfbfd !important;
+  --u-panel: rgba(255, 255, 255, 0.55) !important;
   --u-row: #ffffff !important;
   --u-raised: #ffffff !important;
   --u-border: #e6e3f0 !important;
@@ -286,9 +286,11 @@
   --u-btn-bg: #ffffff !important;
   --u-btn-hover: #f6f5fb !important;
   --u-focus: #5b54e8 !important;
-  --u-page-wash: radial-gradient(60% 50% at 0% 0%, #efe9ff 0%, transparent 60%),
-                 radial-gradient(50% 50% at 100% 10%, #e3f6ec 0%, transparent 60%),
-                 radial-gradient(60% 60% at 80% 100%, #fff0e4 0%, transparent 60%) !important;
+    --u-page: #fbfbfd !important;
+  --u-page-wash: radial-gradient(60% 60% at 0% 0%, color-mix(in srgb, #d6c6ff 70%, #fff) 0%, rgba(255, 255, 255, 0) 70%),
+                 radial-gradient(55% 60% at 100% 0%, color-mix(in srgb, #bcecd2 70%, #fff) 0%, rgba(255, 255, 255, 0) 70%),
+                 radial-gradient(60% 65% at 100% 100%, color-mix(in srgb, #ffd2ad 70%, #fff) 0%, rgba(255, 255, 255, 0) 70%),
+                 radial-gradient(55% 60% at 0% 100%, color-mix(in srgb, #c2dbff 70%, #fff) 0%, rgba(255, 255, 255, 0) 70%) !important;
   --u-row-wash: none !important;
 
   --u-success-text: #14713a !important;
@@ -26965,7 +26967,7 @@ body:has(.kinbox-page) .ask-fab {
 :root[data-theme="gradient"] .as,
 :root[data-theme="gradient"] .as-scroll,
 :root[data-theme="gradient"] .kinbox-page {
-  background: radial-gradient(ellipse 70% 35% at 50% -5%, rgba(99, 102, 241, 0.07), transparent 60%), #ECEEF2 !important;
+  background: var(--u-page-wash, none), var(--u-page, #fbfbfd) !important;
   color: #0F172A !important;
 }
 
@@ -30413,7 +30415,9 @@ a {
 }
 
 /* Groups */
-.u-group-label {
+.u-group-label,
+.group-label,
+:root .group-label {
   font-size: 13px !important;
   font-weight: 400 !important;
   color: var(--u-text-muted) !important;
