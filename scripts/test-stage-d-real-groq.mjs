@@ -117,20 +117,99 @@ function pickAngle(leadData, offer, about, buyingTrigger) {
 
 const FAKE_URGENCY_SCARCITY = /\b(only today|last chance|offer ends|expires today|expires tonight|limited time|only taking \d|only \d spots? left|spots? (?:are )?limited|booking up fast|act now|hurry|final notice)\b/i;
 
-function cleanQc(d, draftText = "") {
-  if (!d || typeof d.pass !== "boolean") return null;
+function cleanQc(d, draftText = "", voiceNotes = null) {
+  if (!d || typeof d !== "object") return null;
+  let rawPass = false;
+  if (typeof d.pass === "boolean") {
+    rawPass = d.pass;
+  } else if (typeof d.pass === "string") {
+    rawPass = d.pass.toLowerCase() === "true";
+  } else if (typeof d.result === "string") {
+    rawPass = d.result.toLowerCase() === "pass";
+  } else if (typeof d.status === "string") {
+    rawPass = d.status.toLowerCase() === "pass";
+  }
+
   const issues = (Array.isArray(d.issues) ? d.issues : [])
+    .map((x) => {
+      if (typeof x === "object" && x !== null) {
+        return String(x.issue || x.message || x.text || x.note || JSON.stringify(x));
+      }
+      return String(x ?? "");
+    })
     .map((x) => String(x ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200))
     .filter((x) => x.length > 3)
     .slice(0, 4);
 
+  // Hard code-level Ethics check: fake urgency or scarcity is strictly blocked
   if (draftText && FAKE_URGENCY_SCARCITY.test(draftText)) {
     const matched = draftText.match(FAKE_URGENCY_SCARCITY)?.[0] || "fake urgency/scarcity";
     issues.push(`Draft contains fake urgency or scarcity ('${matched}'). Remove all artificial pressure.`);
   }
 
-  const pass = d.pass === true && !issues.length;
-  return { pass, issues: pass ? [] : issues };
+  // Grammar, readability & sentence length check: each sentence strictly under 20 words
+  if (draftText) {
+    const rawSentences = draftText
+      .split(/(?<=[.!?])\s+|\n+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
+    for (const sent of rawSentences) {
+      if (/^hi\b/i.test(sent) || /^(best|cheers|thanks|regards|sincerely)/i.test(sent) || /reply\s+"?no"?/i.test(sent)) {
+        continue;
+      }
+      const words = sent.split(/\s+/).filter(Boolean);
+      if (words.length >= 20) {
+        issues.push(`Sentence exceeds 20 words (${words.length} words): "${sent.slice(0, 50)}...". Shorten it to under 20 words.`);
+      }
+      if (/\b(?:showing your [a-z]+ [a-z]+ great|and performance today\?|great scalable [a-z]+ today)\b/i.test(sent)) {
+        issues.push(`Awkward phrasing in "${sent.slice(0, 50)}...". Rewrite in clear, natural English.`);
+      }
+    }
+  }
+
+  // Voice notes adherence checks
+  if (voiceNotes && draftText) {
+    if (voiceNotes.words_avoided && voiceNotes.words_avoided.length) {
+      for (const avoided of voiceNotes.words_avoided) {
+        if (!avoided || avoided.trim().length < 2) continue;
+        const re = new RegExp(`\\b${avoided.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+        if (re.test(draftText)) {
+          issues.push(`Draft uses avoided word "${avoided}". Remove it.`);
+        }
+      }
+    }
+    if (voiceNotes.greeting && voiceNotes.greeting.trim()) {
+      const gPrefix = voiceNotes.greeting.trim().split(/[\s{]/)[0].toLowerCase();
+      const lines = draftText.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+      const greetingLine = lines.find((l) => new RegExp(`\\b${gPrefix}\\b`, "i").test(l));
+      if (!greetingLine) {
+        issues.push(`Greeting does not match voice style: start with "${voiceNotes.greeting.replace(/\{name\}/gi, "there")}".`);
+      }
+    }
+    if (voiceNotes.sign_off && voiceNotes.sign_off.trim()) {
+      const expectedSign = voiceNotes.sign_off.trim().toLowerCase().replace(/[,.!]/g, "");
+      const lines = draftText.trim().split(/\n+/).map((l) => l.trim().toLowerCase().replace(/[,.!]/g, ""));
+      const hasSign = lines.some((l) => l === expectedSign || l.startsWith(expectedSign));
+      if (!hasSign) {
+        issues.push(`Sign-off does not match voice style: sign off with "${voiceNotes.sign_off}".`);
+      }
+    }
+    if (voiceNotes.words_used && voiceNotes.words_used.length > 0) {
+      const hasUsed = voiceNotes.words_used.some((phrase) => {
+        if (!phrase || phrase.trim().length < 2) return false;
+        const re = new RegExp(`\\b${phrase.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+        return re.test(draftText);
+      });
+      if (!hasUsed) {
+        issues.push(`Draft should naturally use at least one phrase from sender's voice (${voiceNotes.words_used.slice(0, 3).join(", ")}).`);
+      }
+    }
+  }
+
+  // "pass" with small notes still passes; a fail needs at least one concrete issue to fix.
+  const pass = rawPass && !issues.length;
+  return { pass, issues: pass ? [] : issues.slice(0, 4) };
 }
 
 // 5 sample emails representing Affan's natural writing style for video editing / motion design
@@ -256,8 +335,8 @@ async function main() {
 
   // Save voice notes into team_about on staging
   console.log("\nSaving voice notes to team_about on staging...");
-  const { data: userRow } = await sb.from("account_users").select("team_id").eq("user_id", auth.session.user.id).single();
-  const teamId = userRow?.team_id;
+  const { data: acct } = await sb.rpc("my_account");
+  const teamId = acct?.team_id;
 
   if (teamId) {
     const { data: curAbout } = await sb.from("team_about").select("*").eq("team_id", teamId).maybeSingle();
@@ -267,14 +346,28 @@ async function main() {
       updated_at: new Date().toISOString()
     };
     let { error: saveErr } = await sb.from("team_about").upsert(updatePayload, { onConflict: "team_id" });
-    if (saveErr && /column.*voice_notes.*does not exist/i.test(saveErr.message)) {
-      console.log("ℹ Note: team_about.voice_notes column pending migration 20261124a_voice.sql on staging.");
+    if (saveErr && /voice_notes/i.test(saveErr.message)) {
+      console.log("ℹ Note: team_about.voice_notes column pending migration 20261124a_voice.sql on staging. Saving with tag fallback.");
+      const cleanBase = (curAbout?.about || "").replace(/\s*<!--\s*VN:[\s\S]*?-->/g, "").trim();
+      const vnTag = `\n<!-- VN:${JSON.stringify(extractedNotes)} -->`;
+      const fallbackPayload = {
+        ...(curAbout || { team_id: teamId, mode: "agency" }),
+        about: `${cleanBase}${vnTag}`.slice(0, 2000),
+        updated_at: new Date().toISOString()
+      };
+      delete fallbackPayload.voice_notes;
+      const { error: fbErr } = await sb.from("team_about").upsert(fallbackPayload, { onConflict: "team_id" });
+      if (fbErr) console.log("Fallback save error:", fbErr.message);
+      else console.log("✓ Saved voice_notes into team_about using tag fallback.");
     } else if (saveErr) {
       console.log("Save team_about warning:", saveErr.message);
     } else {
       console.log("✓ Saved voice_notes cleanly into team_about on staging.");
     }
   }
+
+  // Brief pause to allow Groq rate-limit token bucket to refill
+  await new Promise((r) => setTimeout(r, 6000));
 
   // --------------------------------------------------------------------------
   // TEST D2 & D3: 2 Leads (One With Trigger, One Without)
@@ -287,15 +380,14 @@ async function main() {
   const { data: offerRow } = await sb.from("offer_profiles").select("*").order("name").limit(1).single();
   const { data: aboutRow } = await sb.from("team_about").select("*").eq("team_id", teamId).maybeSingle();
 
-  // Setup Lead 1: WITH verified buying trigger
-  const triggerText = "Hiring developers, new product launch, tech stack migration";
+  // Setup Lead 1: Resend (WITHOUT buying trigger: observations only contain "Email for developers")
   await sb.from("leads").update({
-    buying_trigger: triggerText,
+    buying_trigger: null,
     outreach_approved: true,
     data: {
       name: "Resend",
       website: "https://resend.com",
-      buying_trigger: triggerText,
+      buying_trigger: null,
       outreach_approved: true,
       research: {
         observations: [
@@ -309,20 +401,21 @@ async function main() {
     }
   }).eq("id", LEAD_1_ID);
 
-  // Setup Lead 2: WITHOUT buying trigger
+  // Setup Lead 2: MetaLab (WITH verified buying trigger quote found in observations)
+  const verifiedTriggerQuote = "We are expanding our product team and hiring mobile engineers";
   await sb.from("leads").update({
-    buying_trigger: null,
+    buying_trigger: verifiedTriggerQuote,
     outreach_approved: true,
     data: {
       name: "MetaLab",
       website: "https://metalab.com",
-      buying_trigger: null,
+      buying_trigger: verifiedTriggerQuote,
       outreach_approved: true,
       research: {
         observations: [
           {
-            fact: "MetaLab is a product design and engineering agency",
-            quote: "We design and build products people love",
+            fact: "MetaLab is a product design agency scaling engineering teams",
+            quote: verifiedTriggerQuote,
             url: "https://metalab.com"
           }
         ]
@@ -331,8 +424,8 @@ async function main() {
   }).eq("id", LEAD_2_ID);
 
   const testCases = [
-    { id: LEAD_1_ID, name: "Resend", hasTrigger: true },
-    { id: LEAD_2_ID, name: "MetaLab", hasTrigger: false }
+    { id: LEAD_1_ID, name: "Resend", hasTrigger: false },
+    { id: LEAD_2_ID, name: "MetaLab", hasTrigger: true }
   ];
 
   const generatedDrafts = [];
@@ -365,7 +458,8 @@ async function main() {
     }
 
     // D3 Real Writing Call
-    console.log("\nGenerating email via /api/ai task=emails...");
+    console.log("\nGenerating email via /api/ai task=emails (waiting 6s for token bucket refill)...");
+    await new Promise((r) => setTimeout(r, 6000));
     const emailRes = await runApiAi({ task: "emails", ids: [tc.id], offerId: offerRow.id });
     console.log(`HTTP Status: ${emailRes.status}`);
 
@@ -412,7 +506,7 @@ async function main() {
     console.log('"...special offer ends today, so let me know before 5pm."');
 
     // Run cleanQc directly to test code-level Ethics check
-    const codeCheck = cleanQc({ pass: true, issues: [] }, poisonedDraft.body);
+    const codeCheck = cleanQc({ pass: true, issues: [] }, poisonedDraft.body, extractedNotes);
     console.log("\nCode-level Ethics Check Result:");
     console.log(`  Pass: ${codeCheck?.pass}`);
     console.log(`  Issues: ${JSON.stringify(codeCheck?.issues)}`);
@@ -424,10 +518,7 @@ async function main() {
     }
 
     // Run real AI QC call via fetch to Groq API
-    const { data: groqKey } = await sb.rpc("ai_key_for_server", {
-      server_secret: process.env.MAIL_SERVER_SECRET || "",
-      service: "groq"
-    });
+    const groqKey = env.STAGING_GROQ_KEY;
 
     if (groqKey) {
       console.log("\nRunning real Groq AI QC call on poisoned draft...");
@@ -435,7 +526,7 @@ async function main() {
 Fail it only for a real problem:
 8. Fake urgency or artificial deadlines: "only today", "last chance", "expires today", "offer ends", "limited time", "don't miss out", "before tomorrow".
 9. Fake scarcity or artificial exclusivity: "only taking 2 clients", "only 1 spot left", "almost booked up".
-Each issue says exactly what to change, in one short sentence.`;
+Each issue says exactly what to change, in one short sentence. Output JSON: {"pass": false, "issues": ["issue 1"]}`;
 
       const checkPayload = {
         lead: { name: "Resend", website: "resend.com" },
@@ -449,18 +540,18 @@ Each issue says exactly what to change, in one short sentence.`;
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: "openai/gpt-oss-20b",
           messages: [
             { role: "system", content: `${sysPrompt}\n\nAnswer with JSON only.` },
             { role: "user", content: `<check>${JSON.stringify(checkPayload)}</check>` }
-          ],
-          response_format: { type: "json_object" }
+          ]
         })
       });
 
       const groqJson = await groqRes.json();
-      const rawAnswer = JSON.parse(groqJson.choices[0].message.content);
-      const parsedAiQc = cleanQc(rawAnswer, poisonedDraft.body);
+      const rawText = groqJson.choices?.[0]?.message?.content || "";
+      const rawAnswer = JSON.parse(rawText.match(/\{[\s\S]*\}/)?.[0] || "{}");
+      const parsedAiQc = cleanQc(rawAnswer, poisonedDraft.body, extractedNotes);
       console.log("Groq QC Raw Answer:", JSON.stringify(rawAnswer, null, 2));
       console.log("Cleaned QC Output:", JSON.stringify(parsedAiQc, null, 2));
 

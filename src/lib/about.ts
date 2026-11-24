@@ -60,7 +60,15 @@ export function cleanAbout(raw: unknown): About {
     return { id, title: str(x.title, 80), result: str(x.result, 300), link: url(x.link) };
   }).filter((p) => p.title || p.result);
 
-  const rawVn = (r.voice_notes && typeof r.voice_notes === "object" ? r.voice_notes : {}) as Record<string, unknown>;
+  let rawVn = (r.voice_notes && typeof r.voice_notes === "object" ? r.voice_notes : null) as Record<string, unknown> | null;
+  // If voice_notes column is null or pending migration, extract from embedded tag in about or tone if present
+  if (!rawVn && typeof r.about === "string" && r.about.includes("<!-- VN:")) {
+    try {
+      const match = r.about.match(/<!-- VN:([\s\S]*?) -->/);
+      if (match && match[1]) rawVn = JSON.parse(match[1]);
+    } catch {}
+  }
+  if (!rawVn) rawVn = {};
   const voice_notes: VoiceNotes = {
     greeting: str(rawVn.greeting, 100),
     sign_off: str(rawVn.sign_off, 100),
@@ -76,7 +84,7 @@ export function cleanAbout(raw: unknown): About {
   return {
     mode,
     website: url(r.website),
-    about: str(r.about, 2000),
+    about: str(r.about, 2000).replace(/\s*<!--\s*VN:[\s\S]*?-->/g, "").trim(),
     proof,
     tone: str(r.tone, 600),
     avoid: str(r.avoid, 600),

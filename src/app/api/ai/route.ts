@@ -87,7 +87,7 @@ export async function POST(request: Request) {
   const plan = aiPlan(task, offer as Offer, settings, typeof key === "string" ? key : "", sequence, activeServices, cleanAb?.voice_notes, cleanAb);
   if ("error" in plan) return NextResponse.json({ error: plan.error }, { status: 400 });
   // Phase 4C: written emails are checked by the QC bot and fixed once; one it cannot pass is held from campaigns.
-  const qcPlan = task === "emails" ? aiPlan("qc", offer as Offer, settings, typeof key === "string" ? key : "", null) : null;
+  const qcPlan = task === "emails" ? aiPlan("qc", offer as Offer, settings, typeof key === "string" ? key : "", null, activeServices, cleanAb?.voice_notes, cleanAb) : null;
   const qc = qcPlan && !("error" in qcPlan) ? qcPlan : null;
 
   let rowsRes = await sb.from("leads").select("id,team_id,email,website,data,outreach_approved").in("id", ids);
@@ -117,7 +117,8 @@ export async function POST(request: Request) {
       }
     }
     console.log(`[ai-route] start task=${task} lead=${l.id}`);
-    const r = task === "emails" ? await writeChecked(plan, qc, l, dnc, 2, () => Date.now() - started < 42_000) : await aiOne(plan, l, dnc);
+    const leadStart = Date.now();
+    const r = task === "emails" ? await writeChecked(plan, qc, l, dnc, 2, () => Date.now() - leadStart < 40_000) : await aiOne(plan, l, dnc);
     cost = cost === null || r.cost === null ? null : cost + r.cost;
     if (!r.ok) {
       console.log(`[ai-route] task=${task} lead=${l.id} not ok: ${r.why || r.fatal}`);

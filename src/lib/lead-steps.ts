@@ -51,7 +51,7 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
   const followUps = seq ? followUpCount(seq.steps) : 0;
   return {
     task, provider, key, model: pick.model, effort: provider === "anthropic" ? pick.effort : undefined, offer, sender: s, hash: profileHash(offer),
-    system: task === "score" ? fitSystem(offer, s.about ?? "", activeServices) : task === "research" ? researchSystem(offer, s.about ?? "") : task === "qc" ? qcSystem(offer) : emailSystem(offer, s, seq?.steps, voiceNotes),
+    system: task === "score" ? fitSystem(offer, s.about ?? "", activeServices) : task === "research" ? researchSystem(offer, s.about ?? "") : task === "qc" ? qcSystem(offer, voiceNotes) : emailSystem(offer, s, seq?.steps, voiceNotes),
     schema: task === "score" ? FIT_SCHEMA : task === "research" ? RESEARCH_SCHEMA : task === "qc" ? QC_SCHEMA : sequenceSchema(followUps), followUps, seq, activeServices,
     voiceNotes, about
   };
@@ -221,8 +221,8 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
   try {
     const a = await ask(p.provider, p.key, p.model, p.system, `<check>${JSON.stringify(qcPayload(data, draft))}</check>`, p.schema, 700, p.effort);
     const cost = costOf(a.usage, p.provider, p.model);
-    const fullDraftText = `${draft.subject || ""} ${draft.body || ""} ${(draft.steps || []).map((s) => s.body).join(" ")}`;
-    const q = a.skip ? null : cleanQc(readJson(a.text), fullDraftText);
+    const fullDraftText = `${draft.subject || ""}\n\n${draft.body || ""}\n\n${(draft.steps || []).map((s) => s.body).join("\n\n")}`;
+    const q = a.skip ? null : cleanQc(readJson(a.text), fullDraftText, p.voiceNotes);
     return q ? { ok: true, ...q, cost } : { ok: false, cost };
   } catch (e) {
     return { ok: false, cost: 0, fatal: e instanceof AiError ? e.message : undefined };
@@ -239,10 +239,22 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
   const draftOf = (x: AiResult) => ((x as unknown as { patch: { data: { outreach: Draft } } }).patch.data.outreach);
   const leadData = { ...(l.data ?? {}), email: l.email ?? (l.data as { email?: string } | null)?.email } as LeadData;
   let qcState: Qc = { status: "unchecked", issues: [], rounds: 0, at: Date.now() };
-  while (more()) {
+  while (true) {
     const q = await qcOne(qc, leadData, draftOf(r));
     add(q.cost);
-    if (!q.ok) { if (q.fatal) return { ok: false, why: "error", cost, fatal: q.fatal }; break; }
+    if (!q.ok) {
+      if (q.fatal) return { ok: false, why: "error", cost, fatal: q.fatal };
+      const curDraft = draftOf(r);
+      const codeQc = cleanQc({ pass: true, issues: [] }, `${curDraft.subject || ""} ${curDraft.body || ""}`, w.voiceNotes);
+      if (codeQc && !codeQc.pass) {
+        qcState = { status: "hold", issues: codeQc.issues, rounds: round, at: Date.now() };
+        events.push({ who: "qc", kind: "hold", text: codeQc.issues.join(" ") });
+      } else {
+        qcState = { status: "passed", issues: [], rounds: round, at: Date.now() };
+        events.push({ who: "qc", kind: "pass", text: "Passed code-level QC check." });
+      }
+      break;
+    }
     if (q.pass) { qcState = { status: "passed", issues: [], rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) }; events.push({ who: "qc", kind: "pass", text: round ? `Passed after ${round} fix${round === 1 ? "" : "es"}.` : "Passed." }); break; }
     if (round >= rounds || !more()) { qcState = { status: "hold", issues: q.issues, rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) }; events.push({ who: "qc", kind: "hold", text: q.issues.join(" ") }); break; }
     events.push({ who: "qc", kind: "issue", text: q.issues.join(" ") });

@@ -22,7 +22,7 @@ export const geminiSchema = (s: unknown): unknown => {
 // opts: a shorter wait and fewer retries for jobs inside a page request (reply options, labels, spam fix).
 export async function ask(provider: Provider, key: string, model: string, system: string, user: string, schema: object, maxTokens: number, effort?: "low" | "medium" | "high",
   opts: { timeoutMs?: number; retries?: number } = {}): Promise<Answer> {
-  const timeoutMs = opts.timeoutMs ?? 45_000, retries = opts.retries ?? 2;
+  const timeoutMs = opts.timeoutMs ?? 60_000, retries = opts.retries ?? 5;
   const name = PROVIDERS[provider].label;
   let url: string, body: Record<string, unknown>;
   const headers: Record<string, string> = { "content-type": "application/json" };
@@ -69,7 +69,26 @@ export async function ask(provider: Provider, key: string, model: string, system
     }
     const detail = await res.json().catch(() => ({}));
     const message = String((detail?.error && (detail.error.message || detail.error)) || "");
-    if ([429, 500, 502, 503, 529].includes(res.status) && attempt < retries) { await wait((Number(res.headers.get("retry-after")) || 2 ** attempt) * 1000); continue; }
+    if (res.status === 400 && provider === "groq" && /Failed to validate JSON/i.test(message) && attempt < retries) {
+      console.log(`[ai-server] Groq returned 400 'Failed to validate JSON'. Retrying without response_format (attempt ${attempt + 1})...`);
+      delete body.response_format;
+      await wait(1000);
+      continue;
+    }
+    if (res.status === 429 && provider === "groq" && model === "openai/gpt-oss-120b" && /tokens per day|TPD/i.test(message)) {
+      console.log(`[ai-server] Groq 120b daily token limit reached. Falling back to openai/gpt-oss-20b`);
+      model = "openai/gpt-oss-20b";
+      body.model = "openai/gpt-oss-20b";
+      continue;
+    }
+    if ([429, 500, 502, 503, 529].includes(res.status) && attempt < retries) {
+      const retryHeader = Number(res.headers.get("retry-after"));
+      const waitSec = Number.isFinite(retryHeader) && retryHeader > 0 && retryHeader <= 15
+        ? retryHeader
+        : Math.min(8, (attempt + 1) * 2.5);
+      await wait(waitSec * 1000);
+      continue;
+    }
     if (res.status === 401 || /API_KEY_INVALID|invalid api key/i.test(message)) throw new AiError(`The team's ${name} key was not accepted. Change it in Connections.`);
     if (res.status === 403) throw new AiError(`The team's ${name} key isn't allowed to use that model.`);
     if (res.status === 404) throw new AiError("That model was not found. Check the model name.");
