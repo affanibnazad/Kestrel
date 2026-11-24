@@ -31,22 +31,19 @@ const TEST_LEADS = [
     id: "c3333333-3333-3333-3333-333333333333",
     name: "Resend",
     website: "https://resend.com",
-    category: "B2B SaaS Developer Platform",
-    expected: "clear fit (good)"
+    expected: "no or maybe (no proven trigger on homepage)"
   },
   {
     id: "f4074c8d-2b65-4a2d-83bd-9017d69e51a6",
     name: "Stumptown Coffee Roasters",
     website: "https://www.stumptowncoffee.com",
-    category: "Coffee Roastery & Retail",
-    expected: "no fit (no)"
+    expected: "no (retail / coffee shop, no positive signal)"
   },
   {
     id: "b692268e-eea0-4126-8e48-45d08b63d3db",
     name: "MetaLab",
     website: "https://metalab.com",
-    category: "Digital Product Design Agency",
-    expected: "unclear / mixed (maybe)"
+    expected: "maybe at most"
   }
 ];
 
@@ -73,31 +70,27 @@ async function main() {
   console.log("✓ Authenticated on staging as:", email);
 
   // 1. Update the 3 leads with real websites and reset their research / outreach_approved
-  console.log("\n--- Setting up 3 Real Leads on Staging ---");
+  console.log("\n--- Setting up 3 Clean Test Leads on Staging ---");
   for (const t of TEST_LEADS) {
-    const { data: cur } = await sb.from("leads").select("data").eq("id", t.id).single();
-    const curData = (cur?.data && typeof cur.data === "object" ? cur.data : {}) ;
-    delete curData.research;
-    delete curData.outreach_approved;
-    delete curData.outreach;
-
     const patch = {
       name: t.name,
       website: t.website,
-      category: t.category,
+      category: null,
+      description: null,
+      score: null,
+      verdict: null,
+      reason: null,
+      matched_service_id: null,
+      buying_trigger: null,
       outreach_approved: false,
       data: {
-        ...curData,
+        name: t.name,
         website: t.website,
         outreach_approved: false,
       }
     };
-    let { error } = await sb.from("leads").update(patch).eq("id", t.id);
-    if (error && /outreach_approved/i.test(error.message)) {
-      delete patch.outreach_approved;
-      await sb.from("leads").update(patch).eq("id", t.id);
-    }
-    console.log(`✓ Prepared lead: ${t.name} (${t.website}) -> Expected: ${t.expected}`);
+    await sb.from("leads").update(patch).eq("id", t.id);
+    console.log(`✓ Cleaned lead: ${t.name} (${t.website}) -> Expected: ${t.expected}`);
   }
 
   const runApiAi = async (body) => {
@@ -161,13 +154,14 @@ async function main() {
     console.log(`HTTP Status: ${res.status}`);
     console.log("Result:", JSON.stringify(res.json, null, 2));
 
-    const { data: leadRow } = await sb.from("leads").select("verdict,score,reason,data").eq("id", t.id).single();
+    const { data: leadRow } = await sb.from("leads").select("verdict,score,reason,matched_service_id,buying_trigger,outreach_approved,data").eq("id", t.id).single();
     console.log("\nSaved Lead Verdict:", leadRow?.verdict);
     console.log("Saved Lead Score (Fit):", leadRow?.score ?? leadRow?.data?.ai?.fit);
     console.log("Saved Reason:", leadRow?.reason ?? leadRow?.data?.ai?.reason);
-    console.log("Matched Service ID:", leadRow?.data?.ai?.matched_service_id || "(none)");
+    console.log("Column matched_service_id:", leadRow?.matched_service_id || "(none)");
+    console.log("Column buying_trigger:", leadRow?.buying_trigger || "(none)");
+    console.log("Column outreach_approved:", leadRow?.outreach_approved);
     console.log("Matched Service Name:", leadRow?.data?.ai?.matched_service_name || "(none)");
-    console.log("Buying Trigger:", leadRow?.data?.ai?.buying_trigger || "(none)");
   }
 
   // 4. Run Step 3.3: Outreach Approval Gate Test

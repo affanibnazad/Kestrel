@@ -95,9 +95,14 @@ export async function POST(request: Request) {
         return;
       }
     }
+    console.log(`[ai-route] start task=${task} lead=${l.id}`);
     const r = task === "emails" ? await writeChecked(plan, qc, l, dnc, 1, () => Date.now() - started < 42_000) : await aiOne(plan, l, dnc);
     cost = cost === null || r.cost === null ? null : cost + r.cost;
-    if (!r.ok) { if (r.fatal) fatal = r.fatal; else skipped.push({ id: l.id, why: r.why }); return; }
+    if (!r.ok) {
+      console.log(`[ai-route] task=${task} lead=${l.id} not ok: ${r.why || r.fatal}`);
+      if (r.fatal) fatal = r.fatal; else skipped.push({ id: l.id, why: r.why });
+      return;
+    }
     let { error } = await sb.from("leads").update(r.patch).eq("id", l.id);
     if (error && /column.*does not exist|schema cache/i.test(error.message)) {
       const safePatch = { ...r.patch };
@@ -109,7 +114,13 @@ export async function POST(request: Request) {
       const res2 = await sb.from("leads").update(safePatch).eq("id", l.id);
       error = res2.error;
     }
-    if (error) skipped.push({ id: l.id, why: "could not save" }); else done.push(r.result);
+    if (error) {
+      console.log(`[ai-route] error saving lead=${l.id}: ${error.message}`);
+      skipped.push({ id: l.id, why: "could not save" });
+    } else {
+      console.log(`[ai-route] saved lead=${l.id} patch=`, JSON.stringify(r.patch));
+      done.push(r.result);
+    }
   };
   for (let i = 0; i < leads.length; i += AT_ONCE) await Promise.all(leads.slice(i, i + AT_ONCE).map(one));
   return NextResponse.json({ done, skipped, cost, error: fatal || undefined });

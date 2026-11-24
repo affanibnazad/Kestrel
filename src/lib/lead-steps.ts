@@ -73,7 +73,7 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
   }
   try {
     const user = p.task === "research"
-      ? `<lead>${JSON.stringify(leadPayload(data))}</lead>\n<website host="${site!.host}">\n${site!.text.replace(/<\/?website/gi, "")}\n</website>`
+      ? `<website host="${site!.host}">\n${site!.text.replace(/<\/?website/gi, "")}\n</website>`
       : `<lead>${JSON.stringify(p.task === "score" ? leadPayload(data) : emailPayload({ ...data, email: l.email ?? (data as { email?: string }).email }))}</lead>`
         // Phase 4C: the QC bot's notes on the last draft, for the rewrite.
         + (fix.length ? `\n<qc_notes>\nA checker found these problems in your last version. Write it again and fix every one:\n${fix.map((x) => `- ${x}`).join("\n")}\n</qc_notes>` : "");
@@ -135,7 +135,8 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
       verdict: VERDICT_COLUMN[f.verdict],
       reason: f.reason,
       score: f.fit,
-      data: { ...data, ai },
+      outreach_approved: false,
+      data: { ...data, ai, outreach_approved: false },
       ...(matchedId ? { matched_service_id: matchedId } : { matched_service_id: null }),
       ...(matchedTrigger ? { buying_trigger: matchedTrigger } : { buying_trigger: null }),
     };

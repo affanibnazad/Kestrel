@@ -114,6 +114,7 @@ const VALID_VIEWS = new Set([
 
 export function isValidView(v: string | null | undefined): boolean {
   if (!v) return false;
+  if (v === "leads") return true;
   if (VALID_VIEWS.has(v)) return true;
   if (/^list:[0-9a-f-]{36}$/i.test(v)) return true;
   return false;
@@ -170,6 +171,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
   const isAdmin = Boolean(account?.is_admin);
   const resolveView = useCallback((v: string | null | undefined): string => {
     if (!v || !isValidView(v)) return "home";
+    if (v === "leads") return "all";
     if (v === "owner" && !isAdmin && !demo && !isDemoMode) return "home";
     if (v === "autopilot") return "home"; // r9: Autopilot parked
     return v;
