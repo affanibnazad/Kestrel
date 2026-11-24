@@ -29,6 +29,7 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 import { fetchAll } from "@/lib/fetch-all";
 import LeadPanel from "./lead-panel";
 import PipelineView, { type PipelineMove } from "./pipeline-view";
+import ConnectionsView from "./connections-view";
 import AboutView from "./about-view";
 import { aboutReady, cleanAbout } from "@/lib/about";
 import { parseMoney, type ConvStage } from "@/lib/pipeline";
@@ -1169,7 +1170,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
             ) : settingsTab === "plan" ? (
               <PlanView account={account} />
             ) : settingsTab === "connections" ? (
-              <IntegrationsView tab="connections" go={pick} account={account} email={email} demo={Boolean(demo)} toast={setToast} />
+              <ConnectionsView account={account} email={email} demo={Boolean(demo)} toast={setToast} go={pick} />
             ) : settingsTab === "mailboxes" ? (
               <MailboxesView account={account} demo={Boolean(demo)} toast={setToast} />
             ) : settingsTab === "notifications" ? (
