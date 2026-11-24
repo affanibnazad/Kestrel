@@ -1,0 +1,32 @@
+.input {
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--u-space-4);
+  border-radius: var(--u-radius-pill);
+  border: 1px solid var(--u-border);
+  background-color: var(--u-row);
+  color: var(--u-text);
+  font-family: var(--u-font-family);
+  font-size: var(--u-font-size-14);
+  line-height: 1;
+  transition: border-color var(--u-duration-press) var(--u-ease-out);
+}
+
+.input::placeholder {
+  color: var(--u-text-muted);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--u-focus);
+  outline-offset: 2px;
+  border-color: var(--u-border-strong);
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  border-color: var(--u-status-red);
+}

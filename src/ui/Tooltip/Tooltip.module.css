@@ -1,0 +1,31 @@
+.wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.bubble {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--u-space-1) var(--u-space-2);
+  border-radius: var(--u-radius-sm);
+  background-color: var(--u-accent);
+  color: var(--u-accent-text);
+  font-family: var(--u-font-family);
+  font-size: var(--u-font-size-12);
+  font-weight: var(--u-font-weight-regular);
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.top {
+  bottom: 100%;
+  margin-bottom: var(--u-space-1);
+}
+
+.bottom {
+  top: 100%;
+  margin-top: var(--u-space-1);
+}

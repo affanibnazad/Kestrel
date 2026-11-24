@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "@/styles/tokens.css";
+import "@/styles/base.css";
 import CookieBanner from "@/components/cookie-banner";
 import Reveal from "@/components/reveal";
 import SmoothScroll from "@/components/smooth-scroll";

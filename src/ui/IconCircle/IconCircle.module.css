@@ -1,0 +1,25 @@
+.circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--u-radius-pill);
+  border: 1px solid var(--u-border);
+  background-color: var(--u-row);
+  color: var(--u-text);
+  flex-shrink: 0;
+}
+
+.sm {
+  width: 28px;
+  height: 28px;
+}
+
+.md {
+  width: 36px;
+  height: 36px;
+}
+
+.lg {
+  width: 44px;
+  height: 44px;
+}

@@ -1,0 +1,288 @@
+/* Kestrel UI Design System Tokens (src/styles/tokens.css)
+   Exact values from docs/ui-reference/*.html and docs/UI_REDESIGN_PLAN.md section 0.
+   Three themes supported: light (solid), dark (solid), gradient (soft washes).
+   ZERO important declarations in this file.
+*/
+
+:root,
+[data-theme="light"] {
+  /* Page & Surfaces */
+  --u-page: #eef0f3;
+  --u-panel: #ffffff;
+  --u-card: #ffffff;
+  --u-row: #ffffff;
+  --u-selected: #f1f2f5;
+
+  /* Borders */
+  --u-border: #e3e5ea;
+  --u-border-strong: #d6d8df;
+
+  /* Typography */
+  --u-text: #1d1d22;
+  --u-text-2: #5f6470;
+  --u-text-muted: #6b7080;
+
+  /* Focus & Accents */
+  --u-accent: #111113;
+  --u-accent-text: #ffffff;
+  --u-focus: #5b54e8;
+
+  /* Buttons */
+  --u-btn-main-bg: #111113;
+  --u-btn-main-text: #ffffff;
+  --u-btn-main-border: transparent;
+  --u-btn-main-hover: #232328;
+
+  --u-btn-sec-bg: #ffffff;
+  --u-btn-sec-text: #1d1d22;
+  --u-btn-sec-border: #8a8d96;
+  --u-btn-sec-hover: #f4f4f7;
+
+  --u-btn-ghost-bg: transparent;
+  --u-btn-ghost-text: #1d1d22;
+  --u-btn-ghost-border: transparent;
+  --u-btn-ghost-hover: #f1f2f5;
+
+  --u-btn-danger-bg: #fff1f0;
+  --u-btn-danger-text: #d70015;
+  --u-btn-danger-border: #ffc4c1;
+  --u-btn-danger-hover: #ffe4e2;
+
+  /* Apple Status Colors (Standard / Light) */
+  --u-status-green: #34c759;
+  --u-status-orange: #ff9500;
+  --u-status-yellow: #ffcc00;
+  --u-status-red: #ff3b30;
+  --u-status-blue: #007aff;
+  --u-status-purple: #af52de;
+  --u-status-neutral: #8e8e93;
+
+  /* Status Text on Light */
+  --u-status-green-text: #248a3d;
+  --u-status-orange-text: #c93400;
+  --u-status-red-text: #d70015;
+  --u-status-blue-text: #007aff;
+  --u-status-purple-text: #af52de;
+  --u-status-neutral-text: #6b7080;
+
+  /* Status Background Pastels (Light) */
+  --u-status-green-bg: #beedca;
+  --u-status-orange-bg: #ffddad;
+  --u-status-yellow-bg: #ffea94;
+  --u-status-red-bg: #ffc4c1;
+  --u-status-purple-bg: #d6c6ff;
+  --u-status-blue-bg: #c2dbff;
+  --u-status-neutral-bg: #f1f2f5;
+
+  /* Positive Status Badge ("Active" / "Connected" / "Approved") */
+  --u-badge-positive-bg: #111113;
+  --u-badge-positive-text: #ffffff;
+  --u-badge-positive-dot: #ffffff;
+  --u-badge-positive-border: #111113;
+
+  /* Washes */
+  --u-page-wash: none;
+  --u-row-wash: none;
+}
+
+[data-theme="dark"] {
+  /* Page & Surfaces */
+  --u-page: #1a1a1a;
+  --u-panel: #1f1f1f;
+  --u-card: #1f1f1f;
+  --u-row: #1f1f1f;
+  --u-selected: #3a3a3a;
+
+  /* Borders */
+  --u-border: #333333;
+  --u-border-strong: #4a4a4a;
+
+  /* Typography */
+  --u-text: #ececec;
+  --u-text-2: #a3a3a3;
+  --u-text-muted: #8a8a8a;
+
+  /* Focus & Accents */
+  --u-accent: #ffffff;
+  --u-accent-text: #111113;
+  --u-focus: #9aa4ff;
+
+  /* Buttons */
+  --u-btn-main-bg: #ffffff;
+  --u-btn-main-text: #111113;
+  --u-btn-main-border: transparent;
+  --u-btn-main-hover: #f0f0f0;
+
+  --u-btn-sec-bg: #3a3a3a;
+  --u-btn-sec-text: #ececec;
+  --u-btn-sec-border: #4a4a4a;
+  --u-btn-sec-hover: #454545;
+
+  --u-btn-ghost-bg: transparent;
+  --u-btn-ghost-text: #ececec;
+  --u-btn-ghost-border: transparent;
+  --u-btn-ghost-hover: #2a2a2a;
+
+  --u-btn-danger-bg: #331515;
+  --u-btn-danger-text: #ff453a;
+  --u-btn-danger-border: #522020;
+  --u-btn-danger-hover: #421c1c;
+
+  /* Apple Status Colors (Dark) */
+  --u-status-green: #30d158;
+  --u-status-orange: #ff9f0a;
+  --u-status-yellow: #ffd60a;
+  --u-status-red: #ff453a;
+  --u-status-blue: #0a84ff;
+  --u-status-purple: #bf5af2;
+  --u-status-neutral: #8e8e93;
+
+  /* Status Text on Dark */
+  --u-status-green-text: #30d158;
+  --u-status-orange-text: #ff9f0a;
+  --u-status-red-text: #ff453a;
+  --u-status-blue-text: #0a84ff;
+  --u-status-purple-text: #bf5af2;
+  --u-status-neutral-text: #a3a3a3;
+
+  /* Status Background Pastels (Dark) */
+  --u-status-green-bg: #12301b;
+  --u-status-orange-bg: #33200f;
+  --u-status-yellow-bg: #332a0f;
+  --u-status-red-bg: #381515;
+  --u-status-purple-bg: #281538;
+  --u-status-blue-bg: #122238;
+  --u-status-neutral-bg: #2d2d2d;
+
+  /* Positive Status Badge ("Active" / "Connected" / "Approved") */
+  --u-badge-positive-bg: #ffffff;
+  --u-badge-positive-text: #111113;
+  --u-badge-positive-dot: #111113;
+  --u-badge-positive-border: #ffffff;
+
+  /* Washes */
+  --u-page-wash: none;
+  --u-row-wash: none;
+}
+
+[data-theme="gradient"] {
+  /* Page & Surfaces */
+  --u-page: #fbfbfd;
+  --u-panel: rgba(255, 255, 255, 0.55);
+  --u-card: #ffffff;
+  --u-row: #ffffff;
+  --u-selected: #ffffff;
+
+  /* Borders */
+  --u-border: #e6e3f0;
+  --u-border-strong: #d9d6e6;
+
+  /* Typography */
+  --u-text: #1d1d22;
+  --u-text-2: #5f6470;
+  --u-text-muted: #6b7080;
+
+  /* Focus & Accents */
+  --u-accent: #5b54e8;
+  --u-accent-text: #ffffff;
+  --u-focus: #5b54e8;
+
+  /* Buttons */
+  --u-btn-main-bg: #5b54e8;
+  --u-btn-main-text: #ffffff;
+  --u-btn-main-border: transparent;
+  --u-btn-main-hover: #4e47d9;
+
+  --u-btn-sec-bg: #ffffff;
+  --u-btn-sec-text: #1d1d22;
+  --u-btn-sec-border: #8a8d96;
+  --u-btn-sec-hover: #f6f5fb;
+
+  --u-btn-ghost-bg: transparent;
+  --u-btn-ghost-text: #1d1d22;
+  --u-btn-ghost-border: transparent;
+  --u-btn-ghost-hover: #f1f0f8;
+
+  --u-btn-danger-bg: #fff1f0;
+  --u-btn-danger-text: #d70015;
+  --u-btn-danger-border: #ffc4c1;
+  --u-btn-danger-hover: #ffe4e2;
+
+  /* Apple Status Colors */
+  --u-status-green: #34c759;
+  --u-status-orange: #ff9500;
+  --u-status-yellow: #ffcc00;
+  --u-status-red: #ff3b30;
+  --u-status-blue: #007aff;
+  --u-status-purple: #af52de;
+  --u-status-neutral: #8e8e93;
+
+  /* Status Text on Light */
+  --u-status-green-text: #248a3d;
+  --u-status-orange-text: #c93400;
+  --u-status-red-text: #d70015;
+  --u-status-blue-text: #007aff;
+  --u-status-purple-text: #af52de;
+  --u-status-neutral-text: #6b7080;
+
+  /* Status Background Pastels (Gradient) */
+  --u-status-green-bg: #beedca;
+  --u-status-orange-bg: #ffddad;
+  --u-status-yellow-bg: #ffea94;
+  --u-status-red-bg: #ffc4c1;
+  --u-status-purple-bg: #d6c6ff;
+  --u-status-blue-bg: #c2dbff;
+  --u-status-neutral-bg: #f1f0f8;
+
+  /* Positive Status Badge ("Active" / "Connected" / "Approved") */
+  --u-badge-positive-bg: #34c759;
+  --u-badge-positive-text: #ffffff;
+  --u-badge-positive-dot: #ffffff;
+  --u-badge-positive-border: #34c759;
+
+  /* Page Wash: 4 feathered radial gradients */
+  --u-page-wash: radial-gradient(60% 60% at 0% 0%, color-mix(in srgb, #d6c6ff 70%, #ffffff) 0%, rgba(255, 255, 255, 0) 70%),
+    radial-gradient(55% 60% at 100% 0%, color-mix(in srgb, #beedca 70%, #ffffff) 0%, rgba(255, 255, 255, 0) 70%),
+    radial-gradient(60% 65% at 100% 100%, color-mix(in srgb, #ffddad 70%, #ffffff) 0%, rgba(255, 255, 255, 0) 70%),
+    radial-gradient(55% 60% at 0% 100%, color-mix(in srgb, #c2dbff 70%, #ffffff) 0%, rgba(255, 255, 255, 0) 70%);
+
+  --u-row-wash: none;
+}
+
+/* Universal Constants across all themes */
+:root {
+  /* Radius scale */
+  --u-radius-sm: 8px;
+  --u-radius-md: 10px;
+  --u-radius-card: 14px;
+  --u-radius-panel: 20px;
+  --u-radius-page: 28px;
+  --u-radius-pill: 9999px;
+
+  /* Spacing 4/8 grid */
+  --u-space-1: 4px;
+  --u-space-2: 8px;
+  --u-space-3: 12px;
+  --u-space-4: 16px;
+  --u-space-6: 24px;
+  --u-space-8: 32px;
+  --u-space-12: 48px;
+
+  /* Typography scale */
+  --u-font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --u-font-size-12: 12px;
+  --u-font-size-14: 14px;
+  --u-font-size-16: 16px;
+  --u-font-size-20: 20px;
+  --u-font-size-24: 24px;
+  --u-font-size-32: 32px;
+
+  --u-font-weight-regular: 400;
+  --u-font-weight-medium: 500;
+  --u-font-weight-semibold: 600;
+
+  /* Motion */
+  --u-duration-press: 150ms;
+  --u-duration-panel: 200ms;
+  --u-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}

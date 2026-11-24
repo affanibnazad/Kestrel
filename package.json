@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start -p 3333",
     "lint": "eslint",
+    "check:ui": "node scripts/check-ui.mjs",
     "test:auth": "node scripts/verify-auth-and-demo.mjs",
     "test:multitenant": "node scripts/verify-multitenant-isolation.mjs",
     "test:errors": "node scripts/verify-error-boundaries.mjs",

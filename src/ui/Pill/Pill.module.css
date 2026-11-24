@@ -1,0 +1,106 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--u-space-2);
+  height: 26px;
+  padding: 0 var(--u-space-3);
+  border-radius: var(--u-radius-pill);
+  font-family: var(--u-font-family);
+  font-size: var(--u-font-size-12);
+  font-weight: var(--u-font-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+  border: 1px solid transparent;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--u-radius-pill);
+  flex-shrink: 0;
+}
+
+.label {
+  display: inline-block;
+  line-height: 1;
+}
+
+/* Positive / Connected / Active */
+.positive,
+.active {
+  background-color: var(--u-badge-positive-bg);
+  color: var(--u-badge-positive-text);
+  border-color: var(--u-badge-positive-border);
+}
+
+.positive .dot,
+.active .dot {
+  background-color: var(--u-badge-positive-dot);
+}
+
+/* Good / Fit High (Apple Green) */
+.good {
+  background-color: var(--u-status-green-bg);
+  color: var(--u-status-green-text);
+  border-color: var(--u-status-green);
+}
+
+.good .dot {
+  background-color: var(--u-status-green);
+}
+
+/* Maybe / Fit Medium (Apple Orange) */
+.maybe {
+  background-color: var(--u-status-orange-bg);
+  color: var(--u-status-orange-text);
+  border-color: var(--u-status-orange);
+}
+
+.maybe .dot {
+  background-color: var(--u-status-orange);
+}
+
+/* No / Rejected / Bounce (Apple Red) */
+.no {
+  background-color: var(--u-status-red-bg);
+  color: var(--u-status-red-text);
+  border-color: var(--u-status-red);
+}
+
+.no .dot {
+  background-color: var(--u-status-red);
+}
+
+/* Review / Pending (Apple Purple / Neutral) */
+.review {
+  background-color: var(--u-status-purple-bg);
+  color: var(--u-status-purple-text);
+  border-color: var(--u-status-purple);
+}
+
+.review .dot {
+  background-color: var(--u-status-purple);
+}
+
+/* Info (Apple Blue) */
+.info {
+  background-color: var(--u-status-blue-bg);
+  color: var(--u-status-blue-text);
+  border-color: var(--u-status-blue);
+}
+
+.info .dot {
+  background-color: var(--u-status-blue);
+}
+
+/* Neutral */
+.neutral {
+  background-color: var(--u-status-neutral-bg);
+  color: var(--u-status-neutral-text);
+  border-color: var(--u-border);
+}
+
+.neutral .dot {
+  background-color: var(--u-status-neutral);
+}

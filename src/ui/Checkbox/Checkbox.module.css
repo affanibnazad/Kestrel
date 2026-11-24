@@ -1,0 +1,63 @@
+.wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--u-space-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+}
+
+.input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+}
+
+.customBox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--u-radius-sm);
+  border: 1px solid var(--u-border-strong);
+  background-color: var(--u-row);
+  color: var(--u-btn-main-text);
+  transition: background-color var(--u-duration-press) var(--u-ease-out),
+    border-color var(--u-duration-press) var(--u-ease-out);
+}
+
+.checkIcon {
+  display: none;
+}
+
+.input:checked + .customBox {
+  background-color: var(--u-accent);
+  border-color: var(--u-accent);
+}
+
+.input:checked + .customBox .checkIcon {
+  display: block;
+}
+
+.input:focus-visible + .customBox {
+  outline: 2px solid var(--u-focus);
+  outline-offset: 2px;
+}
+
+.label {
+  font-family: var(--u-font-family);
+  font-size: var(--u-font-size-14);
+  color: var(--u-text);
+  line-height: 1;
+}

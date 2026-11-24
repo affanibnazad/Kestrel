@@ -1,0 +1,8 @@
+.card {
+  padding: var(--u-space-6);
+  border-radius: var(--u-radius-card);
+  border: 1px solid var(--u-border);
+  background-color: var(--u-card);
+  color: var(--u-text);
+  box-sizing: border-box;
+}
