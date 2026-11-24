@@ -586,23 +586,6 @@ button.tip,
   color: #fff;
 }
 
-/* App: the same colour as a thin band that fades into the page, so the table stays clean. */
-.app-band {
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 220px;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-  opacity: 0.9;
-  -webkit-mask: none;
-  mask: none;
-}
-
-.app-band::after {
-  content: none;
-}
-
 .site-nav {
   position: sticky;
   top: 12px;
@@ -921,7 +904,7 @@ button.tip,
   position: relative;
 }
 
-.pane> :not(.app-band) {
+.pane> * {
   position: relative;
   z-index: 1;
 }
@@ -5763,85 +5746,11 @@ body {
   }
 }
 
-/* ======================================================================
-   App in the website theme: light grey page, clean sidebar, the same
-   periwinkle panel as the website behind the title, white cards with soft depth.
-   ====================================================================== */
-.app {
-  background: var(--bg);
-  grid-template-columns: 260px 1fr;
-}
-
-.side {
-  background: #fbfbfc;
-  border-right: 1px solid var(--hair);
-  padding: 18px 12px 14px;
-  gap: 3px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .side {
-    background: #141518;
-  }
-}
-
-:root[data-theme="dark"] .side {
-  background: #141518;
-}
-
-.side .brand {
-  padding: 4px 10px 16px;
-  font-size: 19px;
-}
-
-.side h4 {
-  margin: 16px 10px 6px;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--label2);
-}
-
-.nav {
-  min-height: 36px;
-  padding: 6px 10px;
-  border-radius: 10px;
-  font-size: 14px;
-  color: var(--label);
-}
-
-.nav:hover {
-  background: var(--tile);
-}
-
-.nav.on {
-  background: var(--peri);
-  color: #fff;
-  box-shadow: 0 4px 12px -4px rgba(79, 124, 201, 0.55);
-}
-
-.nav .ct {
-  font-size: 12px;
-}
-
 .pane {
-  padding: 12px 12px 0;
-}
-
-.app-band {
-  position: absolute;
-  inset: 12px 12px auto 12px;
-  height: 210px;
-  border-radius: 24px;
-  opacity: 1;
-  z-index: 0;
-  overflow: hidden;
-  -webkit-mask-image: none;
-  mask-image: none;
-}
-
-.app-band::after {
-  display: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 
 .head {
@@ -5938,11 +5847,6 @@ table.leads th {
 
   .pane {
     padding: 8px 8px 0;
-  }
-
-  .app-band {
-    inset: 8px 8px auto 8px;
-    height: 250px;
   }
 
   .app-top {
@@ -7454,14 +7358,6 @@ label.btn.off {
 .head h1 .tip {
   vertical-align: middle;
   margin-left: 6px;
-}
-
-/* ======================================================================
-   App pages: the blue title panel is its own block; cards start below it
-   with clear space (no overlap). One rhythm on every page.
-   ====================================================================== */
-.app-band {
-  display: none !important;
 }
 
 .pane {
@@ -11469,8 +11365,27 @@ table.leads td.chk {
   grid-row: span 2;
 }
 
-.acct-open.biz {
-  display: flex;
+/* Email accounts table row & avatar normalization */
+.acct-table .acct-open.biz {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  text-align: left !important;
+}
+
+.acct-table .acct-open.biz .biz-av {
+  flex: 0 0 32px !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  margin: 0 !important;
+}
+
+.acct-table table.leads td:first-child {
+  padding-left: 16px !important;
 }
 
 @media (max-width: 900px) {
@@ -13843,64 +13758,7 @@ html.reduce-motion *::after {
   background: var(--k-hover);
 }
 
-.side-resize {
-  display: none;
-}
-
-@media (min-width: 861px) {
-  .app {
-    position: relative;
-  }
-
-  .app:not(.collapsed) {
-    grid-template-columns: var(--side-w, 260px) 1fr;
-  }
-
-  .app.resizing,
-  .app.resizing * {
-    transition: none !important;
-    cursor: col-resize !important;
-    -webkit-user-select: none !important;
-    user-select: none !important;
-  }
-
-  .side-resize {
-    display: block;
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: calc(var(--side-w, 260px) - 4px);
-    width: 8px;
-    z-index: 31;
-    cursor: col-resize;
-    touch-action: none;
-  }
-
-  .app.collapsed .side-resize {
-    left: 64px;
-  }
-
-  .side-resize::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 3px;
-    width: 2px;
-    background: transparent;
-    transition: background 0.15s;
-  }
-
-  .side-resize:hover::after,
-  .app.resizing .side-resize::after,
-  .side-resize:focus-visible::after {
-    background: var(--peri-deep, #4f7cc9);
-  }
-
-  .side-resize:focus-visible {
-    outline: none;
-  }
-}
+/* Responsive sidebar styles handled by modern app shell */
 
 /* No drop shadows or blue rectangle outlines on buttons/tabs */
 .btn,
@@ -16003,44 +15861,6 @@ a.btn:focus-visible {
   display: none !important;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root[data-look="v2"]:not([data-theme="light"]) .side {
-    background: #14161b !important;
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .nav.on,
-  :root[data-look="v2"]:not([data-theme="light"]) .ubx-f.on {
-    background: rgba(255, 255, 255, 0.09) !important;
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .nav:hover {
-    background: rgba(255, 255, 255, 0.05) !important;
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .nav .ic,
-  :root[data-look="v2"]:not([data-theme="light"]) .nav .ic .kit-ic {
-    color: var(--b300) !important;
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .nav.on .ic .kit-ic {
-    color: #c3d6f4 !important;
-  }
-}
-
-:root[data-look="v2"][data-theme="dark"] .side {
-  background: #14161b !important;
-}
-
-:root[data-look="v2"][data-theme="dark"] .nav.on,
-:root[data-look="v2"][data-theme="dark"] .ubx-f.on {
-  background: rgba(255, 255, 255, 0.09) !important;
-}
-
-:root[data-look="v2"][data-theme="dark"] .nav .ic,
-:root[data-look="v2"][data-theme="dark"] .nav .ic .kit-ic {
-  color: var(--b300) !important;
-}
-
 /* Leads table page numbers (all designs): 25 / 50 / 100 a page, "Showing a–b of N", first / previous / pages / next / last */
 .pager {
   display: flex;
@@ -16513,57 +16333,6 @@ a.btn:focus-visible {
   font-weight: 500 !important;
   letter-spacing: 0 !important;
   color: var(--k-text) !important;
-}
-
-@media (prefers-color-scheme: dark) {
-
-  :root[data-look="v2"]:not([data-theme="light"]) .side.kside,
-  :root[data-look="v2"]:not([data-theme="light"]) .kit-top {
-    background: var(--k-sidebar) !important;
-    border-color: var(--k-border) !important;
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .knav,
-  :root[data-look="v2"]:not([data-theme="light"]) .knav-ic,
-  :root[data-look="v2"]:not([data-theme="light"]) .knav-chev,
-  :root[data-look="v2"]:not([data-theme="light"]) .ksub.on,
-  :root[data-look="v2"]:not([data-theme="light"]) .kit-top-btn,
-  :root[data-look="v2"]:not([data-theme="light"]) .kit-caret,
-  :root[data-look="v2"]:not([data-theme="light"]) .kside-search input {
-    color: var(--k-text) !important;
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .ksub {
-    color: var(--k-muted);
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .kside-search {
-    background: var(--k-surface);
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .knav.on {
-    background: var(--k-hover);
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .ksub.on {
-    background: var(--k-hover);
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .knav:hover,
-  :root[data-look="v2"]:not([data-theme="light"]) .ksub:hover,
-  :root[data-look="v2"]:not([data-theme="light"]) .kside-g.here {
-    background: var(--k-hover);
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .pane,
-  :root[data-look="v2"]:not([data-theme="light"]) body {
-    background: var(--k-bg) !important;
-    color: var(--k-text) !important;
-  }
-
-  :root[data-look="v2"]:not([data-theme="light"]) .head h1 {
-    color: var(--k-text);
-  }
 }
 
 @media (max-width: 900px) {
@@ -19762,10 +19531,6 @@ a.btn:focus-visible {
     padding: 0;
     background: none;
   }
-
-  :root[data-look="v2"] .app.collapsed .side-resize {
-    left: 64px;
-  }
 }
 
 /* Filter menu above the conversation list */
@@ -20497,78 +20262,6 @@ a.btn:focus-visible {
 
   .kc-send-main {
     padding: 0 18px;
-  }
-}
-
-/* ===== Design v2 fixes: Left Sidebar Draggable Resizing + Smooth Scrolling (like Claude Code) ===== */
-@media (min-width: 901px) {
-  :root[data-look="v2"] .app:not(.collapsed) {
-    grid-template-columns: var(--side-w, 260px) 1fr !important;
-  }
-
-  :root[data-look="v2"] .app:not(.collapsed) .side-resize {
-    display: block !important;
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: calc(var(--side-w, 260px) - 4px);
-    width: 8px;
-    z-index: 99;
-    cursor: col-resize;
-    touch-action: none;
-    background: transparent;
-  }
-
-  :root[data-look="v2"] .app:not(.collapsed) .side-resize::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 3px;
-    width: 2px;
-    background: transparent;
-    transition: background 0.15s ease;
-  }
-
-  :root[data-look="v2"] .app:not(.collapsed) .side-resize:hover::after,
-  :root[data-look="v2"] .app.resizing .side-resize::after {
-    background: var(--k-accent, #3B82F6) !important;
-  }
-
-  :root[data-look="v2"] .app:not(.collapsed) .side.kside {
-    position: sticky;
-    top: 0;
-    height: 100dvh;
-    width: var(--side-w, 260px) !important;
-    min-width: 180px;
-    max-width: 440px;
-    overflow: hidden !important;
-    display: flex;
-    flex-direction: column;
-  }
-
-  :root[data-look="v2"] .app.collapsed {
-    grid-template-columns: 56px 1fr !important;
-  }
-
-  :root[data-look="v2"] .app.collapsed .side-resize {
-    display: none !important;
-  }
-
-  :root[data-look="v2"] .app.collapsed .side.kside {
-    position: sticky !important;
-    top: 0 !important;
-    height: 100dvh !important;
-    width: 56px !important;
-    min-width: 56px !important;
-    max-width: 56px !important;
-    overflow: hidden !important;
-    display: flex !important;
-    flex-direction: column !important;
-    padding: 0 !important;
-    transform: none !important;
-    background: var(--k-sidebar) !important;
-    border-right: 1px solid var(--k-border) !important;
   }
 }
 
@@ -22463,11 +22156,6 @@ a.btn:focus-visible {
   width: 56px !important;
   min-width: 56px !important;
   max-width: 56px !important;
-}
-
-:root[data-look="v2"] .app.collapsed .side-resize {
-  left: 52px !important;
-  display: block !important;
 }
 
 :root[data-look="v2"] .kside-logo {
@@ -31466,12 +31154,12 @@ a {
   flex-direction: column !important;
   gap: 2px !important;
   padding: 16px 12px !important;
-  background: var(--u-panel) !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
   border-right: 1px solid var(--u-border) !important;
   border-top: none !important;
   border-bottom: none !important;
   border-left: none !important;
-  backdrop-filter: blur(8px) !important;
   box-sizing: border-box !important;
   overflow-y: auto !important;
 }
@@ -31683,42 +31371,346 @@ a {
   max-width: none !important;
 }
 
-@media (max-width: 860px) {
-  :root .u-app,
-  .u-app {
-    flex-direction: column !important;
+/* Mobile Header Bar */
+.u-mobile-bar {
+  display: none;
+}
+
+@media (max-width: 767.98px) {
+  .u-mobile-bar {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    height: 52px !important;
+    padding: 0 16px !important;
+    margin-bottom: 8px !important;
+    border-bottom: 1px solid var(--u-border) !important;
+    background: transparent !important;
   }
+  .u-mobile-menu-btn {
+    all: unset;
+    display: inline-grid !important;
+    place-items: center !important;
+    width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    min-width: 44px !important;
+    border-radius: 9999px !important;
+    cursor: pointer !important;
+    color: var(--u-text) !important;
+  }
+  .u-mobile-brand {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    color: var(--u-text) !important;
+  }
+  .u-mobile-logo {
+    width: 26px !important;
+    height: 26px !important;
+    border-radius: 8px !important;
+    background: var(--u-accent) !important;
+    color: var(--u-accent-text) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+  }
+}
+
+/* Base Responsive Main Area */
+:root .u-app,
+.u-app {
+  display: flex !important;
+  min-height: 100vh !important;
+  width: 100% !important;
+  background: var(--u-page-wash, none), var(--u-page) !important;
+  overflow-x: hidden !important;
+}
+
+:root .u-main,
+.u-main,
+.u-app .main,
+.u-app .pane {
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+  background: transparent !important;
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
+  width: auto !important;
+  max-width: 100% !important;
+}
+
+/* Remove legacy backgrounds from page wrappers */
+:root .u-app .app-band {
+  display: none !important;
+}
+:root .u-app .pane,
+:root .u-app .kpage,
+:root .u-app .app-page,
+:root .u-app .home-v2,
+:root .u-app .kdash,
+:root .u-app .as-scroll,
+:root .u-app .kinbox-page {
+  background: transparent !important;
+}
+
+/* Responsive Padding */
+@media (min-width: 1024px) {
+  :root .u-main,
+  .u-main,
+  .u-app .main,
+  .u-app .pane {
+    padding: 32px !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  :root .u-main,
+  .u-main,
+  .u-app .main,
+  .u-app .pane {
+    padding: 24px !important;
+  }
+}
+
+@media (max-width: 767.98px) {
+  :root .u-main,
+  .u-main,
+  .u-app .main,
+  .u-app .pane {
+    padding: 16px !important;
+  }
+  .app-top .btn.small {
+    display: none !important;
+  }
+}
+
+/* Sidebar Breakpoints */
+@media (min-width: 1024px) {
   :root .u-side,
   .u-side,
   .u-app .side {
-    flex: none !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-height: auto !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    border-right: 0 !important;
-    border-bottom: 1px solid var(--u-border) !important;
+    flex: 0 0 248px !important;
+    width: 248px !important;
+    min-width: 248px !important;
+    max-width: 248px !important;
+    display: flex !important;
+    position: static !important;
+    transform: none !important;
+    border-right: 1px solid var(--u-border) !important;
   }
-  :root .u-side .sec,
-  :root .u-side .u-sec,
-  :root .u-side .spacer,
-  :root .u-side .u-spacer,
-  :root .u-side .user,
-  :root .u-side .u-user,
+  :root .u-side .u-side-close {
+    display: none !important;
+  }
+}
+
+/* Tablet (768 - 1023px): Icons Only (64px) with Tooltip on Hover */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  :root .u-side,
+  .u-side,
+  .u-app .side {
+    flex: 0 0 64px !important;
+    width: 64px !important;
+    min-width: 64px !important;
+    max-width: 64px !important;
+    padding: 16px 8px !important;
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: static !important;
+    transform: none !important;
+    border-right: 1px solid var(--u-border) !important;
+    align-items: center !important;
+    overflow: visible !important;
+  }
   :root .u-side .brand,
   :root .u-side .u-brand {
+    justify-content: center !important;
+    padding: 4px 0 16px !important;
+  }
+  :root .u-side .brand-text,
+  :root .u-side .u-brand-text,
+  :root .u-side .sec,
+  :root .u-side .u-sec,
+  :root .u-side .count,
+  :root .u-side .u-count,
+  :root .u-side .who,
+  :root .u-side .u-who,
+  :root .u-side-label,
+  :root .u-side .u-side-close {
     display: none !important;
   }
   :root .u-side a,
+  :root .u-side button.u-side-link,
   :root .u-side .u-side-link {
+    width: 44px !important;
+    height: 44px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+    position: relative !important;
+  }
+  :root .u-side .user,
+  :root .u-side .u-user {
+    justify-content: center !important;
+    padding: 10px 0 !important;
+    width: 44px !important;
+    position: relative !important;
+  }
+  /* Tooltip on hover */
+  :root .u-side a[data-tooltip]:hover::after,
+  :root .u-side .user[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: #1d1d22 !important;
+    color: #ffffff !important;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: 8px;
+    white-space: nowrap;
+    z-index: 1000;
+    pointer-events: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+}
+
+/* Phone (<768px): Sidebar hidden, opens as slide-in drawer with scrim */
+@media (max-width: 767.98px) {
+  :root .u-side,
+  .u-side,
+  .u-app .side {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 260px !important;
+    min-width: 260px !important;
+    max-width: 85vw !important;
+    z-index: 9999 !important;
+    background: var(--u-page, #fbfbfd) !important;
+    border-right: 1px solid var(--u-border) !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25) !important;
+    transform: translateX(-100%) !important;
+    transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    display: flex !important;
+  }
+  :root .u-side.open,
+  .u-side.open,
+  .u-app.open .side {
+    transform: translateX(0) !important;
+  }
+  .side-scrim.u-side-scrim {
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0, 0, 0, 0.45) !important;
+    z-index: 9998 !important;
+    border: none !important;
+    cursor: pointer !important;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease-out !important;
+  }
+  .side-scrim.u-side-scrim.open,
+  .u-app.open .side-scrim {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+  :root .u-side .brand {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+  }
+  :root .u-side-close {
+    all: unset;
+    display: inline-grid !important;
+    place-items: center !important;
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 9999px !important;
+    cursor: pointer !important;
+    color: var(--u-text) !important;
+  }
+}
+
+/* Settings Shell Responsive: Horizontal Pills on Screens < 1024px */
+@media (max-width: 1023.98px) {
+  .u-shell {
+    flex-direction: column !important;
+  }
+  .u-shell .u-menu,
+  .u-shell aside.u-menu {
+    flex: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--u-border) !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding: 12px 0 16px !important;
+    gap: 8px !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .u-shell .u-menu .u-menu-label {
+    display: none !important;
+  }
+  .u-shell .u-menu a,
+  .u-shell .u-menu button {
     white-space: nowrap !important;
-    width: auto !important;
+    flex: none !important;
   }
-  :root .u-main,
-  .u-main,
-  .u-app .main {
-    padding: 16px !important;
+  .u-shell .u-content {
+    width: 100% !important;
+    padding: 20px 0 !important;
   }
+}
+
+/* Touch targets & Typography constraints */
+@media (max-width: 767.98px) {
+  button,
+  .btn,
+  .u-btn,
+  .u-side a,
+  .u-menu a,
+  .u-menu button {
+    min-height: 44px !important;
+  }
+  body,
+  .u-app,
+  p,
+  span,
+  a,
+  button,
+  input,
+  td,
+  th {
+    font-size: max(12px, inherit) !important;
+  }
+}
+
+/* Prevent Horizontal Whole-Page Scroll */
+html,
+body,
+.u-app,
+.u-main {
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
+}
+
+.table-card,
+.tbl-wrap,
+.klead-card,
+.acct-table,
+.kcamp-table,
+.kd-table-wrap {
+  overflow-x: auto !important;
+  max-width: 100% !important;
 }

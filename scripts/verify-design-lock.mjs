@@ -27,8 +27,14 @@ if (!fs.existsSync(diffsDir)) {
 }
 
 const isUpdate = process.argv.includes("--update-baselines");
+const isResponsive = process.argv.includes("--responsive") || process.argv.includes("--all");
 const updateScreensArg = process.argv.find((a) => a.startsWith("--update-screens="));
 const updateScreens = updateScreensArg ? updateScreensArg.split("=")[1].split(",").map((s) => s.trim()) : isUpdate ? ["all"] : [];
+
+const responsiveDir = path.join(process.cwd(), "tests/responsive-proof");
+if (!fs.existsSync(responsiveDir)) {
+  fs.mkdirSync(responsiveDir, { recursive: true });
+}
 
 /** Decodes a PNG buffer into raw uncompressed RGBA pixel data */
 function decodePng(buf) {
@@ -291,6 +297,130 @@ async function main() {
           failed++;
         }
       }
+    }
+  }
+
+  if (isResponsive) {
+    console.log("\n================================================================================");
+    console.log("RESPONSIVE SHELL VERIFICATION (390, 768, 1440, 2560 × 4 VIEWS × 3 THEMES)");
+    console.log("================================================================================\n");
+
+    const RESPONSIVE_WIDTHS = [
+      { name: "390", width: 390, height: 844 },
+      { name: "768", width: 768, height: 1024 },
+      { name: "1440", width: 1440, height: 900 },
+      { name: "2560", width: 2560, height: 1440 },
+    ];
+
+    const RESPONSIVE_SCREENS = [
+      { name: "home", path: "/app?view=home", selector: ".home-grid" },
+      { name: "leads", path: "/app?view=leads", selector: ".klead-card, table.leads" },
+      { name: "campaigns", path: "/app?view=campaigns", selector: ".kcamp-grid, .kcamp-card" },
+      { name: "connections", path: "/app?view=settings&tab=connections", selector: ".u-list-group, .u-group" },
+    ];
+
+    let overflowErrors = 0;
+
+    for (const vp of RESPONSIVE_WIDTHS) {
+      console.log(`\n--- Testing Viewport: ${vp.width}x${vp.height} (${vp.name}px) ---`);
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+
+      for (const screen of RESPONSIVE_SCREENS) {
+        const url = `${BASE_URL}${screen.path}`;
+        await page.goto(url, { waitUntil: "networkidle" });
+        if (screen.selector) {
+          try {
+            await page.waitForSelector(screen.selector, { state: "visible", timeout: 10000 });
+          } catch {}
+        }
+        await page.addStyleTag({ content: MASK_CSS });
+
+        // Check horizontal overflow
+        const overflow = await page.evaluate(() => {
+          return {
+            scrollWidth: document.documentElement.scrollWidth,
+            clientWidth: window.innerWidth,
+            hasOverflow: document.documentElement.scrollWidth > window.innerWidth,
+          };
+        });
+
+        if (overflow.hasOverflow) {
+          console.error(`❌ [Horizontal Overflow] ${screen.name.padEnd(12)} @ ${vp.name}px (scroll: ${overflow.scrollWidth}px / client: ${overflow.clientWidth}px)`);
+          overflowErrors++;
+        } else {
+          console.log(`✅ [No Horizontal Scroll] ${screen.name.padEnd(12)} @ ${vp.name}px (scroll: ${overflow.scrollWidth}px / client: ${overflow.clientWidth}px)`);
+        }
+
+        // Capture in all 3 themes
+        for (const theme of THEMES) {
+          await page.evaluate((t) => {
+            document.documentElement.setAttribute("data-theme", t);
+          }, theme);
+          await page.waitForTimeout(400);
+
+          const shotPath = path.join(responsiveDir, `${screen.name}-${vp.name}-${theme}.png`);
+          const shot = await page.screenshot({ fullPage: false });
+          fs.writeFileSync(shotPath, shot);
+          console.log(`  📸 Saved: ${screen.name}-${vp.name}-${theme}.png`);
+        }
+      }
+
+      // Drawer test for 390px
+      if (vp.width === 390) {
+        console.log("\n--- Capturing Phone Drawer Open (390px) ---");
+        await page.goto(`${BASE_URL}/app?view=home`, { waitUntil: "networkidle" });
+        await page.addStyleTag({ content: MASK_CSS });
+
+        const menuBtn = await page.$(".u-menu-btn, button[aria-label='Open menu']");
+        if (menuBtn) {
+          await menuBtn.click();
+          await page.waitForTimeout(500);
+
+          for (const theme of THEMES) {
+            await page.evaluate((t) => {
+              document.documentElement.setAttribute("data-theme", t);
+            }, theme);
+            await page.waitForTimeout(300);
+
+            const shotPath = path.join(responsiveDir, `phone-drawer-open-390-${theme}.png`);
+            const shot = await page.screenshot({ fullPage: false });
+            fs.writeFileSync(shotPath, shot);
+            console.log(`  📸 Saved Drawer Open: phone-drawer-open-390-${theme}.png`);
+          }
+
+          // Verify closing drawer
+          const closeBtn = await page.$(".u-side-close, button[aria-label='Close menu']");
+          if (closeBtn) {
+            await closeBtn.click();
+            await page.waitForTimeout(400);
+          }
+        }
+      }
+
+      // Tooltip test for 768px
+      if (vp.width === 768) {
+        console.log("\n--- Capturing Tablet Tooltip Hover (768px) ---");
+        await page.goto(`${BASE_URL}/app?view=campaigns`, { waitUntil: "networkidle" });
+        await page.addStyleTag({ content: MASK_CSS });
+        await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
+
+        const navItem = await page.$(".u-side a[data-tooltip], .u-side .u-side-link");
+        if (navItem) {
+          await navItem.hover();
+          await page.waitForTimeout(400);
+          const shotPath = path.join(responsiveDir, "tablet-tooltip-hover-768.png");
+          const shot = await page.screenshot({ fullPage: false });
+          fs.writeFileSync(shotPath, shot);
+          console.log("  📸 Saved Tablet Tooltip: tablet-tooltip-hover-768.png");
+        }
+      }
+    }
+
+    if (overflowErrors > 0) {
+      console.error(`\n❌ Responsive test failed with ${overflowErrors} horizontal overflow error(s)!`);
+      failed += overflowErrors;
+    } else {
+      console.log("\n✅ Responsive Shell: All viewports passed with 0 horizontal scroll!");
     }
   }
 

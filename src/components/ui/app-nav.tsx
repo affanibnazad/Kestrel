@@ -33,6 +33,8 @@ export interface AppNavProps {
   activeId: string;
   onSelect?: (id: string) => void;
   className?: string;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export const AppNav: React.FC<AppNavProps> = ({
@@ -44,6 +46,8 @@ export const AppNav: React.FC<AppNavProps> = ({
   activeId,
   onSelect,
   className = "",
+  isOpen = false,
+  onClose,
 }) => {
   const renderItem = (item: NavItem) => {
     const isActive = item.id === activeId;
@@ -58,6 +62,7 @@ export const AppNav: React.FC<AppNavProps> = ({
         key={item.id}
         href={item.href ?? `#${item.id}`}
         className={itemClasses}
+        data-tooltip={item.label}
         aria-current={isCurrent ? "page" : undefined}
         onClick={(e) => {
           if (!item.href || item.onClick || onSelect) {
@@ -71,7 +76,7 @@ export const AppNav: React.FC<AppNavProps> = ({
         }}
       >
         {item.icon}
-        {item.label}
+        <span className="u-side-label">{item.label}</span>
         {item.count !== undefined && item.count !== null && item.count !== "" && (
           <span className="count u-count">{item.count}</span>
         )}
@@ -80,7 +85,17 @@ export const AppNav: React.FC<AppNavProps> = ({
   };
 
   return (
-    <aside className={["side", "u-side", className].filter(Boolean).join(" ")} aria-label="Menu">
+    <aside className={["side", "u-side", isOpen ? "open" : "", className].filter(Boolean).join(" ")} aria-label="Menu">
+      {onClose && (
+        <button
+          type="button"
+          className="u-side-close"
+          aria-label="Close menu"
+          onClick={onClose}
+        >
+          ✕
+        </button>
+      )}
       {brand && (
         <div
           className="brand u-brand"
@@ -88,7 +103,7 @@ export const AppNav: React.FC<AppNavProps> = ({
           style={{ cursor: brand.onClick ? "pointer" : "default" }}
         >
           <span className="logo u-logo">{brand.logo ?? "K"}</span>
-          {brand.name ?? "Kestrel"}
+          <span className="brand-text u-brand-text">{brand.name ?? "Kestrel"}</span>
         </div>
       )}
 

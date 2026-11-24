@@ -168,7 +168,6 @@ export function isValidView(v: string | null | undefined): boolean {
   if (/^list:[0-9a-f-]{36}$/i.test(v)) return true;
   return false;
 }
-const SIDE_W = 260, SIDE_MIN = 200, SIDE_MAX = 400, SIDE_FOLD = 150; // sidebar width in px (drag the edge)
 
 // Page buttons to show: first, last, and two either side of the current one; -1 = a gap (…).
 function pageList(page: number, pages: number) {
@@ -432,73 +431,6 @@ export default function AppShell({ email, loading = false, preview = false, acco
   const autoRail = view === "inbox" && !railPeek;
   const folded = collapsed || autoRail;
   const toggleSide = useCallback(() => { if (autoRail) setRailPeek(true); else toggle(); }, [autoRail, toggle]);
-  // Drag the sidebar's right edge to make it wider or narrower (like Claude). Dragging it far left folds it;
-  // double-click puts it back to the normal width. Arrow keys work on the edge too. Saved in this browser.
-  const [sideW, setSideW] = useState(SIDE_W);
-  const [dragging, setDragging] = useState(false);
-  const lastDown = useRef(0);
-  useEffect(() => { Promise.resolve().then(() => { try { const w = Number(localStorage.getItem("kestrel-side-w")); if (w >= SIDE_MIN && w <= SIDE_MAX) setSideW(w); } catch { /* none saved */ } }); }, []);
-  const saveW = (w: number) => { try { localStorage.setItem("kestrel-side-w", String(w)); } catch { /* ignore */ } };
-  const startDrag = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    const now = Date.now();
-    if (now - lastDown.current < 400 || e.detail === 2) {
-      setCollapsed(false);
-      setSideW(SIDE_W);
-      saveW(SIDE_W);
-      try { localStorage.setItem("kestrel-side", "0"); } catch { /* ignore */ }
-      lastDown.current = 0;
-      return;
-    }
-    lastDown.current = now;
-    e.preventDefault();
-    const el = e.currentTarget;
-    try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    setDragging(true);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    document.body.style.webkitUserSelect = "none";
-    let last = e.clientX;
-    const move = (ev: PointerEvent) => {
-      last = ev.clientX;
-      if (ev.clientX >= SIDE_MIN) {
-        setCollapsed(false);
-        setSideW(Math.min(SIDE_MAX, Math.max(SIDE_MIN, Math.round(ev.clientX))));
-      }
-    };
-    const up = (ev: PointerEvent) => {
-      try { el.releasePointerCapture(ev.pointerId); } catch { /* ignore */ }
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      el.removeEventListener("pointermove", move);
-      el.removeEventListener("pointerup", up);
-      el.removeEventListener("pointercancel", up);
-      setDragging(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.body.style.webkitUserSelect = "";
-      if (last && last < SIDE_FOLD) {
-        setCollapsed(true);
-        try { localStorage.setItem("kestrel-side", "1"); } catch { /* ignore */ }
-      } else {
-        try { localStorage.setItem("kestrel-side", "0"); } catch { /* ignore */ }
-        setSideW((w) => { saveW(w); return w; });
-      }
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-    el.addEventListener("pointermove", move);
-    el.addEventListener("pointerup", up);
-    el.addEventListener("pointercancel", up);
-  }, []);
-  const keyDrag = (e: React.KeyboardEvent) => {
-    const step = e.key === "ArrowRight" ? 16 : e.key === "ArrowLeft" ? -16 : 0;
-    if (!step) return;
-    e.preventDefault();
-    setSideW((w) => { const n = Math.max(SIDE_MIN, Math.min(SIDE_MAX, w + step)); saveW(n); return n; });
-  };
   useEffect(() => {
     const key = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); toggle(); } };
     window.addEventListener("keydown", key);
@@ -961,12 +893,26 @@ export default function AppShell({ email, loading = false, preview = false, acco
   };
 
   return (
-    <div className={`app u-app${open ? " open" : ""}${folded ? " collapsed" : ""}${dragging ? " resizing" : ""}${chatFrame ? " chat-frame" : ""}`} style={{ "--side-w": `${sideW}px` } as React.CSSProperties}>
-      <div className="side-resize" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" aria-valuemin={SIDE_MIN} aria-valuemax={SIDE_MAX} aria-valuenow={collapsed ? 68 : sideW}
-        tabIndex={0} title="Drag to resize · double-click to reset" onPointerDown={startDrag} onKeyDown={keyDrag}
-        onDoubleClick={() => { setCollapsed(false); setSideW(SIDE_W); saveW(SIDE_W); try { localStorage.setItem("kestrel-side", "0"); } catch { /* ignore */ } }} />
+    <div className={`app u-app${open ? " open" : ""}${folded ? " collapsed" : ""}${chatFrame ? " chat-frame" : ""}`}>
+      <div className="u-mobile-bar">
+        <button
+          type="button"
+          className="u-menu-btn"
+          aria-label="Open menu"
+          onClick={() => setOpen(true)}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+        <span className="u-brand-title">Kestrel</span>
+      </div>
       <a className="skip-link" href="#content">Skip to content</a>
       <AppNav
+        isOpen={open}
+        onClose={() => setOpen(false)}
         brand={{
           name: "Kestrel",
           logo: "K",
@@ -1117,7 +1063,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
         activeId={view === "settings" ? "settings" : view}
         onSelect={(id) => pick(id)}
       />
-      <button type="button" className="side-scrim" aria-label="Close the menu" onClick={() => setOpen(false)} />
+      <button type="button" className={`side-scrim u-side-scrim${open ? " open" : ""}`} aria-label="Close the menu" onClick={() => setOpen(false)} />
 
       {view === "settings" ? (
         <div className="main u-main" id="content" tabIndex={-1}>

@@ -1,0 +1,290 @@
+<!doctype html><html lang="en" data-theme="gradient"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Kestrel — Replies (reference)</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><style>
+/* REFERENCE v2. Three themes: light (solid), dark (solid), gradient (soft color washes). */
+:root,[data-theme="light"]{
+  --page:#eef0f3; --panel:#ffffff; --row:#ffffff; --border:#e3e5ea; --border-strong:#d6d8df;
+  --selected:#f1f2f5; --text:#1d1d22; --text-2:#5f6470; --text-muted:#6b7080;
+  --accent:#5b54e8; --accent-text:#ffffff;
+  --ok-bg:#e3f7e8; --ok-text:#248A3D; --ok-dot:#34C759;
+  --btn-bg:#ffffff; --btn-hover:#f4f5f8; --focus:#5b54e8;
+  --page-wash:none; --row-wash:none;
+}
+[data-theme="dark"]{
+  --page:#1a1a1a; --panel:#1f1f1f; --row:#1f1f1f; --border:#333333; --border-strong:#4a4a4a;
+  --selected:#3a3a3a; --text:#ececec; --text-2:#a3a3a3; --text-muted:#8a8a8a;
+  --accent:#ececec; --accent-text:#1a1a1a;
+  --ok-bg:#12301b; --ok-text:#30D158; --ok-dot:#30D158;
+  --btn-bg:transparent; --btn-hover:#2a2a2a; --focus:#9aa4ff;
+}
+[data-theme="gradient"]{
+  --page:#fbfbfd; --panel:rgba(255,255,255,.55); --row:#ffffff; --border:#e6e3f0; --border-strong:#d9d6e6;
+  --selected:#ffffff; --text:#1d1d22; --text-2:#5f6470; --text-muted:#6b7080;
+  --accent:#5b54e8; --accent-text:#ffffff;
+  --ok-bg:linear-gradient(90deg,#ffffff 0%, var(--tint,#beedca) 100%); --ok-text:#1d1d22; --ok-dot:#34C759;
+  --btn-bg:#ffffff; --btn-hover:#f6f5fb; --focus:#5b54e8;
+  --page-wash:radial-gradient(60% 60% at 0% 0%, color-mix(in srgb,#d6c6ff 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 100% 0%, color-mix(in srgb,#beedca 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(60% 65% at 100% 100%, color-mix(in srgb,#ffddad 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 0% 100%, color-mix(in srgb,#c2dbff 70%,#fff) 0%, rgba(255,255,255,0) 70%);
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--page-wash),var(--page);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:16px;line-height:1.5;padding:32px}
+.topbar{max-width:1200px;margin:0 auto 16px;display:flex;justify-content:flex-end;gap:8px}
+.shell{max-width:1200px;margin:0 auto;display:flex;background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;min-height:640px;backdrop-filter:blur(8px)}
+.menu{flex:0 0 240px;padding:24px 12px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:2px}
+.menu-label{font-size:13px;color:var(--text-muted);padding:0 14px 8px}
+.menu a{display:flex;align-items:center;height:38px;padding:0 14px;border-radius:999px;color:var(--text);text-decoration:none;font-size:15px}
+.menu a:hover{background:var(--btn-hover)}
+.menu a[aria-current="page"]{background:var(--selected);border:1px solid var(--border);font-weight:500}
+.content{flex:1;min-width:0;padding:32px 40px 40px}
+h1{margin:0 0 4px;font-size:24px;font-weight:600;line-height:1.2}
+.lead{margin:0 0 24px;color:var(--text-2);font-size:15px}
+.search{position:relative;margin-bottom:32px;max-width:480px}
+.search svg{position:absolute;left:14px;top:11px;color:var(--text-muted)}
+.search input{width:100%;height:40px;padding:0 16px 0 40px;border-radius:999px;border:1px solid var(--border);background:var(--row);color:var(--text);font:inherit;font-size:15px}
+.search input::placeholder{color:var(--text-muted)}
+.search input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.group-label{font-size:13px;color:var(--text-muted);margin:0 0 8px 4px}
+.group{display:flex;flex-direction:column;gap:8px;margin-bottom:28px}
+.row{display:flex;align-items:center;gap:14px;min-height:64px;padding:12px 14px 12px 16px;border:1px solid var(--border);border-radius:14px;background:var(--row-wash,none),var(--row)}
+.ico{flex:none;width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--row);display:flex;align-items:center;justify-content:center;color:var(--text)}
+.txt{flex:1;min-width:0}
+.name{font-size:15px;font-weight:500;line-height:1.3}
+.desc{font-size:14px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;padding:5px 12px;border-radius:999px;background:var(--ok-bg);color:var(--ok-text);white-space:nowrap}
+.badge::before{content:"";width:6px;height:6px;border-radius:999px;background:var(--ok-dot)}
+.btn{height:34px;padding:0 16px;border-radius:999px;border:1px solid var(--border-strong);background:var(--btn-bg);color:var(--text);font:inherit;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background-color .15s ease-out, scale .15s ease-out}
+.btn:hover{background:var(--btn-hover)}
+.btn:active{scale:.96}
+.btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.btn.solid{background:var(--accent);color:var(--accent-text);border-color:transparent}
+.btn.solid:hover{filter:brightness(1.08);background:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-text);border-color:transparent}
+.btn[aria-pressed="true"]{background:var(--accent);color:var(--accent-text);border-color:transparent}
+.adv{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px 0 10px;border-radius:999px;border:1px solid var(--border);background:var(--btn-bg);color:var(--text);font:inherit;font-size:14px;cursor:pointer}
+.adv svg{color:var(--text-2)}
+/* Gradient theme only: each row gets its OWN soft corner wash, like the campaign cards */
+[data-theme="gradient"] .row.t1{--tint:#d6c6ff;--row-wash:radial-gradient(140% 240% at 100% 0%, #d6c6ff 0%, color-mix(in srgb, #d6c6ff 45%, #ffffff) 30%, color-mix(in srgb, #d6c6ff 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t2{--tint:#c2dbff;--row-wash:radial-gradient(140% 240% at 100% 0%, #c2dbff 0%, color-mix(in srgb, #c2dbff 45%, #ffffff) 30%, color-mix(in srgb, #c2dbff 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t3{--tint:#ffddad;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffddad 0%, color-mix(in srgb, #ffddad 45%, #ffffff) 30%, color-mix(in srgb, #ffddad 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t4{--tint:#beedca;--row-wash:radial-gradient(140% 240% at 100% 0%, #beedca 0%, color-mix(in srgb, #beedca 45%, #ffffff) 30%, color-mix(in srgb, #beedca 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t5{--tint:#ffc6da;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffc6da 0%, color-mix(in srgb, #ffc6da 45%, #ffffff) 30%, color-mix(in srgb, #ffc6da 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t6{--tint:#ffea94;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffea94 0%, color-mix(in srgb, #ffea94 45%, #ffffff) 30%, color-mix(in srgb, #ffea94 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="light"] .badge{background:#111113;color:#ffffff;border:0.2px solid #111113}
+[data-theme="light"] .badge::before{background:#ffffff}
+[data-theme="gradient"] .badge{background:linear-gradient(90deg,#ffffff 0%, var(--tint,#beedca) 100%);border:0.2px solid color-mix(in srgb, var(--tint,#beedca) 92%, #000000)}
+[data-theme="gradient"] .badge::before{background:color-mix(in srgb, var(--tint,#beedca) 45%, #000000)}
+[data-theme="dark"] .badge{background:#ffffff;color:#111113;border:0.2px solid #ffffff}
+[data-theme="dark"] .badge::before{background:#111113}
+[data-theme="dark"] .btn.solid{background:#3a3a3a;color:#ececec;border-color:#4a4a4a}
+[data-theme="dark"] .btn.solid:hover{background:#454545;filter:none}
+[data-theme="light"] .btn.solid,[data-theme="gradient"] .btn.solid{background:#ffffff;color:#1d1d22;border:0.2px solid #8a8d96}
+[data-theme="light"] .btn.solid:hover,[data-theme="gradient"] .btn.solid:hover{background:#f4f4f7;filter:none}
+[data-theme="light"] .btn.primary{background:#111113;color:#ffffff;border-color:#111113}
+[data-theme="dark"] .btn.primary{background:#ffffff;color:#111113;border-color:#ffffff}
+@media (prefers-reduced-motion: reduce){.btn{transition:none}}
+@media (max-width:760px){body{padding:12px}.shell{flex-direction:column}.menu{flex:none;border-right:0;border-bottom:1px solid var(--border);flex-direction:row;overflow-x:auto}.menu-label{display:none}.menu a{white-space:nowrap}.content{padding:24px 16px}}
+
+.app{display:flex;min-height:100vh}
+body{padding:0}
+.side{flex:0 0 248px;display:flex;flex-direction:column;gap:2px;padding:16px 12px;background:var(--panel);border-right:1px solid var(--border);backdrop-filter:blur(8px)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px;padding:4px 10px 16px}
+.logo{width:28px;height:28px;border-radius:9px;background:var(--accent);color:var(--accent-text);display:flex;align-items:center;justify-content:center;font-size:14px}
+.sec{font-size:12px;color:var(--text-muted);padding:14px 12px 6px}
+.side a{display:flex;align-items:center;gap:10px;height:36px;padding:0 12px;border-radius:999px;color:var(--text);text-decoration:none;font-size:14px;border:1px solid transparent}
+.side a svg{color:var(--text-2);flex:none}
+.side a:hover{background:var(--btn-hover)}
+.side a[aria-current="page"]{background:var(--selected);border-color:var(--border);font-weight:500}
+.side a[aria-current="page"] svg{color:var(--text)}
+.count{margin-left:auto;font-size:12px;color:var(--text-2);background:var(--btn-hover);border-radius:999px;padding:1px 8px}
+.spacer{flex:1}
+.user{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px;border-top:1px solid var(--border)}
+.avatar{width:30px;height:30px;border-radius:999px;background:var(--selected);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600}
+.who{display:flex;flex-direction:column;line-height:1.3}.nm{font-size:14px;font-weight:500}.pl{font-size:12px;color:var(--text-muted)}
+.main{flex:1;min-width:0;padding:24px 32px}
+.main .topbar{margin:0 0 16px;max-width:none}
+.main .shell{max-width:none}
+@media (max-width:860px){.app{flex-direction:column}.side{flex:none;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;border-right:0;border-bottom:1px solid var(--border)}.sec,.spacer,.user,.brand{display:none}.side a{white-space:nowrap}.main{padding:16px}}
+
+.rmain{flex:1;min-width:0;padding:24px 32px 24px}
+.lhead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px}.lhead .lead{margin:0}
+.btn{display:inline-flex;align-items:center;gap:8px}
+.rgrid{display:grid;grid-template-columns:340px minmax(0,1fr) 300px;gap:12px;height:calc(100vh - 190px);min-height:560px}
+.pane{display:flex;flex-direction:column;min-height:0;border:1px solid var(--border);border-radius:20px;background:var(--panel);padding:14px}
+.pscroll{flex:1;min-height:0;overflow-y:auto}
+.ib,.ibw{flex:none;width:34px;height:34px;border-radius:999px;border:0.2px solid #8a8d96;background:var(--btn-bg);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.ib:hover,.ibw:hover{background:var(--btn-hover)}
+.ibw{width:40px;height:40px}
+.phead{display:flex;gap:6px;align-items:center;margin-bottom:10px}.phead .search input{height:36px}.phead .search svg{top:9px}
+.itabs{display:flex;align-items:center;gap:6px;margin-bottom:10px}
+.it{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:999px;border:0.2px solid #8a8d96;background:var(--btn-bg);color:var(--text-2);font:inherit;cursor:pointer}
+.it small{font-size:12px}
+.it.on{background:#5b54e8;border-color:#5b54e8;color:#fff}
+[data-theme="light"] .it.on{background:#111113;border-color:#111113}[data-theme="dark"] .it.on{background:#fff;border-color:#fff;color:#111113}
+.isep{flex:1}
+.convs{display:flex;flex-direction:column;gap:6px;padding-right:2px}
+.conv{display:flex;gap:10px;text-align:left;width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:14px;background:var(--row-wash,none),var(--row);color:var(--text);font:inherit;cursor:pointer}
+.conv.sel{border-color:var(--text-2);box-shadow:0 0 0 1px var(--text-2)}
+.av{position:relative;flex:none;width:36px;height:36px;border-radius:999px;border:1px solid var(--border);background:var(--row);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--text-2)}
+.av.lg{width:44px;height:44px;font-size:14px}
+.ud{position:absolute;top:-1px;right:-1px;width:10px;height:10px;border-radius:999px;background:#5b54e8;border:2px solid var(--row)}
+[data-theme="light"] .ud{background:#111113}[data-theme="dark"] .ud{background:#fff}
+.cbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.ctop{display:flex;align-items:center;gap:6px}.cname{flex:1;min-width:0;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ctime{font-size:12px;color:var(--text-muted)}
+.conv.unread .cname{font-weight:600}
+.rs{display:inline-flex;color:var(--text-muted)}.rs.seen{color:#007AFF}[data-theme="light"] .rs.seen{color:#111113}[data-theme="dark"] .rs.seen{color:#9ec5ff}
+.cline{display:flex;align-items:center;gap:6px;min-width:0}.cbiz{flex:1;min-width:0;font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.csnip{font-size:13px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.clab{flex:none;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;padding:1px 8px;border-radius:999px;border:0.2px solid var(--border-strong);background:var(--row)}
+.ld{width:6px;height:6px;border-radius:999px;background:var(--dot)}
+.th{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.thn{flex:1;min-width:0}.tn{font-size:16px;font-weight:600}.ts{font-size:13px;color:var(--text-2)}
+.ta{display:flex;gap:6px}
+.ai{display:flex;align-items:center;gap:10px;margin:12px 0;padding:8px 8px 8px 12px;border-radius:999px;border:1px solid var(--border);background:var(--row);font-size:13px}
+.aib{display:inline-flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap}.ait{flex:1;min-width:0;color:var(--text-2)}
+.msgs{display:flex;flex-direction:column;gap:12px;padding:4px 2px 14px}
+.msg{max-width:78%;padding:12px 14px;border-radius:16px;border:1px solid var(--border);background:var(--row)}
+.msg.out{align-self:flex-end;background:var(--selected)}
+.mb{font-size:14px;line-height:1.55}
+.mf{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px;font-size:12px;color:var(--text-muted)}
+.seenb{display:inline-flex;align-items:center;gap:4px;color:#007AFF;font-weight:500}
+[data-theme="light"] .seenb{color:#111113}[data-theme="dark"] .seenb{color:#9ec5ff}
+.composer{flex:none;border:1px solid var(--border);border-radius:16px;background:var(--row);padding:10px 12px}
+.cmeta{display:flex;justify-content:space-between;font-size:13px;color:var(--text-2);margin-bottom:4px}
+.composer textarea,.ib2 textarea{width:100%;box-sizing:border-box;border:0;background:transparent;color:var(--text);font:inherit;font-size:14px;resize:none;outline:none}
+.ib2 textarea{border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--row);resize:vertical}
+.cbar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-top:6px}
+.ctools,.csend{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.link{background:none;border:0;padding:0 4px;color:var(--text-2);font:inherit;font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.ih{display:flex;gap:12px;align-items:center;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.ib2{padding:12px 0;border-bottom:1px solid var(--border);font-size:14px}.ib2:last-child{border-bottom:0}
+.il{font-size:12px;color:var(--text-muted);margin-bottom:8px}
+.sts{display:flex;flex-wrap:wrap;gap:6px}
+.st{height:30px;padding:0 12px;border-radius:999px;border:0.2px solid #8a8d96;background:var(--btn-bg);color:var(--text);font:inherit;font-size:13px;cursor:pointer}
+.st.on{background:#5b54e8;color:#fff;border-color:#5b54e8}
+[data-theme="light"] .st.on{background:#111113;border-color:#111113}[data-theme="dark"] .st.on{background:#fff;color:#111113;border-color:#fff}
+.hint{font-size:12px;color:var(--text-muted);margin:8px 0 0}
+.kvr{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px}.kvr svg{color:var(--text-muted);flex:none}.kl{width:72px;color:var(--text-2)}
+.trunc{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Chat bubbles like Messenger / Instagram */
+.msg{border-radius:20px}
+.msg.in{background:var(--btn-hover,#f1f2f5);border-color:transparent;border-bottom-left-radius:6px}
+[data-theme="dark"] .msg.in{background:#2a2a2a}
+.msg.out{background:#2f6bff;border-color:transparent;color:#ffffff;border-bottom-right-radius:6px}
+[data-theme="gradient"] .msg.out{background:linear-gradient(135deg,#2f6bff 0%,#5b54e8 100%)}
+[data-theme="dark"] .msg.out{background:#2f6bff}
+.msg.out .mf{color:rgba(255,255,255,.82)}
+.msg.out .seenb,[data-theme="light"] .msg.out .seenb,[data-theme="dark"] .msg.out .seenb{color:#ffffff}
+
+.mwrap{display:flex;flex-direction:column;gap:6px;max-width:78%}
+.mwrap.out{align-self:flex-end;align-items:flex-end}.mwrap.in{align-self:flex-start;align-items:flex-start}
+.mwrap .msg{max-width:100%}
+.mfoot{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted)}
+.mt{margin-right:2px}
+.mchip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:999px;background:var(--row);border:0.2px solid var(--border-strong);color:var(--text-2);font-weight:500}
+.mchip svg{color:#2f6bff}[data-theme="light"] .mchip svg{color:#111113}[data-theme="dark"] .mchip svg{color:#9ec5ff}
+.seenav{width:18px;height:18px;border-radius:999px;background:var(--selected);border:1px solid var(--border-strong);font-size:8px;font-weight:600;color:var(--text-2);display:inline-flex;align-items:center;justify-content:center}
+.note{font-size:12px;margin-top:10px}
+[data-theme="gradient"] .pane{background:rgba(255,255,255,.6)}
+@media (max-width:1200px){.rgrid{grid-template-columns:320px minmax(0,1fr);height:auto}.rinfo{grid-column:1/-1}.pane{max-height:none}}
+@media (max-width:760px){.rgrid{grid-template-columns:1fr}.rmain{padding:16px}}
+.conv.c-interested{--dot:#34C759}
+[data-theme="gradient"] .conv.c-interested{--row-wash:radial-gradient(140% 240% at 100% 0%, #beedca 0%, color-mix(in srgb,#beedca 45%,#fff) 30%, color-mix(in srgb,#beedca 15%,#fff) 55%, rgba(255,255,255,0) 80%)}
+.conv.c-meeting{--dot:#007AFF}
+[data-theme="gradient"] .conv.c-meeting{--row-wash:radial-gradient(140% 240% at 100% 0%, #c2dbff 0%, color-mix(in srgb,#c2dbff 45%,#fff) 30%, color-mix(in srgb,#c2dbff 15%,#fff) 55%, rgba(255,255,255,0) 80%)}
+.conv.c-notnow{--dot:#FF9500}
+[data-theme="gradient"] .conv.c-notnow{--row-wash:radial-gradient(140% 240% at 100% 0%, #ffddad 0%, color-mix(in srgb,#ffddad 45%,#fff) 30%, color-mix(in srgb,#ffddad 15%,#fff) 55%, rgba(255,255,255,0) 80%)}
+.conv.c-notint{--dot:#FF3B30}
+[data-theme="gradient"] .conv.c-notint{--row-wash:radial-gradient(140% 240% at 100% 0%, #ffc4c1 0%, color-mix(in srgb,#ffc4c1 45%,#fff) 30%, color-mix(in srgb,#ffc4c1 15%,#fff) 55%, rgba(255,255,255,0) 80%)}
+.conv.c-none{--dot:#8a8d96}
+[data-theme="gradient"] .conv.c-none{--row-wash:radial-gradient(140% 240% at 100% 0%, #d6c6ff 0%, color-mix(in srgb,#d6c6ff 45%,#fff) 30%, color-mix(in srgb,#d6c6ff 15%,#fff) 55%, rgba(255,255,255,0) 80%)}
+/* SIDEBAR = PAGE BACKGROUND (24 Nov, must stay last): one background across sidebar + page */
+.side{background:transparent !important;backdrop-filter:none !important}
+</style></head><body><div class="app"><aside class="side">
+  <div class="brand"><span class="logo">K</span>Kestrel</div>
+  <div class="sec">Outreach</div>
+  <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7l8 7v9H4z"/></svg>Home</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>Leads<span class="count">128</span></a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11zM21.854 2.147l-10.94 10.939"/></svg>Campaigns</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M18 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M8 6h6a4 4 0 0 1 0 8h-4a4 4 0 0 0 0 8h6"/></svg>Sequences</a><a href="#" aria-current="page"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Replies<span class="count">3</span></a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M21 20H3"/></svg>Pipeline</a>
+  <div class="sec">Tools</div>
+  <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0M21 21l-4.3-4.3"/></svg>Find leads</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0zM20 3v4M22 5h-4M4 17v2M5 18H3"/></svg>Kestrel AI</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l2 2l4-4M5 4h14v16H5z"/></svg>Tasks</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16M6 15l4-5l4 3l5-7"/></svg>Analytics</a>
+  <div class="spacer"></div>
+  <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4z"/></svg>Guide</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8l4 4l4-7l4 7l4-4l-2 11H6z"/></svg>Owner</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Settings</a>
+  <div class="user"><span class="avatar">A</span><span class="who"><span class="nm">Affan</span><span class="pl">Free access until Nov 12, 2027</span></span></div>
+</aside><div style="flex:1;min-width:0"><div class="topbar" role="group" aria-label="Theme" style="max-width:none;margin:0;padding:16px 32px 0"><button class="btn" type="button" data-set="light">Light</button><button class="btn" type="button" data-set="dark">Dark</button><button class="btn" type="button" data-set="gradient" aria-pressed="true">Gradient</button></div><main class="rmain">
+<div class="lhead"><div><h1>Replies</h1><p class="lead">Every answer to your campaigns. Kestrel AI reads each one and suggests a label.</p></div>
+<div class="hbtns"><button class="ibw" type="button" aria-label="Reply alerts" title="Reply alerts"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg></button></div></div>
+<div class="rgrid">
+ <section class="pane rlist" aria-label="Inbox">
+  <div class="phead">
+   <div class="search" style="margin:0;flex:1"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0M21 21l-4.3-4.3"/></svg><input type="search" placeholder="Search" aria-label="Search replies"></div>
+   <button class="ib" type="button" aria-label="Filters" title="Filters"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M7 12h10M10 18h4"/></svg></button><button class="ib" type="button" aria-label="Refresh" title="Refresh"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5"/></svg></button>
+  </div>
+  <div class="itabs" role="tablist">
+   <button class="it on" type="button" role="tab" aria-label="To answer, 2" title="To answer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg><small>2</small></button>
+   <button class="it" type="button" role="tab" aria-label="All, 5" title="All"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13"/></svg><small>5</small></button>
+   <button class="it" type="button" role="tab" aria-label="Snoozed, 1" title="Snoozed"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0M12 6v6l4 2"/></svg><small>1</small></button>
+   <span class="isep"></span>
+   <button class="ib" type="button" aria-label="Filter by campaign" title="Filter by campaign"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11zM21.854 2.147l-10.94 10.939"/></svg></button><button class="ib" type="button" aria-label="Filter by email account" title="Filter by email account"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 7l-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></button>
+  </div>
+  <div class="pscroll convs"><button class="conv c-interested sel unread" type="button">
+<span class="av">DM<span class="ud" aria-label="Unread"></span></span>
+<span class="cbody"><span class="ctop"><span class="cname">Dr. Maya Ortiz</span><span class="rs seen" title="Your last email was opened"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L7 17l-5-5M22 10l-7.5 7.5L13 16"/></svg></span><span class="ctime">2h</span></span>
+<span class="cline"><span class="cbiz">Bright Smile Dental</span><span class="clab"><span class="ld"></span>Interested</span></span>
+<span class="csnip">Yes, send me 2 examples of promo videos for clinics.</span></span></button><button class="conv c-meeting unread" type="button">
+<span class="av">TR<span class="ud" aria-label="Unread"></span></span>
+<span class="cbody"><span class="ctop"><span class="cname">Tom Reid</span><span class="rs seen" title="Your last email was opened"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L7 17l-5-5M22 10l-7.5 7.5L13 16"/></svg></span><span class="ctime">5h</span></span>
+<span class="cline"><span class="cbiz">Clearview Cleaning Co</span><span class="clab"><span class="ld"></span>Meeting</span></span>
+<span class="csnip">Thursday 3pm works. Here is my number.</span></span></button><button class="conv c-notnow" type="button">
+<span class="av">JL</span>
+<span class="cbody"><span class="ctop"><span class="cname">Jess Lane</span><span class="rs seen" title="Your last email was opened"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L7 17l-5-5M22 10l-7.5 7.5L13 16"/></svg></span><span class="ctime">1d</span></span>
+<span class="cline"><span class="cbiz">Peak Form Fitness</span><span class="clab"><span class="ld"></span>Not now</span></span>
+<span class="csnip">Busy until January. Ping me then.</span></span></button><button class="conv c-notint" type="button">
+<span class="av">SP</span>
+<span class="cbody"><span class="ctop"><span class="cname">Sam Patel</span><span class="rs sent" title="Sent, not opened yet"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span><span class="ctime">1d</span></span>
+<span class="cline"><span class="cbiz">Oakline Physio</span><span class="clab"><span class="ld"></span>Not interested</span></span>
+<span class="csnip">We already have someone for this, thanks.</span></span></button><button class="conv c-none" type="button">
+<span class="av">SK</span>
+<span class="cbody"><span class="ctop"><span class="cname">Sara Kim</span><span class="rs seen" title="Your last email was opened"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L7 17l-5-5M22 10l-7.5 7.5L13 16"/></svg></span><span class="ctime">2d</span></span>
+<span class="cline"><span class="cbiz">GreenPlate Nutrition</span><span class="clab"><span class="ld"></span>No label</span></span>
+<span class="csnip">Who else have you worked with?</span></span></button></div>
+ </section>
+ <section class="pane thread" aria-label="Conversation">
+  <header class="th"><span class="av">MO</span><div class="thn"><div class="tn">Dr. Maya Ortiz</div><div class="ts">maya@brightsmile.com</div></div>
+   <div class="ta"><button class="ib" type="button" aria-label="Snooze" title="Snooze"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0M12 6v6l4 2"/></svg></button><button class="ib" type="button" aria-label="More options" title="More options"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0M18 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0M4 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/></svg></button></div></header>
+  <div class="ai"><span class="aib"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0zM20 3v4M22 5h-4M4 17v2M5 18H3"/></svg>Kestrel AI</span><span class="ait">Suggests <b>Interested</b>: asks for clinic video examples.</span><button class="btn" type="button">Use label</button></div>
+  <div class="pscroll msgs">
+   <div class="mwrap out"><div class="msg out"><div class="mb">Hi Maya, I saw Bright Smile has no video on the homepage yet. We make short promo videos for clinics that patients actually watch. Want me to send two examples?</div></div>
+<div class="mfoot"><span class="mt">Nov 19 · Step 1</span><span class="mchip" title="Opened 3 times"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L7 17l-5-5M22 10l-7.5 7.5L13 16"/></svg>Opened 3×</span><span class="mchip" title="Clicked your link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4.1L12 6M5.1 8l-2.9-.8M6 12l-1.9 2M7.2 2.2L8 5.1M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/></svg>Clicked</span><span class="seenav" title="Seen by Maya">MO</span></div></div>
+   <div class="mwrap in"><div class="msg in"><div class="mb">Yes, send me 2 examples of promo videos for clinics. Also what does it usually cost?</div></div><div class="mfoot"><span class="mt">Maya · Today 10:14</span></div></div>
+  </div>
+  <div class="composer">
+   <div class="cmeta"><span>To maya@brightsmile.com</span><button class="link" type="button">Cc / Bcc</button></div>
+   <textarea rows="3" aria-label="Your answer" placeholder="Write your answer"></textarea>
+   <div class="cbar">
+    <div class="ctools"><button class="ib" type="button" aria-label="Formatting" title="Formatting"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8"/></svg></button><button class="ib" type="button" aria-label="Attach files" title="Attach files"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button><button class="ib" type="button" aria-label="Emoji" title="Emoji"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0M8 14s1.5 2 4 2s4-2 4-2M9 9h.01M15 9h.01"/></svg></button><button class="ib" type="button" aria-label="Booking link" title="Booking link"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4M16 2v4M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM3 10h18"/></svg></button>
+     <button class="btn" type="button"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0zM20 3v4M22 5h-4M4 17v2M5 18H3"/></svg>Draft</button>
+     <button class="btn" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1zM9 12l2 2l4-4"/></svg>Spam check</button></div>
+    <div class="csend"><button class="ib" type="button" aria-label="Send later" title="Send later"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0M12 6v6l4 2"/></svg></button><button class="btn primary" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11zM21.854 2.147l-10.94 10.939"/></svg>Send</button></div>
+   </div>
+  </div>
+ </section>
+ <aside class="pane rinfo" aria-label="Lead details">
+  <div class="ih"><span class="av lg">MO</span><div><div class="tn">Dr. Maya Ortiz</div><div class="ts">Owner · Bright Smile Dental</div></div></div>
+  <div class="pscroll">
+  <div class="ib2"><div class="il">Lead status</div><div class="sts"><button type="button" class="st on">Interested</button><button type="button" class="st">Meeting</button><button type="button" class="st">Not now</button><button type="button" class="st">Not interested</button><button type="button" class="st">Wrong person</button><button type="button" class="st">Won</button><button type="button" class="st">Lost</button></div><p class="hint">Not interested also stops any follow-ups still planned.</p></div>
+  <div class="ib2 kv">
+   <div class="kvr"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11zM21.854 2.147l-10.94 10.939"/></svg><span class="kl">Campaign</span><span>Batch 005</span></div>
+   <div class="kvr"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 7l-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><span class="kl">Account</span><span class="trunc">affan@norvenstudio.site</span></div>
+   <div class="kvr"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M8 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/></svg><span class="kl">Assigned</span><span>You</span></div>
+   <div class="kvr"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span class="kl">Fit</span><span>Good fit · 86</span></div>
+  </div>
+  <div class="ib2"><div class="il">Activity</div>
+   <div class="kvr"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L7 17l-5-5M22 10l-7.5 7.5L13 16"/></svg><span class="kl">Opened</span><span>3 times</span></div>
+   <div class="kvr"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4.1L12 6M5.1 8l-2.9-.8M6 12l-1.9 2M7.2 2.2L8 5.1M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"/></svg><span class="kl">Clicked</span><span>Nov 20</span></div>
+   <div class="kvr"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg><span class="kl">Replied</span><span>Today 10:14</span></div></div>
+  <div class="ib2"><div class="il">Note for your team</div><textarea rows="3" aria-label="Note for your team" placeholder="Only your team sees notes."></textarea><button class="btn" type="button" style="margin-top:8px">Save note</button></div>
+  </div>
+ </aside>
+</div>
+<p class="muted note">Sample data. The real page shows your replies.</p>
+</main></div></div><script>
+document.querySelectorAll('[data-set]').forEach(function(b){b.addEventListener('click',function(){document.documentElement.setAttribute('data-theme',b.dataset.set);document.querySelectorAll('[data-set]').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});});});
+function one(sel,cls){document.querySelectorAll(sel).forEach(function(s){s.addEventListener('click',function(){document.querySelectorAll(sel).forEach(function(x){x.classList.remove(cls)});s.classList.add(cls);});});}
+one('.st','on');one('.conv','sel');one('.it','on');
+</script></body></html>

@@ -12,7 +12,7 @@
   --page:#eef0f3; --panel:#ffffff; --row:#ffffff; --border:#e3e5ea; --border-strong:#d6d8df;
   --selected:#f1f2f5; --text:#1d1d22; --text-2:#5f6470; --text-muted:#6b7080;
   --accent:#5b54e8; --accent-text:#ffffff;
-  --ok-bg:#e3f6ea; --ok-text:#1a7f37; --ok-dot:#2fb45a;
+  --ok-bg:#e3f7e8; --ok-text:#248A3D; --ok-dot:#34C759;
   --btn-bg:#ffffff; --btn-hover:#f4f5f8; --focus:#5b54e8;
   --page-wash:none; --row-wash:none;
 }
@@ -20,16 +20,16 @@
   --page:#1a1a1a; --panel:#1f1f1f; --row:#1f1f1f; --border:#333333; --border-strong:#4a4a4a;
   --selected:#3a3a3a; --text:#ececec; --text-2:#a3a3a3; --text-muted:#8a8a8a;
   --accent:#ececec; --accent-text:#1a1a1a;
-  --ok-bg:#1c2b1f; --ok-text:#3fb950; --ok-dot:#3fb950;
+  --ok-bg:#12301b; --ok-text:#30D158; --ok-dot:#30D158;
   --btn-bg:transparent; --btn-hover:#2a2a2a; --focus:#9aa4ff;
 }
 [data-theme="gradient"]{
   --page:#fbfbfd; --panel:rgba(255,255,255,.55); --row:#ffffff; --border:#e6e3f0; --border-strong:#d9d6e6;
   --selected:#ffffff; --text:#1d1d22; --text-2:#5f6470; --text-muted:#6b7080;
   --accent:#5b54e8; --accent-text:#ffffff;
-  --ok-bg:linear-gradient(90deg,#ffffff 0%, var(--tint,#bcecd2) 100%); --ok-text:#1d1d22; --ok-dot:#1f9d55;
+  --ok-bg:linear-gradient(90deg,#ffffff 0%, var(--tint,#beedca) 100%); --ok-text:#1d1d22; --ok-dot:#34C759;
   --btn-bg:#ffffff; --btn-hover:#f6f5fb; --focus:#5b54e8;
-  --page-wash:radial-gradient(60% 60% at 0% 0%, color-mix(in srgb,#d6c6ff 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 100% 0%, color-mix(in srgb,#bcecd2 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(60% 65% at 100% 100%, color-mix(in srgb,#ffd2ad 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 0% 100%, color-mix(in srgb,#c2dbff 70%,#fff) 0%, rgba(255,255,255,0) 70%);
+  --page-wash:radial-gradient(60% 60% at 0% 0%, color-mix(in srgb,#d6c6ff 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 100% 0%, color-mix(in srgb,#beedca 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(60% 65% at 100% 100%, color-mix(in srgb,#ffddad 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 0% 100%, color-mix(in srgb,#c2dbff 70%,#fff) 0%, rgba(255,255,255,0) 70%);
 }
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;background:var(--page-wash),var(--page);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:16px;line-height:1.5;padding:32px}
@@ -70,20 +70,22 @@ h1{margin:0 0 4px;font-size:24px;font-weight:600;line-height:1.2}
 /* Gradient theme only: each row gets its OWN soft corner wash, like the campaign cards */
 [data-theme="gradient"] .row.t1{--tint:#d6c6ff;--row-wash:radial-gradient(140% 240% at 100% 0%, #d6c6ff 0%, color-mix(in srgb, #d6c6ff 45%, #ffffff) 30%, color-mix(in srgb, #d6c6ff 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
 [data-theme="gradient"] .row.t2{--tint:#c2dbff;--row-wash:radial-gradient(140% 240% at 100% 0%, #c2dbff 0%, color-mix(in srgb, #c2dbff 45%, #ffffff) 30%, color-mix(in srgb, #c2dbff 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
-[data-theme="gradient"] .row.t3{--tint:#ffd2ad;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffd2ad 0%, color-mix(in srgb, #ffd2ad 45%, #ffffff) 30%, color-mix(in srgb, #ffd2ad 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
-[data-theme="gradient"] .row.t4{--tint:#bcecd2;--row-wash:radial-gradient(140% 240% at 100% 0%, #bcecd2 0%, color-mix(in srgb, #bcecd2 45%, #ffffff) 30%, color-mix(in srgb, #bcecd2 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t3{--tint:#ffddad;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffddad 0%, color-mix(in srgb, #ffddad 45%, #ffffff) 30%, color-mix(in srgb, #ffddad 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t4{--tint:#beedca;--row-wash:radial-gradient(140% 240% at 100% 0%, #beedca 0%, color-mix(in srgb, #beedca 45%, #ffffff) 30%, color-mix(in srgb, #beedca 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
 [data-theme="gradient"] .row.t5{--tint:#ffc6da;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffc6da 0%, color-mix(in srgb, #ffc6da 45%, #ffffff) 30%, color-mix(in srgb, #ffc6da 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
-[data-theme="gradient"] .row.t6{--tint:#ffe48f;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffe48f 0%, color-mix(in srgb, #ffe48f 45%, #ffffff) 30%, color-mix(in srgb, #ffe48f 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t6{--tint:#ffea94;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffea94 0%, color-mix(in srgb, #ffea94 45%, #ffffff) 30%, color-mix(in srgb, #ffea94 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
 [data-theme="light"] .badge{background:#111113;color:#ffffff;border:0.2px solid #111113}
 [data-theme="light"] .badge::before{background:#ffffff}
-[data-theme="gradient"] .badge{background:linear-gradient(90deg,#ffffff 0%, var(--tint,#bcecd2) 100%);border:0.2px solid color-mix(in srgb, var(--tint,#bcecd2) 92%, #000000)}
-[data-theme="gradient"] .badge::before{background:color-mix(in srgb, var(--tint,#bcecd2) 45%, #000000)}
+[data-theme="gradient"] .badge{background:linear-gradient(90deg,#ffffff 0%, var(--tint,#beedca) 100%);border:0.2px solid color-mix(in srgb, var(--tint,#beedca) 92%, #000000)}
+[data-theme="gradient"] .badge::before{background:color-mix(in srgb, var(--tint,#beedca) 45%, #000000)}
 [data-theme="dark"] .badge{background:#ffffff;color:#111113;border:0.2px solid #ffffff}
 [data-theme="dark"] .badge::before{background:#111113}
 [data-theme="dark"] .btn.solid{background:#3a3a3a;color:#ececec;border-color:#4a4a4a}
 [data-theme="dark"] .btn.solid:hover{background:#454545;filter:none}
 [data-theme="light"] .btn.solid,[data-theme="gradient"] .btn.solid{background:#ffffff;color:#1d1d22;border:0.2px solid #8a8d96}
 [data-theme="light"] .btn.solid:hover,[data-theme="gradient"] .btn.solid:hover{background:#f4f4f7;filter:none}
+[data-theme="light"] .btn.primary{background:#111113;color:#ffffff;border-color:#111113}
+[data-theme="dark"] .btn.primary{background:#ffffff;color:#111113;border-color:#ffffff}
 @media (prefers-reduced-motion: reduce){.btn{transition:none}}
 @media (max-width:760px){body{padding:12px}.shell{flex-direction:column}.menu{flex:none;border-right:0;border-bottom:1px solid var(--border);flex-direction:row;overflow-x:auto}.menu-label{display:none}.menu a{white-space:nowrap}.content{padding:24px 16px}}
 
@@ -107,6 +109,8 @@ body{padding:0}
 .main .topbar{margin:0 0 16px;max-width:none}
 .main .shell{max-width:none}
 @media (max-width:860px){.app{flex-direction:column}.side{flex:none;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;border-right:0;border-bottom:1px solid var(--border)}.sec,.spacer,.user,.brand{display:none}.side a{white-space:nowrap}.main{padding:16px}}
+/* SIDEBAR = PAGE BACKGROUND (24 Nov, must stay last): one background across sidebar + page */
+.side{background:transparent !important;backdrop-filter:none !important}
 </style>
 </head>
 <body>

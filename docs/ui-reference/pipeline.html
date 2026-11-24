@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en" data-theme="gradient">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kestrel — Pipeline (reference U3)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* REFERENCE v2. Three themes: light (solid), dark (solid), gradient (soft color washes). */
+:root,[data-theme="light"]{
+  --page:#eef0f3; --panel:#ffffff; --row:#ffffff; --border:#e3e5ea; --border-strong:#d6d8df;
+  --selected:#f1f2f5; --text:#1d1d22; --text-2:#5f6470; --text-muted:#6b7080;
+  --accent:#5b54e8; --accent-text:#ffffff;
+  --ok-bg:#e3f7e8; --ok-text:#248A3D; --ok-dot:#34C759;
+  --btn-bg:#ffffff; --btn-hover:#f4f5f8; --focus:#5b54e8;
+  --page-wash:none; --row-wash:none;
+}
+[data-theme="dark"]{
+  --page:#1a1a1a; --panel:#1f1f1f; --row:#1f1f1f; --border:#333333; --border-strong:#4a4a4a;
+  --selected:#3a3a3a; --text:#ececec; --text-2:#a3a3a3; --text-muted:#8a8a8a;
+  --accent:#ececec; --accent-text:#1a1a1a;
+  --ok-bg:#12301b; --ok-text:#30D158; --ok-dot:#30D158;
+  --btn-bg:transparent; --btn-hover:#2a2a2a; --focus:#9aa4ff;
+}
+[data-theme="gradient"]{
+  --page:#fbfbfd; --panel:rgba(255,255,255,.55); --row:#ffffff; --border:#e6e3f0; --border-strong:#d9d6e6;
+  --selected:#ffffff; --text:#1d1d22; --text-2:#5f6470; --text-muted:#6b7080;
+  --accent:#5b54e8; --accent-text:#ffffff;
+  --ok-bg:linear-gradient(90deg,#ffffff 0%, var(--tint,#beedca) 100%); --ok-text:#1d1d22; --ok-dot:#34C759;
+  --btn-bg:#ffffff; --btn-hover:#f6f5fb; --focus:#5b54e8;
+  --page-wash:radial-gradient(60% 60% at 0% 0%, color-mix(in srgb,#d6c6ff 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 100% 0%, color-mix(in srgb,#beedca 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(60% 65% at 100% 100%, color-mix(in srgb,#ffddad 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 0% 100%, color-mix(in srgb,#c2dbff 70%,#fff) 0%, rgba(255,255,255,0) 70%);
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--page-wash),var(--page);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:16px;line-height:1.5;padding:32px}
+.topbar{max-width:1200px;margin:0 auto 16px;display:flex;justify-content:flex-end;gap:8px}
+.shell{max-width:1200px;margin:0 auto;display:flex;background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;min-height:640px;backdrop-filter:blur(8px)}
+.menu{flex:0 0 240px;padding:24px 12px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:2px}
+.menu-label{font-size:13px;color:var(--text-muted);padding:0 14px 8px}
+.menu a{display:flex;align-items:center;height:38px;padding:0 14px;border-radius:999px;color:var(--text);text-decoration:none;font-size:15px}
+.menu a:hover{background:var(--btn-hover)}
+.menu a[aria-current="page"]{background:var(--selected);border:1px solid var(--border);font-weight:500}
+.content{flex:1;min-width:0;padding:32px 40px 40px}
+h1{margin:0 0 4px;font-size:24px;font-weight:600;line-height:1.2}
+.lead{margin:0 0 24px;color:var(--text-2);font-size:15px}
+.search{position:relative;margin-bottom:32px;max-width:480px}
+.search svg{position:absolute;left:14px;top:11px;color:var(--text-muted)}
+.search input{width:100%;height:40px;padding:0 16px 0 40px;border-radius:999px;border:1px solid var(--border);background:var(--row);color:var(--text);font:inherit;font-size:15px}
+.search input::placeholder{color:var(--text-muted)}
+.search input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.group-label{font-size:13px;color:var(--text-muted);margin:0 0 8px 4px}
+.group{display:flex;flex-direction:column;gap:8px;margin-bottom:28px}
+.row{display:flex;align-items:center;gap:14px;min-height:64px;padding:12px 14px 12px 16px;border:1px solid var(--border);border-radius:14px;background:var(--row-wash,none),var(--row)}
+.ico{flex:none;width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--row);display:flex;align-items:center;justify-content:center;color:var(--text)}
+.txt{flex:1;min-width:0}
+.name{font-size:15px;font-weight:500;line-height:1.3}
+.desc{font-size:14px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;padding:5px 12px;border-radius:999px;background:var(--ok-bg);color:var(--ok-text);white-space:nowrap}
+.badge::before{content:"";width:6px;height:6px;border-radius:999px;background:var(--ok-dot)}
+.btn{height:34px;padding:0 16px;border-radius:999px;border:1px solid var(--border-strong);background:var(--btn-bg);color:var(--text);font:inherit;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background-color .15s ease-out, scale .15s ease-out}
+.btn:hover{background:var(--btn-hover)}
+.btn:active{scale:.96}
+.btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.btn.solid{background:var(--accent);color:var(--accent-text);border-color:transparent}
+.btn.solid:hover{filter:brightness(1.08);background:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-text);border-color:transparent}
+.btn[aria-pressed="true"]{background:var(--accent);color:var(--accent-text);border-color:transparent}
+.adv{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px 0 10px;border-radius:999px;border:1px solid var(--border);background:var(--btn-bg);color:var(--text);font:inherit;font-size:14px;cursor:pointer}
+.adv svg{color:var(--text-2)}
+/* Gradient theme only: each row gets its OWN soft corner wash, like the campaign cards */
+[data-theme="gradient"] :is(.row,.lrow,.pcard).t1{--tint:#d6c6ff;--row-wash:radial-gradient(140% 240% at 100% 0%, #d6c6ff 0%, color-mix(in srgb, #d6c6ff 45%, #ffffff) 30%, color-mix(in srgb, #d6c6ff 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] :is(.row,.lrow,.pcard).t2{--tint:#c2dbff;--row-wash:radial-gradient(140% 240% at 100% 0%, #c2dbff 0%, color-mix(in srgb, #c2dbff 45%, #ffffff) 30%, color-mix(in srgb, #c2dbff 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] :is(.row,.lrow,.pcard).t3{--tint:#ffddad;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffddad 0%, color-mix(in srgb, #ffddad 45%, #ffffff) 30%, color-mix(in srgb, #ffddad 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] :is(.row,.lrow,.pcard).t4{--tint:#beedca;--row-wash:radial-gradient(140% 240% at 100% 0%, #beedca 0%, color-mix(in srgb, #beedca 45%, #ffffff) 30%, color-mix(in srgb, #beedca 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] :is(.row,.lrow,.pcard).t5{--tint:#ffc6da;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffc6da 0%, color-mix(in srgb, #ffc6da 45%, #ffffff) 30%, color-mix(in srgb, #ffc6da 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] :is(.row,.lrow,.pcard).t6{--tint:#ffea94;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffea94 0%, color-mix(in srgb, #ffea94 45%, #ffffff) 30%, color-mix(in srgb, #ffea94 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="light"] .badge{background:#111113;color:#ffffff;border:0.2px solid #111113}
+[data-theme="light"] .badge::before{background:#ffffff}
+[data-theme="gradient"] .badge{background:linear-gradient(90deg,#ffffff 0%, var(--tint,#beedca) 100%);border:0.2px solid color-mix(in srgb, var(--tint,#beedca) 92%, #000000)}
+[data-theme="gradient"] .badge::before{background:color-mix(in srgb, var(--tint,#beedca) 45%, #000000)}
+[data-theme="dark"] .badge{background:#ffffff;color:#111113;border:0.2px solid #ffffff}
+[data-theme="dark"] .badge::before{background:#111113}
+[data-theme="dark"] .btn.solid{background:#3a3a3a;color:#ececec;border-color:#4a4a4a}
+[data-theme="dark"] .btn.solid:hover{background:#454545;filter:none}
+[data-theme="light"] .btn.solid,[data-theme="gradient"] .btn.solid{background:#ffffff;color:#1d1d22;border:0.2px solid #8a8d96}
+[data-theme="light"] .btn.solid:hover,[data-theme="gradient"] .btn.solid:hover{background:#f4f4f7;filter:none}
+@media (prefers-reduced-motion: reduce){.btn{transition:none}}
+@media (max-width:760px){body{padding:12px}.shell{flex-direction:column}.menu{flex:none;border-right:0;border-bottom:1px solid var(--border);flex-direction:row;overflow-x:auto}.menu-label{display:none}.menu a{white-space:nowrap}.content{padding:24px 16px}}
+
+.app{display:flex;min-height:100vh}
+body{padding:0}
+.side{flex:0 0 248px;display:flex;flex-direction:column;gap:2px;padding:16px 12px;background:var(--panel);border-right:1px solid var(--border);backdrop-filter:blur(8px)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px;padding:4px 10px 16px}
+.logo{width:28px;height:28px;border-radius:9px;background:var(--accent);color:var(--accent-text);display:flex;align-items:center;justify-content:center;font-size:14px}
+.sec{font-size:12px;color:var(--text-muted);padding:14px 12px 6px}
+.side a{display:flex;align-items:center;gap:10px;height:36px;padding:0 12px;border-radius:999px;color:var(--text);text-decoration:none;font-size:14px;border:1px solid transparent}
+.side a svg{color:var(--text-2);flex:none}
+.side a:hover{background:var(--btn-hover)}
+.side a[aria-current="page"]{background:var(--selected);border-color:var(--border);font-weight:500}
+.side a[aria-current="page"] svg{color:var(--text)}
+.count{margin-left:auto;font-size:12px;color:var(--text-2);background:var(--btn-hover);border-radius:999px;padding:1px 8px}
+.spacer{flex:1}
+.user{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px;border-top:1px solid var(--border)}
+.avatar{width:30px;height:30px;border-radius:999px;background:var(--selected);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600}
+.who{display:flex;flex-direction:column;line-height:1.3}.nm{font-size:14px;font-weight:500}.pl{font-size:12px;color:var(--text-muted)}
+.main{flex:1;min-width:0;padding:24px 32px}
+.main .topbar{margin:0 0 16px;max-width:none}
+.main .shell{max-width:none}
+@media (max-width:860px){.app{flex-direction:column}.side{flex:none;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;border-right:0;border-bottom:1px solid var(--border)}.sec,.spacer,.user,.brand{display:none}.side a{white-space:nowrap}.main{padding:16px}}
+
+
+.pmain{flex:1;min-width:0;padding:28px 32px 32px}
+.lhead{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px}.lhead .lead{margin:0}
+.path{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:4px 2px 8px}
+.phase{flex:none;display:flex;flex-direction:column;gap:14px;padding:16px 18px 14px;border:1px solid var(--border);border-radius:22px;background:var(--panel)}
+.phd{display:flex;align-items:baseline;gap:8px}.pt{font-size:14px;font-weight:600}.ps{font-size:12px;color:var(--text-muted)}
+.stops{display:flex;align-items:flex-start}
+.bridge{flex:none;width:28px;align-self:center;height:2px;background:repeating-linear-gradient(90deg,var(--border-strong) 0 6px,transparent 6px 12px)}
+.seg{flex:none;width:34px;height:2px;margin-top:27px;background:var(--border-strong)}
+.stop{display:flex;flex-direction:column;align-items:center;gap:8px;width:92px;border:0;background:transparent;padding:0;cursor:pointer;color:var(--text);font:inherit}
+.dot{width:56px;height:56px;border-radius:999px;border:1px solid var(--border-strong);background:var(--row);display:flex;align-items:center;justify-content:center;transition:transform .15s ease-out,box-shadow .15s ease-out}
+.dot b{font-size:17px;font-weight:600}
+.sn{font-size:12px;color:var(--text-2);text-align:center;line-height:1.3}
+.stop:hover .dot{transform:translateY(-2px)}
+.stop:focus-visible{outline:none}.stop:focus-visible .dot{outline:2px solid var(--focus);outline-offset:3px}
+.stop.on .dot{background:#111113;border-color:#111113;color:#fff;box-shadow:0 0 0 5px color-mix(in srgb,#111113 12%,transparent)}
+.stop.on .sn{color:var(--text);font-weight:500}
+[data-theme="dark"] .stop.on .dot{background:#ffffff;border-color:#ffffff;color:#111113;box-shadow:0 0 0 5px rgba(255,255,255,.1)}
+.forkbox{display:flex;flex-direction:column;gap:10px}
+.fork .stop{flex-direction:row;width:auto;gap:10px}.fork .dot{width:40px;height:40px}.fork .dot b{font-size:14px}
+.fork .stop.won .dot{border-color:#34C759}.fork .stop.lost .dot{border-color:#FF3B30}
+.rates{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0 22px}
+.rate{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;border:0.2px solid var(--border-strong);background:var(--row);font-size:13px}.rl{color:var(--text-2)}
+.off{margin-left:auto;display:flex;gap:12px}
+.link{background:none;border:0;padding:0;color:var(--text-2);font:inherit;font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.stage{border:1px solid var(--border);border-radius:22px;background:var(--panel);padding:20px}
+.sh{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:16px}
+.sh h2{margin:0 0 2px;font-size:20px;font-weight:600}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
+.pcard{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:var(--row-wash,none),var(--row);cursor:pointer}
+.pcard:hover{border-color:var(--border-strong)}
+.av{flex:none;width:36px;height:36px;border-radius:999px;border:1px solid var(--border);background:var(--row);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--text-2)}
+.bt{min-width:0;flex:1}.bt .name{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bt .desc{font-size:12px;color:var(--text-2)}
+.meta{flex:none;font-size:12px;color:var(--text-2);padding:3px 10px;border-radius:999px;border:0.2px solid var(--border-strong);background:var(--row);white-space:nowrap}
+.mv{display:flex;gap:6px;margin-top:14px;font-size:13px;color:var(--text-2);align-items:center;flex-wrap:wrap}
+.note{font-size:12px;margin-top:10px}
+[data-theme="gradient"] .phase,[data-theme="gradient"] .stage{background:rgba(255,255,255,.55)}
+
+.mrow{margin-top:6px;display:flex}
+.sgrid{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.pcard{align-items:flex-start}
+.p1{--tint:#d6c6ff}.p2{--tint:#c2dbff}.p3{--tint:#ffddad}.p4{--tint:#beedca}.p5{--tint:#cdd3ff}
+/* won / lost colors in every theme */
+.fork .stop.won{--tint:#a4e6b4}.fork .stop.lost{--tint:#ffb5b0}
+.fork .stop.won .dot{border-color:#34C759}.fork .stop.lost .dot{border-color:#FF3B30}
+/* GRADIENT theme: feathered washes on every panel, gradient circles */
+[data-theme="gradient"] .phase,[data-theme="gradient"] .stage{background:radial-gradient(140% 220% at 100% 0%, var(--tint) 0%, color-mix(in srgb,var(--tint) 45%,#fff) 30%, color-mix(in srgb,var(--tint) 15%,#fff) 55%, rgba(255,255,255,.55) 80%),rgba(255,255,255,.55);border-color:color-mix(in srgb,var(--tint) 70%,#e6e3f0)}
+[data-theme="gradient"] .dot{background:radial-gradient(circle at 30% 25%, #ffffff 0%, color-mix(in srgb,var(--tint) 55%,#fff) 55%, var(--tint) 100%);border:0.2px solid color-mix(in srgb,var(--tint) 75%,#000)}
+[data-theme="gradient"] .seg{background:color-mix(in srgb,var(--tint) 80%,#000 10%)}
+[data-theme="gradient"] .stop.on .dot{background:radial-gradient(circle at 30% 25%, #ffffff 0%, var(--tint) 60%, color-mix(in srgb,var(--tint) 80%,#000) 100%);color:#1d1d22;border:2px solid color-mix(in srgb,var(--tint) 60%,#000);box-shadow:0 0 0 6px color-mix(in srgb,var(--tint) 45%,transparent)}
+[data-theme="gradient"] .fork .stop.won .dot{background:radial-gradient(circle at 30% 25%,#ffffff 0%,#ccf1d6 55%,#85dd9b 100%);border:0.2px solid #248A3D}
+[data-theme="gradient"] .fork .stop.lost .dot{background:radial-gradient(circle at 30% 25%,#ffffff 0%,#ffd8d6 55%,#ff9d98 100%);border:0.2px solid #D70015}
+[data-theme="gradient"] .fork .stop.won.on .dot{border:2px solid #248A3D;box-shadow:0 0 0 6px rgba(127,217,166,.45)}
+[data-theme="gradient"] .fork .stop.lost.on .dot{border:2px solid #D70015;box-shadow:0 0 0 6px rgba(255,156,156,.45)}
+/* LIGHT theme: solid, won green / lost red fills */
+[data-theme="light"] .fork .stop.won .dot{background:#e3f7e8}[data-theme="light"] .fork .stop.lost .dot{background:#ffebea}
+[data-theme="dark"] .fork .stop.won .dot{background:#12301b;border-color:#30D158}[data-theme="dark"] .fork .stop.lost .dot{background:#3a1513;border-color:#FF453A}
+
+/* Circles = the main button color (#5b54e8), no outline, every theme */
+.stops .dot{background:#5b54e8;border:0;color:#ffffff}
+[data-theme="gradient"] .stops .dot{background:radial-gradient(circle at 30% 25%, #8f8af5 0%, #6a64ee 55%, #5b54e8 100%);border:0;color:#ffffff}
+.stops .stop.on .dot,[data-theme="gradient"] .stops .stop.on .dot,[data-theme="dark"] .stops .stop.on .dot{background:#4a43d6;border:0;color:#ffffff;box-shadow:0 0 0 6px rgba(91,84,232,.22)}
+[data-theme="gradient"] .seg,.seg{background:#b9b5f5}
+[data-theme="dark"] .seg{background:#4b4790}
+[data-theme="dark"] .stops .dot{background:#5b54e8}
+
+/* one phase per view: toggle + swipe/scroll */
+.ptoggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+.seg-t{display:flex;gap:4px;padding:4px;border:1px solid var(--border);border-radius:999px;background:var(--row)}
+.pt-b{height:32px;padding:0 16px;border:0;border-radius:999px;background:transparent;color:var(--text-2);font:inherit;font-size:14px;cursor:pointer;white-space:nowrap}
+.pt-b small{font-size:12px;margin-left:4px;color:var(--text-muted)}
+.pt-b.on{background:#5b54e8;color:#fff}.pt-b.on small{color:#dcdafc}
+.pnav{width:34px;height:34px;border-radius:999px;border:0.2px solid #8a8d96;background:var(--btn-bg);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.pnav:disabled{opacity:.35;cursor:default}
+.pdots{display:flex;gap:6px;margin-left:auto}.pdots span{width:7px;height:7px;border-radius:999px;background:var(--border-strong)}.pdots span.on{background:#5b54e8;width:18px}
+.path{overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;gap:16px;scrollbar-width:none;padding:4px 0 8px}
+.path::-webkit-scrollbar{display:none}
+.path .phase{flex:0 0 100%;box-sizing:border-box;scroll-snap-align:start;padding:22px 28px 22px}
+.path .stops{justify-content:space-between}
+.path .seg{flex:1 1 auto;width:auto;min-width:24px;margin-top:35px}
+.path .stop{width:120px}
+.path .stops .dot{width:72px;height:72px}.path .stops .dot b{font-size:22px}
+.path .sn{font-size:13px}
+.forkbox{flex-direction:row;justify-content:center;gap:48px}
+.fork .stop{flex-direction:column;width:140px}.fork .dot{width:72px;height:72px}.fork .dot b{font-size:20px}
+@media (prefers-reduced-motion: reduce){.path{scroll-behavior:auto}}
+
+.pw{--tint:#beedca}.pl{--tint:#ffc4c1}
+.single .stops{justify-content:center}
+/* ALL circles: solid main button color, no outline, every theme */
+.path .stops .dot,[data-theme="gradient"] .path .stops .dot,[data-theme="dark"] .path .stops .dot,[data-theme="light"] .path .stops .dot{background:#5b54e8 !important;border:0 !important;color:#ffffff}
+.path .stops .stop.on .dot,[data-theme="gradient"] .path .stops .stop.on .dot,[data-theme="dark"] .path .stops .stop.on .dot{background:#4a43d6 !important;box-shadow:0 0 0 6px rgba(91,84,232,.22) !important}
+
+/* LIGHT = black, DARK = white for main buttons, circles and the active toggle. Gradient keeps blue. */
+[data-theme="light"] .btn.primary,[data-theme="light"] .pt-b.on,[data-theme="light"] .pdots span.on{background:#111113 !important;color:#ffffff;border-color:#111113}
+[data-theme="light"] .pt-b.on small{color:#c9c9cf}
+[data-theme="light"] .path .stops .dot{background:#111113 !important;color:#ffffff}
+[data-theme="light"] .path .stops .stop.on .dot{background:#000000 !important;box-shadow:0 0 0 6px rgba(17,17,19,.14) !important}
+[data-theme="light"] .seg{background:#c9c9cf !important}
+[data-theme="dark"] .btn.primary,[data-theme="dark"] .pt-b.on,[data-theme="dark"] .pdots span.on{background:#ffffff !important;color:#111113;border-color:#ffffff}
+[data-theme="dark"] .pt-b.on small{color:#5f6470}
+[data-theme="dark"] .path .stops .dot{background:#ffffff !important;color:#111113}
+[data-theme="dark"] .path .stops .stop.on .dot{background:#e6e6ea !important;box-shadow:0 0 0 6px rgba(255,255,255,.14) !important}
+[data-theme="dark"] .seg{background:#4a4a4a !important}
+
+[data-theme="dark"] .path .stop .dot,[data-theme="dark"] .path .stop .dot b,[data-theme="dark"] .path .stop.on .dot,[data-theme="dark"] .path .stop.on .dot b{color:#111113 !important}
+[data-theme="light"] .path .stop .dot,[data-theme="light"] .path .stop .dot b,[data-theme="light"] .path .stop.on .dot,[data-theme="light"] .path .stop.on .dot b{color:#ffffff !important}
+[data-theme="gradient"] .path .stop .dot,[data-theme="gradient"] .path .stop .dot b,[data-theme="gradient"] .path .stop.on .dot,[data-theme="gradient"] .path .stop.on .dot b{color:#ffffff !important}
+@media (prefers-reduced-motion: reduce){.dot{transition:none}}
+/* SIDEBAR = PAGE BACKGROUND (24 Nov, must stay last): one background across sidebar + page */
+.side{background:transparent !important;backdrop-filter:none !important}
+</style></head>
+<body><div class="app"><aside class="side">
+  <div class="brand"><span class="logo">K</span>Kestrel</div>
+  <div class="sec">Outreach</div>
+  <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7l8 7v9H4z"/></svg>Home</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>Leads<span class="count">128</span></a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l16-8l-6 16l-3-7z"/></svg>Campaigns</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M18 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M8 6h6a4 4 0 0 1 0 8h-4a4 4 0 0 0 0 8h6"/></svg>Sequences</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13h4l2 3h4l2-3h4M4 13l2-8h12l2 8v6H4z"/></svg>Replies<span class="count">3</span></a><a href="#" aria-current="page"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M21 20H3"/></svg>Pipeline</a>
+  <div class="sec">Tools</div>
+  <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0M20 20l-4-4"/></svg>Find leads</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>Kestrel AI</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l2 2l4-4M5 4h14v16H5z"/></svg>Tasks</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16M6 15l4-5l4 3l5-7"/></svg>Analytics</a>
+  <div class="spacer"></div>
+  <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4z"/></svg>Guide</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8l4 4l4-7l4 7l4-4l-2 11H6z"/></svg>Owner</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Settings</a>
+  <div class="user"><span class="avatar">A</span><span class="who"><span class="nm">Affan</span><span class="pl">Free access until Nov 12, 2027</span></span></div>
+</aside><div style="flex:1;min-width:0"><div class="topbar" role="group" aria-label="Theme" style="max-width:none;margin:0;padding:16px 32px 0"><button class="btn" type="button" data-set="light">Light</button><button class="btn" type="button" data-set="dark">Dark</button><button class="btn" type="button" data-set="gradient" aria-pressed="true">Gradient</button></div><main class="pmain">
+  <div class="lhead">
+    <div><h1>Pipeline</h1><p class="lead">The flight path of every lead. Kestrel moves them forward for you. Click a stop to see who is there.</p></div>
+    <div class="search" style="width:280px;margin:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0M20 20l-4-4"/></svg><input type="search" placeholder="Search pipeline" aria-label="Search pipeline"></div>
+  </div>
+  <div class="ptoggle">
+  <button class="pnav" type="button" id="prev" aria-label="Previous phase"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6l6 6"/></svg></button>
+  <div class="seg-t" role="tablist" aria-label="Pipeline phase">
+    <button role="tab" type="button" class="pt-b on" data-i="0">Prepare <small>11</small></button>
+    <button role="tab" type="button" class="pt-b" data-i="1">Outreach <small>7</small></button>
+    <button role="tab" type="button" class="pt-b" data-i="2">Close <small>1</small></button>
+    <button role="tab" type="button" class="pt-b" data-i="3">Won <small>1</small></button>
+    <button role="tab" type="button" class="pt-b" data-i="4">Lost <small>2</small></button>
+  </div>
+  <button class="pnav" type="button" id="next" aria-label="Next phase"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6l-6 6"/></svg></button>
+  <div class="pdots" aria-hidden="true"><span class="on"></span><span></span><span></span><span></span><span></span></div>
+</div>
+<div class="path" id="path"><div class="phase p1" id="ph-0" data-first="review"><div class="phd"><span class="pt">Prepare</span><span class="ps">Get each lead ready</span></div><div class="stops"><button class="stop" type="button" data-k="review" aria-label="To review, 4 leads"><span class="dot"><b>4</b></span><span class="sn">To review</span></button><span class="seg" aria-hidden="true"></span><button class="stop" type="button" data-k="email" aria-label="Needs email, 2 leads"><span class="dot"><b>2</b></span><span class="sn">Needs email</span></button><span class="seg" aria-hidden="true"></span><button class="stop" type="button" data-k="write" aria-label="Write emails, 3 leads"><span class="dot"><b>3</b></span><span class="sn">Write emails</span></button><span class="seg" aria-hidden="true"></span><button class="stop" type="button" data-k="ready" aria-label="Ready to send, 2 leads"><span class="dot"><b>2</b></span><span class="sn">Ready to send</span></button></div></div><div class="phase p2" id="ph-1" data-first="outreach"><div class="phd"><span class="pt">Outreach</span><span class="ps">Talk to them</span></div><div class="stops"><button class="stop" type="button" data-k="outreach" aria-label="In outreach, 5 leads"><span class="dot"><b>5</b></span><span class="sn">In outreach</span></button><span class="seg" aria-hidden="true"></span><button class="stop" type="button" data-k="replied" aria-label="Replied, 2 leads"><span class="dot"><b>2</b></span><span class="sn">Replied</span></button></div></div><div class="phase p3 single" id="ph-2" data-first="meeting"><div class="phd"><span class="pt">Close</span><span class="ps">Turn talks into clients</span></div><div class="stops"><button class="stop" type="button" data-k="meeting" aria-label="Meeting, 1 leads"><span class="dot"><b>1</b></span><span class="sn">Meeting</span></button></div></div><div class="phase pw single" id="ph-3" data-first="won"><div class="phd"><span class="pt">Won</span><span class="ps">They became clients</span></div><div class="stops"><button class="stop" type="button" data-k="won" aria-label="Won · $1,200, 1 leads"><span class="dot"><b>1</b></span><span class="sn">Won · $1,200</span></button></div></div><div class="phase pl single" id="ph-4" data-first="lost"><div class="phd"><span class="pt">Lost</span><span class="ps">Not now, not interested, or wrong person</span></div><div class="stops"><button class="stop" type="button" data-k="lost" aria-label="Lost, 2 leads"><span class="dot"><b>2</b></span><span class="sn">Lost</span></button></div></div></div>
+  <div class="rates">
+    <span class="rate"><span class="rl">Reply rate</span><b>29%</b></span>
+    <span class="rate"><span class="rl">Reply → meeting</span><b>50%</b></span>
+    <span class="rate"><span class="rl">Meeting → won</span><b>100%</b></span>
+    <span class="off"><button class="link" type="button">Not a fit · 9</button><button class="link" type="button">Removed · 4</button></span>
+  </div>
+  <section class="stage p5" aria-live="polite">
+    <div class="sh"><div><h2 id="sname"></h2><p id="shelp" class="lead" style="margin:0"></p></div><div id="sact"></div></div>
+    <div id="slist" class="sgrid" role="list"></div>
+  </section>
+  <p class="muted note">Sample data. The real page shows your leads.</p>
+</main></div></div><script>
+var D={"review": {"n": "To review", "h": "New leads and leads marked Maybe. Mark them Good to move them on.", "act": "Review one by one", "leads": [["Fresh Start Cleaning", "Cleaning \u00b7 Phoenix", "Maybe \u00b7 58"], ["Core Strength Studio", "Gym \u00b7 Dublin", "New"], ["Lakeside Physio", "Physio \u00b7 Bristol", "New"], ["Urban Nest Realty", "Real estate \u00b7 Austin", "Maybe \u00b7 63"]]}, "email": {"n": "Needs email", "h": "Good leads without an email address.", "act": "Find emails", "leads": [["Harbor Realty Group", "Real estate \u00b7 Tampa", "Good fit \u00b7 79"], ["Sunrise Dental", "Dentist \u00b7 Leeds", "Good fit \u00b7 84"]]}, "write": {"n": "Write emails", "h": "Good leads with an email but no written email yet.", "act": "Write with Kestrel AI", "leads": [["Northside Family Clinic", "Clinic \u00b7 Calgary", "Good fit \u00b7 82"], ["Brightway Realty", "Real estate \u00b7 Brisbane", "Good fit \u00b7 74"], ["Bloom Nutrition", "Nutritionist \u00b7 Austin", "Good fit \u00b7 77"]]}, "ready": {"n": "Ready to send", "h": "Written and approved, not in a campaign yet.", "act": "Add to campaign", "leads": [["Peak Form Fitness", "Gym \u00b7 Denver", "Approved"], ["Coastal Smiles", "Dentist \u00b7 San Diego", "Approved"]]}, "outreach": {"n": "In outreach", "h": "In a campaign, no answer yet.", "act": "Open campaigns", "leads": [["Bright Smile Dental", "Dentist \u00b7 Austin", "Step 2 of 3"], ["Sparkle Home Services", "Cleaning \u00b7 Dallas", "Step 1 of 3"], ["GreenPlate Nutrition", "Nutritionist \u00b7 Toronto", "Sent 2 days ago"], ["Metro Movers", "Moving \u00b7 Chicago", "Step 3 of 3"], ["Iron Den Gym", "Gym \u00b7 Phoenix", "Step 1 of 3"]]}, "replied": {"n": "Replied", "h": "They answered. Decide what happens next.", "act": "Open replies", "leads": [["Oakline Physio", "Physio \u00b7 Manchester", "Replied today"], ["Cedar Dental", "Dentist \u00b7 Portland", "Replied yesterday"]]}, "meeting": {"n": "Meeting", "h": "Interested, or a meeting is booked.", "act": null, "leads": [["Clearview Cleaning Co", "Cleaning \u00b7 Leeds", "Call Thu 3:00 PM"]]}, "won": {"n": "Won", "h": "They became a client.", "act": null, "leads": [["Riverside Family Dental", "Dentist \u00b7 Perth", "$1,200"]]}, "lost": {"n": "Lost", "h": "Not now, not interested, or wrong person.", "act": null, "leads": [["Summit Realty", "Real estate \u00b7 Boise", "Not now"], ["Glow Spa", "Spa \u00b7 Miami", "Not interested"]]}};
+document.querySelectorAll('[data-set]').forEach(function(b){b.addEventListener('click',function(){document.documentElement.setAttribute('data-theme',b.dataset.set);setTimeout(function(){show(CUR)},0);document.querySelectorAll('[data-set]').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});});});
+function esc(s){return s.replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});}
+var PH={review:'#d6c6ff',email:'#d6c6ff',write:'#d6c6ff',ready:'#d6c6ff',outreach:'#c2dbff',replied:'#c2dbff',meeting:'#ffddad',won:'#beedca',lost:'#ffc4c1'};
+function wash(k){if(document.documentElement.getAttribute('data-theme')!=='gradient')return 'none';var c=PH[k];return 'radial-gradient(140% 240% at 100% 0%, '+c+' 0%, color-mix(in srgb,'+c+' 45%,#fff) 30%, color-mix(in srgb,'+c+' 15%,#fff) 55%, rgba(255,255,255,0) 80%)';}
+var CUR='outreach';
+function show(k){CUR=k;document.querySelector('.stage').style.setProperty('--tint',PH[k]);var d=D[k];document.querySelectorAll('.stop').forEach(function(s){s.classList.toggle('on',s.dataset.k===k)});
+document.getElementById('sname').textContent=d.n+' · '+d.leads.length;document.getElementById('shelp').textContent=d.h;
+document.getElementById('sact').innerHTML=d.act?'<button class="btn primary" type="button">'+esc(d.act)+'</button>':'';
+var h='';d.leads.forEach(function(l,i){var ini=l[0].split(' ').slice(0,2).map(function(w){return w[0]}).join('');var m=l[2]==='Approved'?'<span class="badge">Approved</span>':'<span class="meta">'+esc(l[2])+'</span>';h+='<div class="pcard" style="--row-wash:'+wash(k)+'" role="listitem" tabindex="0"><span class="av">'+ini+'</span><div class="bt"><div class="name">'+esc(l[0])+'</div><div class="desc">'+esc(l[1])+'</div><div class="mrow">'+m+'</div></div></div>';});
+if(k==='replied'||k==='meeting'){h+='';}
+document.getElementById('slist').innerHTML=h+((k==='replied'||k==='meeting')?'':'');
+var mv=document.querySelector('.mv');if(mv)mv.remove();
+if(k==='replied'||k==='meeting'){var x=document.createElement('div');x.className='mv';x.innerHTML='Move a lead:<button class="btn" type="button">Meeting</button><button class="btn" type="button">Won</button><button class="btn" type="button">Lost</button>';document.querySelector('.stage').appendChild(x);}
+}
+document.querySelectorAll('.stop').forEach(function(s){s.addEventListener('click',function(){show(s.dataset.k)})});
+
+var path=document.getElementById('path'),phs=[0,1,2,3,4].map(function(i){return document.getElementById('ph-'+i)}),PI=0;
+function setPhase(i,scroll){PI=Math.max(0,Math.min(4,i));
+document.querySelectorAll('.pt-b').forEach(function(b){var on=+b.dataset.i===PI;b.classList.toggle('on',on);b.setAttribute('aria-selected',on)});
+document.querySelectorAll('.pdots span').forEach(function(d,k){d.classList.toggle('on',k===PI)});
+document.getElementById('prev').disabled=PI===0;document.getElementById('next').disabled=PI===4;
+if(scroll)path.scrollTo({left:phs[PI].offsetLeft-path.offsetLeft,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+var f=phs[PI].dataset.first;if(!phs[PI].contains(document.querySelector('.stop.on')))show(f);}
+document.querySelectorAll('.pt-b').forEach(function(b){b.addEventListener('click',function(){setPhase(+b.dataset.i,true)})});
+document.getElementById('prev').addEventListener('click',function(){setPhase(PI-1,true)});
+document.getElementById('next').addEventListener('click',function(){setPhase(PI+1,true)});
+var st;path.addEventListener('scroll',function(){clearTimeout(st);st=setTimeout(function(){var i=Math.round(path.scrollLeft/path.clientWidth);if(i!==PI)setPhase(i,false)},120)});
+document.querySelector('.seg-t').addEventListener('keydown',function(e){if(e.key==='ArrowRight'){setPhase(PI+1,true);document.querySelectorAll('.pt-b')[PI].focus()}if(e.key==='ArrowLeft'){setPhase(PI-1,true);document.querySelectorAll('.pt-b')[PI].focus()}});
+show('review');setPhase(0,false);
+</script></body></html>
