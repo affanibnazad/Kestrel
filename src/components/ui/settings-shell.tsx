@@ -26,9 +26,9 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
   className = "",
 }) => {
   return (
-    <div className={["u-shell", className].filter(Boolean).join(" ")}>
-      <nav className="u-menu" aria-label="Settings">
-        {menuTitle && <div className="u-menu-label">{menuTitle}</div>}
+    <div className={["u-shell", "shell", className].filter(Boolean).join(" ")}>
+      <nav className="u-menu menu" aria-label="Settings">
+        {menuTitle && <div className="u-menu-label menu-label">{menuTitle}</div>}
         {items.map((item) => {
           const isActive = item.id === activeId;
           const ariaCurrent = isActive ? "page" : undefined;
@@ -39,39 +39,24 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
             .filter(Boolean)
             .join(" ");
 
-          if (item.href) {
-            return (
-              <a
-                key={item.id}
-                href={item.href}
-                className={classes}
-                aria-current={ariaCurrent}
-                onClick={(e) => {
-                  e.preventDefault();
-                  onSelect(item.id);
-                }}
-              >
-                {item.icon && <span className="u-menu-icon" aria-hidden="true">{item.icon}</span>}
-                <span>{item.label}</span>
-              </a>
-            );
-          }
-
           return (
-            <button
+            <a
               key={item.id}
-              type="button"
+              href={item.href ?? `#${item.id}`}
               className={classes}
               aria-current={ariaCurrent}
-              onClick={() => onSelect(item.id)}
+              onClick={(e) => {
+                e.preventDefault();
+                onSelect(item.id);
+              }}
             >
               {item.icon && <span className="u-menu-icon" aria-hidden="true">{item.icon}</span>}
               <span>{item.label}</span>
-            </button>
+            </a>
           );
         })}
       </nav>
-      <main className="u-content">{children}</main>
+      <main className="u-content content">{children}</main>
     </div>
   );
 };

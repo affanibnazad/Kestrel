@@ -2,7 +2,30 @@
 
 import { DialogHost, askConfirm, askText } from "@/components/dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Brand, Line, Tip } from "@/components/ui";
+import {
+  Brand,
+  Line,
+  Tip,
+  AppNav,
+  SettingsShell,
+  EmptyState,
+  Button,
+  PageHeader,
+  HomeIcon,
+  LeadsIcon,
+  CampaignsIcon,
+  SequencesIcon,
+  RepliesIcon,
+  PipelineIcon,
+  FindLeadsIcon,
+  AiIcon,
+  TasksIcon,
+  AnalyticsIcon,
+  GuideIcon,
+  OwnerIcon,
+  SettingsIcon,
+} from "@/components/ui";
+import ConnectionsView from "./connections-view";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { fetchAll } from "@/lib/fetch-all";
 import LeadPanel from "./lead-panel";
@@ -91,17 +114,42 @@ const FILTERS: [string, string, (l: LeadRow) => boolean][] = [
 ];
 const SOURCES = [["maps", "Google Maps", "map"], ["search", "Google Search", "search"], ["youtube", "YouTube", "play"], ["osm", "OpenStreetMap", "globe"],
 ["jobs", "Job boards", "job"], ["companies", "Companies House", "building"], ["podcasts", "Listen Notes", "mic"], ["page", "Any web page", "doc"], ["sites", "Website lists", "list"]];
-const PAGES: Record<string, string> = { about: "Your business", pipeline: "Pipeline", ai: "Kestrel AI", autopilot: "Autopilot", mailboxes: "Email accounts", campaigns: "Campaigns", inbox: "Replies", tasks: "Tasks", analytics: "Analytics", sequences: "Sequences", rules: "Rules", dnc: "Do-not-contact", get: "Integrations", mcp: "Integrations", profile: "Your profile", home: "Home", progress: "Search progress", team: "Team", plan: "Plan and billing", import: "Import and examples", connections: "Integrations", activity: "Leads added" };
+export const SETTINGS_TAB_MAP: Record<string, string> = {
+  settings: "connections",
+  general: "general",
+  about: "about",
+  team: "team",
+  plan: "plan",
+  connections: "connections",
+  integrations: "connections",
+  get: "connections",
+  mcp: "connections",
+  mailboxes: "mailboxes",
+  deliverability: "mailboxes",
+  placement: "mailboxes",
+  notifications: "notifications",
+  privacy: "privacy",
+};
+
+const PAGES: Record<string, string> = {
+  about: "Your business", pipeline: "Pipeline", ai: "Kestrel AI", autopilot: "Autopilot",
+  mailboxes: "Email accounts", campaigns: "Campaigns", inbox: "Replies", tasks: "Tasks",
+  analytics: "Analytics", sequences: "Sequences", rules: "Rules", dnc: "Do-not-contact",
+  get: "Integrations", mcp: "Integrations", profile: "Your profile", home: "Home",
+  progress: "Search progress", team: "Team", plan: "Plan and billing", import: "Import and examples",
+  connections: "Connections", activity: "Leads added", settings: "Settings",
+  deliverability: "Email accounts", general: "General", notifications: "Notifications", privacy: "Privacy and data",
+};
 
 // The left bar's groups; the group of the page you are on opens (one at a time, see kgroup).
 type GroupId = "leads" | "mail" | "find" | "settings";
 const MAIL_VIEWS = ["campaigns", "inbox", "tasks", "sequences", "mailboxes", "analytics", "placement"];
-const SETTINGS_VIEWS = ["team", "plan", "connections", "get", "mcp", "dnc", "import"];
+const SETTINGS_VIEWS = ["team", "plan", "connections", "get", "mcp", "dnc", "import", "settings"];
 function groupOf(view: string): GroupId | null {
   if (SMART.some((x) => x[0] === view) || view === "rules" || view === "activity" || view === "pipeline" || view.startsWith("list:")) return "leads";
   if (MAIL_VIEWS.includes(view)) return "mail";
   if (view === "progress" || SOURCES.some((x) => x[0] === view)) return "find";
-  if (SETTINGS_VIEWS.includes(view)) return "settings";
+  if (SETTINGS_VIEWS.includes(view) || view in SETTINGS_TAB_MAP) return "settings";
   return null;
 }
 
@@ -109,12 +157,13 @@ const VALID_VIEWS = new Set([
   ...SMART.map(([id]) => id),
   ...SOURCES.map(([id]) => id),
   ...Object.keys(PAGES),
-  "owner", "creator", "placement", "assistant",
+  "owner", "creator", "placement", "assistant", "settings",
 ]);
 
 export function isValidView(v: string | null | undefined): boolean {
   if (!v) return false;
   if (v === "leads") return true;
+  if (v in SETTINGS_TAB_MAP) return true;
   if (VALID_VIEWS.has(v)) return true;
   if (/^list:[0-9a-f-]{36}$/i.test(v)) return true;
   return false;
@@ -170,20 +219,47 @@ export default function AppShell({ email, loading = false, preview = false, acco
 
   const isAdmin = Boolean(account?.is_admin);
   const resolveView = useCallback((v: string | null | undefined): string => {
-    if (!v || !isValidView(v)) return "home";
+    if (!v) return "home";
+    if (v in SETTINGS_TAB_MAP) return "settings";
+    if (!isValidView(v)) return "home";
     if (v === "leads") return "all";
     if (v === "owner" && !isAdmin && !demo && !isDemoMode) return "home";
     if (v === "autopilot") return "home"; // r9: Autopilot parked
     return v;
   }, [isAdmin, demo, isDemoMode]);
 
+  const [settingsTab, setSettingsTab] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const v = params.get("view");
+      const t = params.get("tab");
+      if (t) return t;
+      if (v && v in SETTINGS_TAB_MAP) return SETTINGS_TAB_MAP[v];
+    }
+    if (initialView && initialView in SETTINGS_TAB_MAP) return SETTINGS_TAB_MAP[initialView];
+    return "connections";
+  });
+
   const [view, setView] = useState(() => resolveView(initialView));
   useEffect(() => {
-    if (initialView && initialView !== "home" && isValidView(initialView)) {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const v = params.get("view");
+      const t = params.get("tab");
+      if (t) {
+        setSettingsTab(t);
+      } else if (v && v in SETTINGS_TAB_MAP) {
+        setSettingsTab(SETTINGS_TAB_MAP[v]);
+      }
+      if (v) {
+        const resolved = resolveView(v);
+        Promise.resolve().then(() => setView(resolved));
+      }
+    } else if (initialView) {
+      if (initialView in SETTINGS_TAB_MAP) {
+        setSettingsTab(SETTINGS_TAB_MAP[initialView]);
+      }
       Promise.resolve().then(() => setView(resolveView(initialView)));
-    } else if (typeof window !== "undefined") {
-      const v = new URLSearchParams(window.location.search).get("view");
-      if (v && isValidView(v)) Promise.resolve().then(() => setView(resolveView(v)));
     }
   }, [initialView, resolveView]);
   const [userMenu, setUserMenu] = useState(() => (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("menu") === "1"));     // the avatar menu at the bottom of the sidebar
@@ -542,7 +618,29 @@ export default function AppShell({ email, loading = false, preview = false, acco
   }
   const listName = view.startsWith("list:") ? lists.find((l) => `list:${l.id}` === view)?.name : undefined;
   const title = listName ?? PAGES[view] ?? (SMART.some((s) => s[0] === view) ? "Leads" : (SOURCES.find((s) => s[0] === view) || [, "Leads"])[1]);
-  const pick = (id: string) => {
+  const pick = (id: string, tab?: string) => {
+    if (id === "settings" || id in SETTINGS_TAB_MAP) {
+      const targetTab = tab ?? (id in SETTINGS_TAB_MAP ? SETTINGS_TAB_MAP[id] : settingsTab);
+      setView("settings");
+      setSettingsTab(targetTab);
+      setOpen(false);
+      setPicked(new Set());
+      setOpenLead(null);
+      setSpam(null);
+      setReview(null);
+      try {
+        const u = new URL(location.href);
+        u.searchParams.set("view", "settings");
+        u.searchParams.set("tab", targetTab);
+        u.searchParams.delete("c");
+        if ((isDemoMode || demo) && !u.searchParams.has("demo")) {
+          u.searchParams.set("demo", "true");
+        }
+        history.pushState(null, "", `${u.pathname}${u.search}`);
+      } catch { /* address bar not available */ }
+      return;
+    }
+
     const target = resolveView(id);
     const validId = isValidView(target) ? target : "home";
     setView(validId);
@@ -556,9 +654,10 @@ export default function AppShell({ email, loading = false, preview = false, acco
     if (label) { noteRecent(label, validId); setRecent(readRecent()); }
     try {
       const u = new URL(location.href);
-      if (u.searchParams.get("view") !== validId || u.searchParams.has("c")) {
+      if (u.searchParams.get("view") !== validId || u.searchParams.has("c") || u.searchParams.has("tab")) {
         u.searchParams.set("view", validId);
         u.searchParams.delete("c");
+        u.searchParams.delete("tab");
         if ((isDemoMode || demo) && !u.searchParams.has("demo")) {
           u.searchParams.set("demo", "true");
         }
@@ -867,100 +966,246 @@ export default function AppShell({ email, loading = false, preview = false, acco
         tabIndex={0} title="Drag to resize · double-click to reset" onPointerDown={startDrag} onKeyDown={keyDrag}
         onDoubleClick={() => { setCollapsed(false); setSideW(SIDE_W); saveW(SIDE_W); try { localStorage.setItem("kestrel-side", "0"); } catch { /* ignore */ } }} />
       <a className="skip-link" href="#content">Skip to content</a>
-      <aside className="side kside" aria-label="Menu"
-        onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
-        onTouchEnd={(e) => {
-          const dx = e.changedTouches[0].clientX - touchStartX.current;
-          if (Math.abs(dx) > 70) { setOpen(dx > 0); }
+      <AppNav
+        brand={{
+          name: "Kestrel",
+          logo: "K",
+          onClick: () => pick("home"),
         }}
-      >
-        <div className="kside-logo">
-          <button type="button" className="brand-btn" onClick={() => pick("home")} aria-label="Kestrel home"><Brand /></button>
-          <button type="button" className="side-collapse" onClick={toggleSide} aria-label={folded ? "Expand sidebar" : "Collapse sidebar"} title={folded ? "Expand sidebar (⌘\\)" : "Collapse sidebar (⌘\\)"}>
-            <Line name="sidebar" />
-          </button>
-        </div>
-        <div className="kside-scroll">
-          <div className="kside-sec">Outreach</div>
-          <nav className="kside-nav" aria-label="Outreach">
-            <KNav icon="home" label="Home" on={view === "home"} onClick={() => pick("home")} />
-            {kgroup("leads", "grid", "Leads", <>
-              <KSub label="All leads" count={count("all")} on={SMART.some((x) => x[0] === view)} onClick={() => pick(SMART.some((x) => x[0] === view) ? view : "all")} />
-              {lists.map((l) => <KSub key={l.id} label={l.name} count={(inList[l.id] ?? []).length} on={view === `list:${l.id}`} onClick={() => pick(`list:${l.id}`)} />)}
-              {views.map((v) => <KSub key={v.name} label={v.name} onClick={() => { pick(v.view); setQuery(v.query); }} />)}
-              <KSub label="Rules" on={view === "rules"} onClick={() => pick("rules")} />
-              <KSub label="Leads added" on={view === "activity"} onClick={() => pick("activity")} />
-            </>)}
-            <KNav icon="send" label="Campaigns" on={view === "campaigns"} onClick={() => pick("campaigns")} />
-            <KNav icon="steps" label="Sequences" on={view === "sequences"} onClick={() => pick("sequences")} />
-            <KNav icon="inbox" label="Replies" on={view === "inbox"} onClick={() => pick("inbox")} />
-            <KNav icon="chart" label="Pipeline" on={view === "pipeline"} onClick={() => pick("pipeline")} />
-          </nav>
-          <div className="kside-sec">Setup</div>
-          <nav className="kside-nav" aria-label="Setup">
-            <KNav icon="at" label="Email accounts" on={view === "mailboxes"} onClick={() => pick("mailboxes")} />
-            <KNav icon="building" label="Your business" on={view === "about"} onClick={() => pick("about")} />
-            <KNav icon="shield" label="Deliverability" on={view === "placement"} onClick={() => pick("placement")} />
-            <KNav icon="plug" label="Integrations" on={INTEGRATION_TABS.some((t) => t[0] === view)} onClick={() => pick("get")} />
-          </nav>
-          <div className="kside-sec">AI</div>
-          <nav className="kside-nav" aria-label="AI">
-            <KNav icon="sparkle" label="Kestrel AI" on={view === "ai" || view === "assistant"} onClick={() => pick("ai")} />
-          </nav>
-          <div className="kside-sec">More</div>
-          <nav className="kside-nav" aria-label="More">
-            <KNav icon="clipboard" label="Tasks" on={view === "tasks"} onClick={() => pick("tasks")} />
-            <KNav icon="chart" label="Analytics" on={view === "analytics"} onClick={() => pick("analytics")} />
-            {kgroup("find", "gauge", "Find leads", <>
-              <KSub label="Search progress" on={view === "progress"} onClick={() => pick("progress")} />
-              {SOURCES.filter(([id]) => count(id) || view === id).map(([id, label]) => <KSub key={id} label={label} count={count(id)} on={view === id} onClick={() => pick(id)} />)}
-            </>)}
-            {kgroup("settings", "settings", "Settings", <>
-              <KSub label="Team" on={view === "team"} onClick={() => pick("team")} />
-              <KSub label="Plan and billing" on={view === "plan"} onClick={() => pick("plan")} />
-              <KSub label="Do-not-contact" count={dnc.length} on={view === "dnc"} onClick={() => pick("dnc")} />
-              <KSub label="Import and examples" on={view === "import"} onClick={() => pick("import")} />
-            </>)}
-            {isAdmin || demo || isDemoMode ? <KNav icon="crown" label="Owner" on={view === "owner"} onClick={() => pick("owner")} /> : null}
-            {isCreator ? <KNav icon="star" label="Creator" on={view === "creator"} onClick={() => pick("creator")} /> : null}
-            <KNav icon="book" label="Guide" onClick={() => window.open("/help", "_blank")} />
-          </nav>
-        </div>
-        {account ? (
-          <div className="kside-user" ref={userMenuRef}>
-            <button type="button" className="kside-user-btn" onClick={() => setUserMenu((v) => !v)} aria-expanded={userMenu} aria-haspopup="menu">
-              <PersonAvatar name={account.full_name || email || "You"} photo={account.avatar} size={28} />
-              <span className="kside-user-txt">
-                <b>{account.full_name || email || "You"}</b>
-                <small>{account.access_until && new Date(account.access_until) > new Date() ? `Free access until ${new Date(account.access_until).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}` : account.plan === "trial" ? `Pro · trial ${daysLeft(account.trial_ends_at)} days` : `${planName(account.plan as PlanId)} · ${account.active === false ? "read only" : "active"}`}</small>
-              </span>
-              <i className="kcaret" aria-hidden="true" />
-            </button>
-            {userMenu ? (
-              <div className="kmenu kside-menu" role="menu">
-                <button type="button" role="menuitem" onClick={() => { setUserMenu(false); pick("profile"); }}><Line name="person" /> Profile</button>
-                <button type="button" role="menuitem" onClick={() => { setUserMenu(false); pick("team"); }}><Line name="users" /> Team</button>
-                <button type="button" role="menuitem" onClick={() => { setUserMenu(false); pick("plan"); }}><Line name="card" /> Plan and billing</button>
-                <button type="button" role="menuitem" onClick={() => { setUserMenu(false); pick("profile"); }}><Line name="sliders" /> Settings</button>
-                <div className="kmenu-sep" role="separator" />
-                <p className="kmenu-h">Theme</p>
-                <div className="kside-theme" role="group" aria-label="Theme">
-                  {(["auto", "light", "dark", "gradient"] as const).map((t) => (
-                    <button type="button" key={t} role="menuitemradio" aria-checked={look.theme === t} className={look.theme === t ? "on" : ""}
-                      onClick={() => { const l = { ...look, theme: t }; setLook(l); saveLook(l); }}>{t === "auto" ? "Automatic" : t === "light" ? "Light" : t === "dark" ? "Dark" : "Gradient"}</button>
-                  ))}
-                </div>
-                <div className="kmenu-sep" role="separator" />
-                <form action="/auth/signout" method="post" style={{ display: "contents" }}>
-                  <button type="button" role="menuitem" className="form-signout" onClick={(e) => { setUserMenu(false); e.currentTarget.form?.requestSubmit(); }}><Line name="logout" /> Log out</button>
-                </form>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </aside>
+        sections={[
+          {
+            title: "Outreach",
+            items: [
+              {
+                id: "home",
+                label: "Home",
+                icon: <HomeIcon />,
+                onClick: () => pick("home"),
+                ariaCurrent: view === "home",
+              },
+              {
+                id: "leads",
+                label: "Leads",
+                icon: <LeadsIcon />,
+                count: loaded && leads.length > 0 ? leads.length : null,
+                onClick: () => pick("all"),
+                ariaCurrent:
+                  SMART.some((x) => x[0] === view) ||
+                  view === "leads" ||
+                  view === "all" ||
+                  view === "rules" ||
+                  view === "activity" ||
+                  view.startsWith("list:"),
+              },
+              {
+                id: "campaigns",
+                label: "Campaigns",
+                icon: <CampaignsIcon />,
+                onClick: () => pick("campaigns"),
+                ariaCurrent: view === "campaigns" || view === "campaign-detail",
+              },
+              {
+                id: "sequences",
+                label: "Sequences",
+                icon: <SequencesIcon />,
+                onClick: () => pick("sequences"),
+                ariaCurrent: view === "sequences",
+              },
+              {
+                id: "inbox",
+                label: "Replies",
+                icon: <RepliesIcon />,
+                onClick: () => pick("inbox"),
+                ariaCurrent: view === "inbox",
+              },
+              {
+                id: "pipeline",
+                label: "Pipeline",
+                icon: <PipelineIcon />,
+                onClick: () => pick("pipeline"),
+                ariaCurrent: view === "pipeline",
+              },
+            ],
+          },
+          {
+            title: "Tools",
+            items: [
+              {
+                id: "find",
+                label: "Find leads",
+                icon: <FindLeadsIcon />,
+                onClick: () => pick("progress"),
+                ariaCurrent: view === "progress" || SOURCES.some((s) => s[0] === view),
+              },
+              {
+                id: "ai",
+                label: "Kestrel AI",
+                icon: <AiIcon />,
+                onClick: () => pick("ai"),
+                ariaCurrent: view === "ai" || view === "assistant",
+              },
+              {
+                id: "tasks",
+                label: "Tasks",
+                icon: <TasksIcon />,
+                onClick: () => pick("tasks"),
+                ariaCurrent: view === "tasks",
+              },
+              {
+                id: "analytics",
+                label: "Analytics",
+                icon: <AnalyticsIcon />,
+                onClick: () => pick("analytics"),
+                ariaCurrent: view === "analytics",
+              },
+            ],
+          },
+        ]}
+        bottomItems={[
+          {
+            id: "guide",
+            label: "Guide",
+            icon: <GuideIcon />,
+            onClick: () => window.open("/help", "_blank"),
+          },
+          ...(isAdmin || demo || isDemoMode
+            ? [
+                {
+                  id: "owner",
+                  label: "Owner",
+                  icon: <OwnerIcon />,
+                  onClick: () => pick("owner"),
+                  ariaCurrent: view === "owner",
+                },
+              ]
+            : []),
+          {
+            id: "settings",
+            label: "Settings",
+            icon: <SettingsIcon />,
+            onClick: () => pick("settings"),
+            ariaCurrent: view === "settings",
+          },
+        ]}
+        user={
+          account
+            ? {
+                name: account.full_name || (email ? email.split("@")[0] : "You"),
+                subtitle:
+                  account.access_until && new Date(account.access_until) > new Date()
+                    ? `Free access until ${new Date(account.access_until).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`
+                    : account.plan === "trial"
+                    ? `Pro · trial ${daysLeft(account.trial_ends_at)} days`
+                    : `${planName(account.plan as PlanId)} · ${account.active === false ? "read only" : "active"}`,
+                avatar: account.avatar ? (
+                  <img
+                    src={account.avatar}
+                    alt=""
+                    style={{ width: "100%", height: "100%", borderRadius: "999px", objectFit: "cover" }}
+                  />
+                ) : account.full_name ? (
+                  account.full_name[0].toUpperCase()
+                ) : email ? (
+                  email[0].toUpperCase()
+                ) : (
+                  "A"
+                ),
+                onClick: () => pick("settings", "general"),
+              }
+            : undefined
+        }
+        activeId={view === "settings" ? "settings" : view}
+        onSelect={(id) => pick(id)}
+      />
       <button type="button" className="side-scrim" aria-label="Close the menu" onClick={() => setOpen(false)} />
 
+      {view === "settings" ? (
+        <div className="main u-main" id="content" tabIndex={-1}>
+          <div className="topbar u-topbar" role="group" aria-label="Theme">
+            <button
+              type="button"
+              className={`btn u-btn ${look.theme === "light" ? "primary" : ""}`}
+              aria-pressed={look.theme === "light"}
+              onClick={() => { const l = { ...look, theme: "light" as const }; setLook(l); saveLook(l); }}
+            >
+              Light
+            </button>
+            <button
+              type="button"
+              className={`btn u-btn ${look.theme === "dark" ? "primary solid" : ""}`}
+              aria-pressed={look.theme === "dark"}
+              onClick={() => { const l = { ...look, theme: "dark" as const }; setLook(l); saveLook(l); }}
+            >
+              Dark
+            </button>
+            <button
+              type="button"
+              className={`btn u-btn ${look.theme === "gradient" ? "primary solid" : ""}`}
+              aria-pressed={look.theme === "gradient"}
+              onClick={() => { const l = { ...look, theme: "gradient" as const }; setLook(l); saveLook(l); }}
+            >
+              Gradient
+            </button>
+          </div>
+          <SettingsShell
+            items={[
+              { id: "general", label: "General" },
+              { id: "about", label: "Your business" },
+              { id: "team", label: "Team" },
+              { id: "plan", label: "Plan and billing" },
+              { id: "connections", label: "Connections" },
+              { id: "mailboxes", label: "Email accounts" },
+              { id: "notifications", label: "Notifications" },
+              { id: "privacy", label: "Privacy and data" },
+            ]}
+            activeId={settingsTab}
+            onSelect={(id) => pick("settings", id)}
+          >
+            {settingsTab === "general" ? (
+              <>
+                <PageHeader title="General" description="Manage your appearance and workspace preferences." />
+                <div style={{ marginTop: 28, maxWidth: 480 }}>
+                  <div className="group-label u-group-label" style={{ marginBottom: 12 }}>Theme</div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    {(["light", "dark", "gradient"] as const).map((t) => (
+                      <Button
+                        key={t}
+                        type="button"
+                        variant={look.theme === t ? "primary" : "default"}
+                        aria-pressed={look.theme === t}
+                        onClick={() => {
+                          const l = { ...look, theme: t };
+                          setLook(l);
+                          saveLook(l);
+                        }}
+                      >
+                        {t === "light" ? "Light" : t === "dark" ? "Dark" : "Gradient"}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="u-desc" style={{ marginTop: 14, color: "var(--u-text-secondary)" }}>
+                    Choose your preferred theme. Your choice is saved locally for this browser.
+                  </p>
+                </div>
+              </>
+            ) : settingsTab === "about" ? (
+              <AboutView account={account} demo={Boolean(demo) || !account} editable={editable} toast={setToast} />
+            ) : settingsTab === "team" ? (
+              <EmptyState title="Team" description="Team management coming soon." />
+            ) : settingsTab === "plan" ? (
+              <PlanView account={account} />
+            ) : settingsTab === "connections" ? (
+              <ConnectionsView account={account} demo={Boolean(demo)} toast={setToast} />
+            ) : settingsTab === "mailboxes" ? (
+              <MailboxesView account={account} demo={Boolean(demo)} toast={setToast} />
+            ) : settingsTab === "notifications" ? (
+              <EmptyState title="Notifications" description="Notification preferences coming soon." />
+            ) : settingsTab === "privacy" ? (
+              <EmptyState title="Privacy and data" description="Privacy and data controls coming soon." />
+            ) : null}
+          </SettingsShell>
+        </div>
+      ) : (
       <main className="pane" id="content" tabIndex={-1}>
         <div className="app-band" aria-hidden="true" />
         {(isDemoMode || account?.team_id === "demo") ? (
@@ -1351,6 +1596,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
                                                   )}
         </ViewErrorBoundary>
       </main>
+      )}
       {review?.length ? (
         <Review list={review} editable={editable} demo={Boolean(demo)}
           onChange={(id, patch) => setLeads((all) => all.map((l) => (l.id === id ? { ...l, ...patch } : l)))}

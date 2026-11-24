@@ -22,7 +22,7 @@ export const Badge: React.FC<BadgeProps> = ({
 
   return (
     <span
-      className={["u-badge", variantClass, className].filter(Boolean).join(" ")}
+      className={["u-badge", "badge", variantClass, className].filter(Boolean).join(" ")}
       {...props}
     >
       {children}

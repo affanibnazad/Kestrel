@@ -9,12 +9,17 @@ Rule books used: design-review, spacing-audit, make-a-type-scale, find-animation
 
 - THREE themes for the WHOLE app (every page, not only Settings): Light (solid), Dark (solid), Gradient.
 - Exact visual target: docs/ui-reference/connections.html (switch themes top right). Copy its tokens, not only the page.
-- Buttons: compact pills (height 34, radius 999, padding 0 16, 14px/500) like the current "Add campaign". Connect / Set up = solid accent #5b54e8, white text.
+- Buttons: compact pills (height 34, radius 999, padding 0 16, 14px/500) like the current "Add campaign". Connect / Set up: Light + Gradient = WHITE #ffffff, text #1d1d22, 0.2px gray outline #8a8d96 (hover #f4f4f7). Dark = solid gray #3a3a3a, text #ececec, border #4a4a4a. Purple #5b54e8 stays for the one main action per page (e.g. "Add campaign").
 - Cards and rows: rounded 14, own border, 36px icon tile.
 - "Connected" status: green pill with dot (gradient in Gradient theme).
 - Gradient theme: soft page washes + each card gets its OWN corner wash. Never the same color twice on one screen. Palette: purple #ebe3ff, blue #dcebff, peach #ffe7d4, green #d8f4e5, pink #ffe0ea, yellow #fff1c7. Assign by card index on the page.
 - Light and Dark: solid only, no gradients.
 - Design lock becomes 9 pages x 3 themes = 27 baselines.
+- Gradient theme detail (approved 24 Nov): page base #fbfbfd; every color feathers into WHITE (one color per card, no second color). "Connected" badge: LIGHT = black pill (#111113), white text, white dot. GRADIENT = white → its own card's color, 0.2px outline in the card's color, dot = darker card color. DARK = white pill (#ffffff), black text, black dot. Light + Gradient LOCKED 24 Nov.
+- References: docs/ui-reference/connections.html (Settings / Connections) and docs/ui-reference/app-shell.html (sidebar + Settings). These files are the source of truth for the look.
+- Sidebar (final): Outreach = Home, Leads, Campaigns, Sequences, Replies, Pipeline · Tools = Find leads, Kestrel AI, Tasks, Analytics (+ Lead Brain at U5) · Bottom = Guide, Owner (admin only, until A3), Settings. Email accounts, Your business, Deliverability, Integrations move into Settings.
+- EVERY button, search bar, input and badge in the whole app uses the reference styles (pill shapes, same sizes). No page keeps old button or search styles.
+- Rule: a sidebar item only if people open it daily; set-once things live in Settings.
 
 ## 1. Design rules (tokens) — taken from reference (1)
 

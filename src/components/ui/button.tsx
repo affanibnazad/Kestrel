@@ -20,8 +20,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     let variantClass = "u-btn-default";
-    if (variant === "primary" || variant === "solid") {
-      variantClass = "u-btn-primary u-btn-solid";
+    if (variant === "primary") {
+      variantClass = "u-btn-primary primary";
+    } else if (variant === "solid") {
+      variantClass = "u-btn-solid solid";
     } else if (variant === "danger") {
       variantClass = "u-btn-danger";
     } else if (variant === "icon") {

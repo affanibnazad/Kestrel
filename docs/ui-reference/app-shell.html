@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en" data-theme="gradient">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kestrel — App sidebar + Settings (reference U1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* REFERENCE v2. Three themes: light (solid), dark (solid), gradient (soft color washes). */
+:root,[data-theme="light"]{
+  --page:#eef0f3; --panel:#ffffff; --row:#ffffff; --border:#e3e5ea; --border-strong:#d6d8df;
+  --selected:#f1f2f5; --text:#1d1d22; --text-2:#5f6470; --text-muted:#6b7080;
+  --accent:#5b54e8; --accent-text:#ffffff;
+  --ok-bg:#e3f6ea; --ok-text:#1a7f37; --ok-dot:#2fb45a;
+  --btn-bg:#ffffff; --btn-hover:#f4f5f8; --focus:#5b54e8;
+  --page-wash:none; --row-wash:none;
+}
+[data-theme="dark"]{
+  --page:#1a1a1a; --panel:#1f1f1f; --row:#1f1f1f; --border:#333333; --border-strong:#4a4a4a;
+  --selected:#3a3a3a; --text:#ececec; --text-2:#a3a3a3; --text-muted:#8a8a8a;
+  --accent:#ececec; --accent-text:#1a1a1a;
+  --ok-bg:#1c2b1f; --ok-text:#3fb950; --ok-dot:#3fb950;
+  --btn-bg:transparent; --btn-hover:#2a2a2a; --focus:#9aa4ff;
+}
+[data-theme="gradient"]{
+  --page:#fbfbfd; --panel:rgba(255,255,255,.55); --row:#ffffff; --border:#e6e3f0; --border-strong:#d9d6e6;
+  --selected:#ffffff; --text:#1d1d22; --text-2:#5f6470; --text-muted:#6b7080;
+  --accent:#5b54e8; --accent-text:#ffffff;
+  --ok-bg:linear-gradient(90deg,#ffffff 0%, var(--tint,#bcecd2) 100%); --ok-text:#1d1d22; --ok-dot:#1f9d55;
+  --btn-bg:#ffffff; --btn-hover:#f6f5fb; --focus:#5b54e8;
+  --page-wash:radial-gradient(60% 60% at 0% 0%, color-mix(in srgb,#d6c6ff 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 100% 0%, color-mix(in srgb,#bcecd2 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(60% 65% at 100% 100%, color-mix(in srgb,#ffd2ad 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 0% 100%, color-mix(in srgb,#c2dbff 70%,#fff) 0%, rgba(255,255,255,0) 70%);
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--page-wash),var(--page);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:16px;line-height:1.5;padding:32px}
+.topbar{max-width:1200px;margin:0 auto 16px;display:flex;justify-content:flex-end;gap:8px}
+.shell{max-width:1200px;margin:0 auto;display:flex;background:var(--panel);border:1px solid var(--border);border-radius:20px;overflow:hidden;min-height:640px;backdrop-filter:blur(8px)}
+.menu{flex:0 0 240px;padding:24px 12px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:2px}
+.menu-label{font-size:13px;color:var(--text-muted);padding:0 14px 8px}
+.menu a{display:flex;align-items:center;height:38px;padding:0 14px;border-radius:999px;color:var(--text);text-decoration:none;font-size:15px}
+.menu a:hover{background:var(--btn-hover)}
+.menu a[aria-current="page"]{background:var(--selected);border:1px solid var(--border);font-weight:500}
+.content{flex:1;min-width:0;padding:32px 40px 40px}
+h1{margin:0 0 4px;font-size:24px;font-weight:600;line-height:1.2}
+.lead{margin:0 0 24px;color:var(--text-2);font-size:15px}
+.search{position:relative;margin-bottom:32px;max-width:480px}
+.search svg{position:absolute;left:14px;top:11px;color:var(--text-muted)}
+.search input{width:100%;height:40px;padding:0 16px 0 40px;border-radius:999px;border:1px solid var(--border);background:var(--row);color:var(--text);font:inherit;font-size:15px}
+.search input::placeholder{color:var(--text-muted)}
+.search input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.group-label{font-size:13px;color:var(--text-muted);margin:0 0 8px 4px}
+.group{display:flex;flex-direction:column;gap:8px;margin-bottom:28px}
+.row{display:flex;align-items:center;gap:14px;min-height:64px;padding:12px 14px 12px 16px;border:1px solid var(--border);border-radius:14px;background:var(--row-wash,none),var(--row)}
+.ico{flex:none;width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--row);display:flex;align-items:center;justify-content:center;color:var(--text)}
+.txt{flex:1;min-width:0}
+.name{font-size:15px;font-weight:500;line-height:1.3}
+.desc{font-size:14px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;padding:5px 12px;border-radius:999px;background:var(--ok-bg);color:var(--ok-text);white-space:nowrap}
+.badge::before{content:"";width:6px;height:6px;border-radius:999px;background:var(--ok-dot)}
+.btn{height:34px;padding:0 16px;border-radius:999px;border:1px solid var(--border-strong);background:var(--btn-bg);color:var(--text);font:inherit;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background-color .15s ease-out, scale .15s ease-out}
+.btn:hover{background:var(--btn-hover)}
+.btn:active{scale:.96}
+.btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.btn.solid{background:var(--accent);color:var(--accent-text);border-color:transparent}
+.btn.solid:hover{filter:brightness(1.08);background:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-text);border-color:transparent}
+.btn[aria-pressed="true"]{background:var(--accent);color:var(--accent-text);border-color:transparent}
+.adv{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px 0 10px;border-radius:999px;border:1px solid var(--border);background:var(--btn-bg);color:var(--text);font:inherit;font-size:14px;cursor:pointer}
+.adv svg{color:var(--text-2)}
+/* Gradient theme only: each row gets its OWN soft corner wash, like the campaign cards */
+[data-theme="gradient"] .row.t1{--tint:#d6c6ff;--row-wash:radial-gradient(140% 240% at 100% 0%, #d6c6ff 0%, color-mix(in srgb, #d6c6ff 45%, #ffffff) 30%, color-mix(in srgb, #d6c6ff 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t2{--tint:#c2dbff;--row-wash:radial-gradient(140% 240% at 100% 0%, #c2dbff 0%, color-mix(in srgb, #c2dbff 45%, #ffffff) 30%, color-mix(in srgb, #c2dbff 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t3{--tint:#ffd2ad;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffd2ad 0%, color-mix(in srgb, #ffd2ad 45%, #ffffff) 30%, color-mix(in srgb, #ffd2ad 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t4{--tint:#bcecd2;--row-wash:radial-gradient(140% 240% at 100% 0%, #bcecd2 0%, color-mix(in srgb, #bcecd2 45%, #ffffff) 30%, color-mix(in srgb, #bcecd2 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t5{--tint:#ffc6da;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffc6da 0%, color-mix(in srgb, #ffc6da 45%, #ffffff) 30%, color-mix(in srgb, #ffc6da 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t6{--tint:#ffe48f;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffe48f 0%, color-mix(in srgb, #ffe48f 45%, #ffffff) 30%, color-mix(in srgb, #ffe48f 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="light"] .badge{background:#111113;color:#ffffff;border:0.2px solid #111113}
+[data-theme="light"] .badge::before{background:#ffffff}
+[data-theme="gradient"] .badge{background:linear-gradient(90deg,#ffffff 0%, var(--tint,#bcecd2) 100%);border:0.2px solid color-mix(in srgb, var(--tint,#bcecd2) 92%, #000000)}
+[data-theme="gradient"] .badge::before{background:color-mix(in srgb, var(--tint,#bcecd2) 45%, #000000)}
+[data-theme="dark"] .badge{background:#ffffff;color:#111113;border:0.2px solid #ffffff}
+[data-theme="dark"] .badge::before{background:#111113}
+[data-theme="dark"] .btn.solid{background:#3a3a3a;color:#ececec;border-color:#4a4a4a}
+[data-theme="dark"] .btn.solid:hover{background:#454545;filter:none}
+[data-theme="light"] .btn.solid,[data-theme="gradient"] .btn.solid{background:#ffffff;color:#1d1d22;border:0.2px solid #8a8d96}
+[data-theme="light"] .btn.solid:hover,[data-theme="gradient"] .btn.solid:hover{background:#f4f4f7;filter:none}
+@media (prefers-reduced-motion: reduce){.btn{transition:none}}
+@media (max-width:760px){body{padding:12px}.shell{flex-direction:column}.menu{flex:none;border-right:0;border-bottom:1px solid var(--border);flex-direction:row;overflow-x:auto}.menu-label{display:none}.menu a{white-space:nowrap}.content{padding:24px 16px}}
+
+.app{display:flex;min-height:100vh}
+body{padding:0}
+.side{flex:0 0 248px;display:flex;flex-direction:column;gap:2px;padding:16px 12px;background:var(--panel);border-right:1px solid var(--border);backdrop-filter:blur(8px)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px;padding:4px 10px 16px}
+.logo{width:28px;height:28px;border-radius:9px;background:var(--accent);color:var(--accent-text);display:flex;align-items:center;justify-content:center;font-size:14px}
+.sec{font-size:12px;color:var(--text-muted);padding:14px 12px 6px}
+.side a{display:flex;align-items:center;gap:10px;height:36px;padding:0 12px;border-radius:999px;color:var(--text);text-decoration:none;font-size:14px;border:1px solid transparent}
+.side a svg{color:var(--text-2);flex:none}
+.side a:hover{background:var(--btn-hover)}
+.side a[aria-current="page"]{background:var(--selected);border-color:var(--border);font-weight:500}
+.side a[aria-current="page"] svg{color:var(--text)}
+.count{margin-left:auto;font-size:12px;color:var(--text-2);background:var(--btn-hover);border-radius:999px;padding:1px 8px}
+.spacer{flex:1}
+.user{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px;border-top:1px solid var(--border)}
+.avatar{width:30px;height:30px;border-radius:999px;background:var(--selected);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600}
+.who{display:flex;flex-direction:column;line-height:1.3}.nm{font-size:14px;font-weight:500}.pl{font-size:12px;color:var(--text-muted)}
+.main{flex:1;min-width:0;padding:24px 32px}
+.main .topbar{margin:0 0 16px;max-width:none}
+.main .shell{max-width:none}
+@media (max-width:860px){.app{flex-direction:column}.side{flex:none;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;border-right:0;border-bottom:1px solid var(--border)}.sec,.spacer,.user,.brand{display:none}.side a{white-space:nowrap}.main{padding:16px}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="side">
+  <div class="brand"><span class="logo">K</span>Kestrel</div>
+  <div class="sec">Outreach</div>
+  <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7l8 7v9H4z"/></svg>Home</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>Leads<span class="count">128</span></a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l16-8l-6 16l-3-7z"/></svg>Campaigns</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M18 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M8 6h6a4 4 0 0 1 0 8h-4a4 4 0 0 0 0 8h6"/></svg>Sequences</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13h4l2 3h4l2-3h4M4 13l2-8h12l2 8v6H4z"/></svg>Replies<span class="count">3</span></a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M21 20H3"/></svg>Pipeline</a>
+  <div class="sec">Tools</div>
+  <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0M20 20l-4-4"/></svg>Find leads</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>Kestrel AI</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l2 2l4-4M5 4h14v16H5z"/></svg>Tasks</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19h16M6 15l4-5l4 3l5-7"/></svg>Analytics</a>
+  <div class="spacer"></div>
+  <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4z"/></svg>Guide</a><a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8l4 4l4-7l4 7l4-4l-2 11H6z"/></svg>Owner</a><a href="#" aria-current="page"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Settings</a>
+  <div class="user"><span class="avatar">A</span><span class="who"><span class="nm">Affan</span><span class="pl">Free access until Nov 12, 2027</span></span></div>
+</aside>
+<div class="main">
+<div class="topbar" role="group" aria-label="Theme">
+  <button class="btn" type="button" data-set="light">Light</button>
+  <button class="btn" type="button" data-set="dark">Dark</button>
+  <button class="btn" type="button" data-set="gradient" aria-pressed="true">Gradient</button>
+</div>
+<div class="shell">
+  <nav class="menu" aria-label="Settings">
+    <div class="menu-label">Settings</div>
+    <a href="#">General</a>
+    <a href="#">Your business</a>
+    <a href="#">Team</a>
+    <a href="#">Plan and billing</a>
+    <a href="#" aria-current="page">Connections</a>
+    <a href="#">Email accounts</a>
+    <a href="#">Notifications</a>
+    <a href="#">Privacy and data</a>
+  </nav>
+  <main class="content">
+    <h1>Connections</h1>
+    <p class="lead">Tools that work with Kestrel. Kestrel AI is included, no setup needed.</p>
+
+    <div class="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+      <input type="search" placeholder="Search connections" aria-label="Search connections">
+    </div>
+
+    <div class="group-label">Find leads</div>
+    <div class="group">
+      <div class="row t1">
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M12 8.5h8.5M8.97 13.75L4.7 6.35M15.03 13.75l-4.27 7.2"/></svg></span>
+        <div class="txt"><div class="name">Chrome extension</div><div class="desc">Collect leads from LinkedIn and Google Maps</div></div>
+        <span class="badge">Connected</span>
+      </div>
+      <div class="row t2">
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
+        <div class="txt"><div class="name">Hunter</div><div class="desc">Find and verify email addresses</div></div>
+        <button class="btn solid" type="button">Connect</button>
+      </div>
+      <div class="row t3">
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4h10v17M15 9h4v12M8 8h4M8 12h4M8 16h4"/></svg></span>
+        <div class="txt"><div class="name">Apollo</div><div class="desc">Work emails when Hunter finds none</div></div>
+        <button class="btn solid" type="button">Connect</button>
+      </div>
+    </div>
+
+    <div class="group-label">Send and track</div>
+    <div class="group">
+      <div class="row t4">
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M21 20H3"/></svg></span>
+        <div class="txt"><div class="name">HubSpot</div><div class="desc">Interested leads become contacts and deals</div></div>
+        <button class="btn solid" type="button">Connect</button>
+      </div>
+    </div>
+
+    <div class="group-label">Use Kestrel elsewhere</div>
+    <div class="group">
+      <div class="row t5">
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/></svg></span>
+        <div class="txt"><div class="name">Kestrel MCP</div><div class="desc">Use your Kestrel data in Claude or Codex</div></div>
+        <button class="btn solid" type="button">Set up</button>
+      </div>
+    </div>
+
+    <button class="adv" type="button" aria-expanded="false">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+      Advanced: use your own AI key
+    </button>
+  </main>
+</div>
+</div>
+</div>
+<script>
+document.querySelectorAll('[data-set]').forEach(function(b){
+  b.addEventListener('click',function(){
+    document.documentElement.setAttribute('data-theme',b.dataset.set);
+    document.querySelectorAll('[data-set]').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});
+  });
+});
+</script>
+</body>
+</html>
