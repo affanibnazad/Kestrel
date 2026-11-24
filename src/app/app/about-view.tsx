@@ -167,8 +167,14 @@ export default function AboutView({ account, demo, editable, toast }: { account:
   }
 
   if (!loaded) return <div className="app-page kpage"><header className="khead"><h1>Your business</h1></header><p className="plan-msg">Loading…</p></div>;
-  const field = (label: string, k: keyof Offer, ph: string, rows = 2) => (
-    <label className="in"><span>{label}</span><textarea rows={rows} value={String(offer[k] ?? "")} placeholder={ph} disabled={off} onChange={(e) => setOffer({ ...offer, [k]: e.target.value })} /></label>
+  const field = (label: string, k: keyof Offer, ph: string, rows = 2, tip?: string) => (
+    <label className="in">
+      <span>
+        {label}
+        {tip ? <Tip text={tip} /> : null}
+      </span>
+      <textarea rows={rows} value={String(offer[k] ?? "")} placeholder={ph} disabled={off} onChange={(e) => setOffer({ ...offer, [k]: e.target.value })} />
+    </label>
   );
   const sf = (label: string, k: keyof Sender, ph: string, rows = 1) => (
     <label className="in"><span>{label}</span>{rows > 1
@@ -277,7 +283,8 @@ export default function AboutView({ account, demo, editable, toast }: { account:
           {offer.id ? <button type="button" className="link-btn danger" disabled={off} onClick={deleteOffer}>Delete</button> : null}
         </div>
         <div className="about-grid">
-          <div>
+          <div className="ksc-fields">
+            <h3 className="ksc-section-title">Basics</h3>
             <label className="in"><span>Service name</span><input value={offer.name} maxLength={40} disabled={off} placeholder="e.g. Video editing for agencies" onChange={(e) => setOffer({ ...offer, name: e.target.value })} /></label>
             <label className="in"><span>Service category <Tip text="Blueprint classification of this offering." /></span>
               <select value={offer.service_type ?? ""} disabled={off} onChange={(e) => setOffer({ ...offer, service_type: e.target.value || null })}>
@@ -286,18 +293,10 @@ export default function AboutView({ account, demo, editable, toast }: { account:
               </select>
             </label>
             {field("What you sell", "offer", "e.g. Short-form video editing for agencies")}
-            {field("Deliverables <Tip text=\"Explicit deliverables client gets, e.g. 8 short-form clips per month.\" />", "deliverables", "e.g. 8 short-form clips per month, captions, vertical formats (9:16)")}
-            {field("Problems solved <Tip text=\"Business pains this fixes, e.g. Inconsistent posting, editing bottleneck.\" />", "problems_solved", "e.g. Inconsistent social posting, internal editing bottleneck")}
-            {field("Dream outcome <Tip text=\"Transformation the client wants, e.g. Consistent presence without hiring.\" />", "dream_outcome", "e.g. Consistent weekly video presence without hiring in-house")}
-            {field("Ideal customer", "customer", "e.g. Marketing agencies with 5 to 50 people")}
             {field("One line on what you do (in every email)", "one_line", "e.g. We turn long videos into weekly short clips.")}
-          </div>
-          <div>
-            {field("Time to result <Tip text=\"How fast, e.g. First batch in 5 days.\" />", "time_to_result", "e.g. First batch delivered within 5 business days", 1)}
-            {field("Client effort <Tip text=\"What client must do, e.g. Upload raw footage weekly.\" />", "client_effort", "e.g. Upload raw footage once a week to shared drive", 1)}
-            {field("Risk reversal <Tip text=\"Guarantees or terms that lower risk.\" />", "risk_reversal", "e.g. Full revision until satisfied or money-back guarantee", 1)}
-            {field("First step offer <Tip text=\"Low-risk starting offer, e.g. 1 free test edit.\" />", "first_step", "e.g. 1 free test edit from existing footage", 1)}
-            {field("Buying triggers <Tip text=\"Observable events: hiring, launches, funding.\" />", "buying_triggers", "e.g. Hiring a video editor, launched a new podcast or YouTube channel")}
+
+            <h3 className="ksc-section-title" style={{ marginTop: 12 }}>Who it&apos;s for</h3>
+            {field("Ideal customer", "customer", "e.g. Marketing agencies with 5 to 50 people")}
             {field("Good signs", "good", "e.g. Posts video weekly, hiring an editor")}
             {field("Disqualifiers", "bad", "e.g. Has an in-house video team")}
             {field("Other criteria", "criteria", "Anything else the AI should weigh")}
@@ -306,34 +305,51 @@ export default function AboutView({ account, demo, editable, toast }: { account:
                 <button key={v} type="button" className={offer.strictness === v ? "on" : ""} disabled={off} onClick={() => setOffer({ ...offer, strictness: v })}>{v[0].toUpperCase() + v.slice(1)}</button>
               ))}</div></div>
           </div>
-        </div>
+          <div className="ksc-fields">
+            <h3 className="ksc-section-title">The offer</h3>
+            {field("Deliverables", "deliverables", "e.g. 8 short-form clips per month, captions, vertical formats (9:16)", 2, "Explicit deliverables client gets, e.g. 8 short-form clips per month.")}
+            {field("Problems solved", "problems_solved", "e.g. Inconsistent social posting, internal editing bottleneck", 2, "Business pains this fixes, e.g. Inconsistent posting, editing bottleneck.")}
+            {field("Dream outcome", "dream_outcome", "e.g. Consistent weekly video presence without hiring in-house", 2, "Transformation the client wants, e.g. Consistent presence without hiring.")}
+            {field("Time to result", "time_to_result", "e.g. First batch delivered within 5 business days", 1, "How fast, e.g. First batch in 5 days.")}
+            {field("Client effort", "client_effort", "e.g. Upload raw footage once a week to shared drive", 1, "What client must do, e.g. Upload raw footage weekly.")}
+            {field("Risk reversal", "risk_reversal", "e.g. Full revision until satisfied or money-back guarantee", 1, "Guarantees or terms that lower risk.")}
+            {field("First step offer", "first_step", "e.g. 1 free test edit from existing footage", 1, "Low-risk starting offer, e.g. 1 free test edit.")}
 
-        {about.proof.length > 0 ? (
-          <div className="about-sec" style={{ marginTop: 12 }}>
-            <b>Linked Proof Points <Tip text="Pick confirmed proof points from Your Business above to attach to this service. The AI only cites real proof." /></b>
-            <div className="about-chips" style={{ marginTop: 6 }}>
-              {about.proof.map((p) => {
-                const checked = Array.isArray(offer.proof_ids) && offer.proof_ids.includes(p.id);
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className={`oa-chip${checked ? " on" : ""}`}
-                    aria-pressed={checked}
-                    disabled={off}
-                    onClick={() => {
-                      const cur = Array.isArray(offer.proof_ids) ? [...offer.proof_ids] : [];
-                      const next = checked ? cur.filter((id) => id !== p.id) : [...cur, p.id];
-                      setOffer({ ...offer, proof_ids: next });
-                    }}
-                  >
-                    {p.title || p.result || "Proof item"}
-                  </button>
-                );
-              })}
+            <h3 className="ksc-section-title" style={{ marginTop: 12 }}>Signals + proof</h3>
+            {field("Buying triggers", "buying_triggers", "e.g. Hiring a video editor, launched a new podcast or YouTube channel", 2, "Observable events: hiring, launches, funding.")}
+
+            <div className="in">
+              <span>Linked Proof Points <Tip text="Pick confirmed proof points from Your Business above to attach to this service. The AI only cites real proof." /></span>
+              {about.proof.length > 0 ? (
+                <div className="about-chips" style={{ marginTop: 2 }}>
+                  {about.proof.map((p) => {
+                    const checked = Array.isArray(offer.proof_ids) && offer.proof_ids.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={`oa-chip${checked ? " on" : ""}`}
+                        aria-pressed={checked}
+                        disabled={off}
+                        onClick={() => {
+                          const cur = Array.isArray(offer.proof_ids) ? [...offer.proof_ids] : [];
+                          const next = checked ? cur.filter((id) => id !== p.id) : [...cur, p.id];
+                          setOffer({ ...offer, proof_ids: next });
+                        }}
+                      >
+                        {p.title || p.result || "Proof item"}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--label2)" }}>
+                  Add proof in Business, proof and tone first
+                </p>
+              )}
             </div>
           </div>
-        ) : null}
+        </div>
 
         <div className="join-row">
           <button type="button" className="btn go" disabled={off || !offerReady(offer)} onClick={() => saveOffer(false)}>{busy === "offer" ? "Saving…" : offer.id ? "Save service" : "Save as service"}</button>

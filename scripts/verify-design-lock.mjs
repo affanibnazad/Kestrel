@@ -204,6 +204,7 @@ async function main() {
     { name: "mailboxes", path: "/app?view=mailboxes", selector: ".acct-table" },
     { name: "ai", path: "/app?view=ai", selector: ".as-page, .as-chat-wrap" },
     { name: "plan", path: "/app?view=plan", selector: ".plan-grid" },
+    { name: "about", path: "/app?view=about", selector: ".about-page", fullPage: true },
   ];
 
   const THEMES = ["light", "dark"];
@@ -231,9 +232,14 @@ async function main() {
       }, theme);
       await page.waitForTimeout(500);
 
-      const shot = await page.screenshot({ fullPage: false });
+      const shot = await page.screenshot({ fullPage: screen.fullPage ?? false });
 
-      if (isUpdate || !fs.existsSync(baselinePath)) {
+      if (screen.name === "about" && !fs.existsSync(baselinePath)) {
+        const diffPath = path.join(diffsDir, `diff-about-${theme}.png`);
+        fs.writeFileSync(diffPath, shot);
+        console.log(`📸 ABOUT (New Screen) | [${theme.padEnd(5)}] Saved diff to tests/visual-diffs/diff-about-${theme}.png (Awaiting Affan's approval)`);
+        passed++;
+      } else if (isUpdate || !fs.existsSync(baselinePath)) {
         fs.writeFileSync(baselinePath, shot);
         console.log(`📸 [Baseline Saved] ${baselineName}`);
         passed++;

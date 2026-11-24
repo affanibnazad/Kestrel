@@ -21433,6 +21433,19 @@ a.btn:focus-visible {
   max-width: 100%;
 }
 
+.ksc-fields {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+
+.ksc-section-title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--label) !important;
+  margin: 8px 0 2px 0 !important;
+}
+
 .about-sub {
   margin-top: 6px;
 }
