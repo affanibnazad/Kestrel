@@ -147,6 +147,7 @@ async function main() {
   // Freeze the clock and accept cookies
   await page.addInitScript(() => {
     try {
+      localStorage.setItem("kestrel-consent", JSON.stringify({ v: 1, analytics: false, marketing: false, at: "2026-11-23T12:00:00Z" }));
       localStorage.setItem("kestrel_cookie_consent", JSON.stringify({ v: 1, analytics: false, marketing: false, at: "2026-11-23T12:00:00Z" }));
     } catch {}
     const fixedTime = new Date("2026-11-23T12:00:00Z").getTime();

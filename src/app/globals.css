@@ -26214,14 +26214,24 @@ body:has(.kinbox-page) .ask-fab {
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
+  min-width: 0 !important;
 }
 
 .klead-cat {
   color: #4b5563 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: inline-block !important;
+  max-width: 180px !important;
 }
 
 .klead-place {
   color: #9ca3af !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  flex-shrink: 0 !important;
 }
 
 .klead-online-link,

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { currentUser, supabaseServer } from "@/lib/supabase/server";
 import ClientAppShell from "./client-app";
 import type { Account } from "./shell";
@@ -58,6 +59,7 @@ const demoLeads = (): LeadRow[] => EXAMPLE_LEADS.map((l, i) => ({
 }) as LeadRow);
 
 async function SignedIn({ searchParams }: { searchParams: PageProps<"/app">["searchParams"] }) {
+  await connection();
   const sp = await searchParams;
   const initialView = typeof sp.view === "string" ? sp.view : "home";
   const isDemoAllowed = process.env.KESTREL_ALLOW_DEMO === "true";
