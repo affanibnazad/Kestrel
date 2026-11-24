@@ -94,7 +94,7 @@ function comparePixels(imgA, imgB) {
 
 async function main() {
   console.log("================================================================================");
-  console.log("DESIGN LOCK BASELINE VERIFICATION (18 SCREENSHOTS: 9 PAGES × LIGHT & DARK)");
+  console.log("DESIGN LOCK BASELINE VERIFICATION (27 SCREENSHOTS: 9 PAGES × LIGHT, DARK & GRADIENT)");
   console.log(`Target: ${BASE_URL} | Mode: ${isUpdate ? "UPDATE BASELINES" : "VERIFY AGAINST BASELINES"}`);
   console.log("================================================================================\n");
 
@@ -209,7 +209,7 @@ async function main() {
     { name: "about", path: "/app?view=about", selector: ".about-page", fullPage: true },
   ];
 
-  const THEMES = ["light", "dark"];
+  const THEMES = ["light", "dark", "gradient"];
   let passed = 0;
   let failed = 0;
 
