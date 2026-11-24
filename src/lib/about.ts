@@ -3,9 +3,40 @@
 
 export type Mode = "agency" | "solo" | "whitelabel";
 export type Proof = { id: string; title: string; result: string; link: string };
-export type About = { mode: Mode; website: string; about: string; proof: Proof[]; tone: string; avoid: string };
+export type VoiceNotes = {
+  greeting?: string;
+  sign_off?: string;
+  sentence_length?: string;
+  words_used?: string[];
+  words_avoided?: string[];
+};
+export type About = {
+  mode: Mode;
+  website: string;
+  about: string;
+  proof: Proof[];
+  tone: string;
+  avoid: string;
+  voice_notes?: VoiceNotes;
+};
 
-export const EMPTY_ABOUT: About = { mode: "agency", website: "", about: "", proof: [], tone: "", avoid: "" };
+export const EMPTY_VOICE_NOTES: VoiceNotes = {
+  greeting: "",
+  sign_off: "",
+  sentence_length: "",
+  words_used: [],
+  words_avoided: [],
+};
+
+export const EMPTY_ABOUT: About = {
+  mode: "agency",
+  website: "",
+  about: "",
+  proof: [],
+  tone: "",
+  avoid: "",
+  voice_notes: EMPTY_VOICE_NOTES,
+};
 export const MODES: { id: Mode; name: string; who: string; help: string }[] = [
   { id: "agency", name: "Agency or B2B team", who: "You sell to businesses as a team.",
     help: "Emails speak for your business (we, our team) and leads are businesses." },
@@ -28,7 +59,29 @@ export function cleanAbout(raw: unknown): About {
     const id = typeof x.id === "string" && x.id.trim() ? str(x.id, 64) : (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
     return { id, title: str(x.title, 80), result: str(x.result, 300), link: url(x.link) };
   }).filter((p) => p.title || p.result);
-  return { mode, website: url(r.website), about: str(r.about, 2000), proof, tone: str(r.tone, 600), avoid: str(r.avoid, 600) };
+
+  const rawVn = (r.voice_notes && typeof r.voice_notes === "object" ? r.voice_notes : {}) as Record<string, unknown>;
+  const voice_notes: VoiceNotes = {
+    greeting: str(rawVn.greeting, 100),
+    sign_off: str(rawVn.sign_off, 100),
+    sentence_length: str(rawVn.sentence_length, 150),
+    words_used: Array.isArray(rawVn.words_used)
+      ? rawVn.words_used.map((w) => str(w, 50)).filter(Boolean).slice(0, 20)
+      : [],
+    words_avoided: Array.isArray(rawVn.words_avoided)
+      ? rawVn.words_avoided.map((w) => str(w, 50)).filter(Boolean).slice(0, 20)
+      : [],
+  };
+
+  return {
+    mode,
+    website: url(r.website),
+    about: str(r.about, 2000),
+    proof,
+    tone: str(r.tone, 600),
+    avoid: str(r.avoid, 600),
+    voice_notes,
+  };
 }
 
 // A setup step is done when the business is described (Home's setup wizard).
@@ -45,5 +98,13 @@ export function aboutForAi(a: About | null): string {
   if (a.proof.length) out.push(`- Proof they may mention (use at most one, exactly as written, only when it fits this lead; never invent results):\n${a.proof.map((p) => `  - ${p.title}${p.result ? `: ${p.result}` : ""}`).join("\n")}`);
   if (a.tone) out.push(`- Tone of voice: ${a.tone}`);
   if (a.avoid) out.push(`- Never use these words: ${a.avoid}`);
+  if (a.voice_notes) {
+    const vn = a.voice_notes;
+    if (vn.greeting) out.push(`- Sender voice greeting: ${vn.greeting}`);
+    if (vn.sign_off) out.push(`- Sender voice sign-off: ${vn.sign_off}`);
+    if (vn.sentence_length) out.push(`- Sender sentence rhythm: ${vn.sentence_length}`);
+    if (vn.words_used?.length) out.push(`- Words/phrases they naturally use: ${vn.words_used.join(", ")}`);
+    if (vn.words_avoided?.length) out.push(`- Words they strictly avoid: ${vn.words_avoided.join(", ")}`);
+  }
   return out.join("\n");
 }

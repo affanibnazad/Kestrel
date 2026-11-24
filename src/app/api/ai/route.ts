@@ -3,8 +3,10 @@ import { dncIndex } from "@/lib/dnc";
 import { teamDnc } from "@/lib/dnc-server";
 import { currentUser, supabaseServer } from "@/lib/supabase/server";
 import { aiOne, aiPlan, writeChecked } from "@/lib/lead-steps";
-import type { Offer, Provider } from "@/lib/ai";
+import { cleanVoiceNotes, readJson, voiceSystem, VOICE_SCHEMA, type Offer, type Provider } from "@/lib/ai";
 import { aboutForAi, cleanAbout } from "@/lib/about";
+import { modelForTask } from "@/lib/ai-models";
+import { ask } from "@/lib/ai-server";
 
 // AI in the App: judges leads (Good / Maybe / No) or writes the personal parts of first emails, a few leads per call.
 // With a sequence (Mail phase 2) the same call writes the first email and every follow-up for the lead in one go.
@@ -15,18 +17,36 @@ import { aboutForAi, cleanAbout } from "@/lib/about";
 export const maxDuration = 60;
 const MAX_PER_CALL = 8, AT_ONCE = 4;
 
-type Body = { task?: string; ids?: unknown; offerId?: unknown; sequence?: unknown };
+type Body = { task?: string; ids?: unknown; offerId?: unknown; sequence?: unknown; samples?: unknown };
 
 export async function POST(request: Request) {
   const started = Date.now();
   const user = await currentUser();
   if (!user) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
   const body = (await request.json().catch(() => ({}))) as Body;
+
+  const sb = await supabaseServer();
+
+  // Stage D1: Voice Profile analysis from past sent emails (notes only, raw samples never stored)
+  if (body.task === "voice") {
+    const samples = typeof body.samples === "string" ? body.samples.trim() : "";
+    if (samples.length < 50) {
+      return NextResponse.json({ error: "Please paste at least 5 to 10 sample emails (minimum 50 characters)." }, { status: 400 });
+    }
+    const { data: ai } = await sb.from("team_ai").select("*").maybeSingle();
+    const provider = ((ai?.provider as Provider) || "anthropic");
+    const { data: key, error: keyError } = await sb.rpc("ai_key_for_server", { server_secret: process.env.MAIL_SERVER_SECRET || "", service: provider });
+    if (keyError || !key) return NextResponse.json({ error: "No AI key configured." }, { status: 403 });
+    const pick = modelForTask(provider, String(ai?.model ?? ""), "emails");
+    const userPrompt = `<sample_emails>\n${samples.slice(0, 15000)}\n</sample_emails>`;
+    const answer = await ask(provider, key, pick.model, voiceSystem(), userPrompt, VOICE_SCHEMA, 800, pick.effort);
+    const notes = cleanVoiceNotes(readJson(answer.text));
+    return NextResponse.json({ ok: true, notes });
+  }
+
   const task = body.task === "emails" ? "emails" : body.task === "score" ? "score" : body.task === "research" ? "research" : null;
   const ids = Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === "string" && /^[0-9a-f-]{36}$/i.test(x)).slice(0, MAX_PER_CALL) : [];
   if (!task || !ids.length || typeof body.offerId !== "string") return NextResponse.json({ error: "Nothing to do." }, { status: 400 });
-
-  const sb = await supabaseServer();
   // "current" (the lead panel's Research button): the offer Score and write uses now, else the team's first offer.
   if (body.offerId === "current") {
     const { data: t } = await sb.from("team_ai").select("offer_id").maybeSingle();
@@ -40,7 +60,8 @@ export async function POST(request: Request) {
     sb.from("team_about").select("*").maybeSingle(),   // database 059; before it is run this is empty
     task === "score" ? sb.from("offer_profiles").select("*").order("name") : Promise.resolve({ data: [] }),
   ]);
-  const settings = ai ? { ...ai, about: aboutForAi(aboutRow ? cleanAbout(aboutRow) : null) } : null;
+  const cleanAb = aboutRow ? cleanAbout(aboutRow) : null;
+  const settings = ai ? { ...ai, about: aboutForAi(cleanAb) } : null;
   if (!offer) return NextResponse.json({ error: "Choose an offer profile first." }, { status: 400 });
   const activeServices = ((allActiveOffers ?? []) as (Offer & { active?: boolean })[])
     .filter((o) => o.active !== false)
@@ -60,10 +81,10 @@ export async function POST(request: Request) {
   const provider = ((settings?.provider as Provider) || "anthropic");
   const { data: key, error: keyError } = await sb.rpc("ai_key_for_server", { server_secret: process.env.MAIL_SERVER_SECRET || "", service: provider });
   // Check the offer, model and sender before the key, so the first missing thing is named.
-  const pre = aiPlan(task, offer as Offer, settings, "-", sequence, activeServices);
+  const pre = aiPlan(task, offer as Offer, settings, "-", sequence, activeServices, cleanAb?.voice_notes, cleanAb);
   if ("error" in pre) return NextResponse.json({ error: pre.error }, { status: 400 });
   if (keyError) return NextResponse.json({ error: /can change leads/.test(keyError.message) ? "Your role can view leads but not run AI. Ask your team owner." : "AI is coming soon to your workspace." }, { status: 403 });
-  const plan = aiPlan(task, offer as Offer, settings, typeof key === "string" ? key : "", sequence, activeServices);
+  const plan = aiPlan(task, offer as Offer, settings, typeof key === "string" ? key : "", sequence, activeServices, cleanAb?.voice_notes, cleanAb);
   if ("error" in plan) return NextResponse.json({ error: plan.error }, { status: 400 });
   // Phase 4C: written emails are checked by the QC bot and fixed once; one it cannot pass is held from campaigns.
   const qcPlan = task === "emails" ? aiPlan("qc", offer as Offer, settings, typeof key === "string" ? key : "", null) : null;
@@ -96,7 +117,7 @@ export async function POST(request: Request) {
       }
     }
     console.log(`[ai-route] start task=${task} lead=${l.id}`);
-    const r = task === "emails" ? await writeChecked(plan, qc, l, dnc, 1, () => Date.now() - started < 42_000) : await aiOne(plan, l, dnc);
+    const r = task === "emails" ? await writeChecked(plan, qc, l, dnc, 2, () => Date.now() - started < 42_000) : await aiOne(plan, l, dnc);
     cost = cost === null || r.cost === null ? null : cost + r.cost;
     if (!r.ok) {
       console.log(`[ai-route] task=${task} lead=${l.id} not ok: ${r.why || r.fatal}`);
@@ -111,6 +132,8 @@ export async function POST(request: Request) {
       delete safePatch.outreach_approved;
       delete safePatch.outreach_approved_at;
       delete safePatch.outreach_approved_by;
+      delete safePatch.angle;
+      delete safePatch.angle_reason;
       const res2 = await sb.from("leads").update(safePatch).eq("id", l.id);
       error = res2.error;
     }

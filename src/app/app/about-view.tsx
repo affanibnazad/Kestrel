@@ -19,6 +19,13 @@ const DEMO_ABOUT: About = {
   proof: [{ id: "demo-proof-1", title: "Harbour Social (example)", result: "Posted 3x more video with the same team", link: "" }],
   tone: "Friendly, short, plain words",
   avoid: "synergy, leverage",
+  voice_notes: {
+    greeting: "Hi {name},",
+    sign_off: "Best,\nAlex",
+    sentence_length: "short (8–14 words), direct",
+    words_used: ["honestly", "quick question"],
+    words_avoided: ["synergy", "leverage", "game-changer"],
+  },
 };
 const DEMO_OFFER: OfferRow = {
   ...EMPTY_OFFER,
@@ -93,8 +100,45 @@ export default function AboutView({ account, demo, editable, toast }: { account:
     return () => { live = false; };
   }, [account, demo, sb]);
 
+  const [emailSamples, setEmailSamples] = useState("");
   const off = !editable || Boolean(busy);
   const setProof = (i: number, patch: Partial<Proof>) => setAbout({ ...about, proof: about.proof.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
+
+  async function analyzeVoice() {
+    if (!emailSamples.trim() || emailSamples.trim().length < 50) {
+      toast("Paste at least 5 to 10 sample emails first (minimum 50 characters).");
+      return;
+    }
+    setBusy("voice");
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "voice", samples: emailSamples }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.notes) {
+        toast(data.error || "Could not analyze voice. Check AI connection.");
+        setBusy("");
+        return;
+      }
+      setAbout({
+        ...about,
+        voice_notes: {
+          greeting: data.notes.greeting || "",
+          sign_off: data.notes.sign_off || "",
+          sentence_length: data.notes.sentence_length || "",
+          words_used: data.notes.words_used || [],
+          words_avoided: data.notes.words_avoided || [],
+        },
+      });
+      toast("Voice profile extracted! Review and edit style notes below.");
+    } catch {
+      toast("Network problem reaching AI.");
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function saveBusiness() {
     if (!account && !demo) return;
@@ -102,7 +146,12 @@ export default function AboutView({ account, demo, editable, toast }: { account:
     if (about.website.trim() && !a.website) { toast("Website: start with https://"); return; }
     setBusy("business");
     if (!demo && account) {
-      const r1 = await sb().from("team_about").upsert({ team_id: account.team_id, ...a, updated_at: new Date().toISOString() }, { onConflict: "team_id" });
+      let r1 = await sb().from("team_about").upsert({ team_id: account.team_id, ...a, updated_at: new Date().toISOString() }, { onConflict: "team_id" });
+      if (r1.error && /voice_notes/i.test(r1.error.message)) {
+        const safeA = { ...a };
+        delete safeA.voice_notes;
+        r1 = await sb().from("team_about").upsert({ team_id: account.team_id, ...safeA, updated_at: new Date().toISOString() }, { onConflict: "team_id" });
+      }
       if (r1.error) { setBusy(""); toast(/team_about|schema cache/i.test(r1.error.message) ? "The About page needs database update 059." : r1.error.message); return; }
       const s = { team_id: account.team_id, sender_name: sender.sender_name.trim().slice(0, 120), business: sender.business.trim().slice(0, 120), address: sender.address.trim().slice(0, 400),
         signature: sender.signature.trim().slice(0, 400), updated_at: new Date().toISOString() };
@@ -256,6 +305,118 @@ export default function AboutView({ account, demo, editable, toast }: { account:
           <div className="join-row"><button type="button" className="btn go" disabled={off} onClick={saveBusiness}>{busy === "business" ? "Saving…" : "Save business, proof and tone"}</button></div>
         </section>
       </div>
+
+      <section className="join-card about-sec prof-form" style={{ marginTop: 12 }}>
+        <b>Voice Profile <Tip text="Paste 5–10 of your past sent emails. A real AI call turns them into short editable style notes (greeting, sign-off, sentence length, words used/avoided). We store notes only, never your raw emails." /></b>
+        <label className="in">
+          <span>Sample emails (5–10 past emails)</span>
+          <textarea
+            rows={4}
+            value={emailSamples}
+            placeholder="Paste 5 to 10 of your past sent emails here to extract your voice profile..."
+            disabled={off}
+            onChange={(e) => setEmailSamples(e.target.value)}
+          />
+        </label>
+        <div className="join-row">
+          <button
+            type="button"
+            className="btn small glass"
+            disabled={off || busy === "voice" || emailSamples.trim().length < 50}
+            onClick={analyzeVoice}
+          >
+            {busy === "voice" ? "Analyzing voice…" : "Analyze sample emails"}
+          </button>
+        </div>
+
+        <div className="row2" style={{ marginTop: 8 }}>
+          <label className="in">
+            <span>Greeting style <Tip text="How you naturally greet, e.g. Hi {name}," /></span>
+            <input
+              value={about.voice_notes?.greeting ?? ""}
+              placeholder="e.g. Hi {name},"
+              disabled={off}
+              onChange={(e) =>
+                setAbout({
+                  ...about,
+                  voice_notes: { ...(about.voice_notes ?? {}), greeting: e.target.value },
+                })
+              }
+            />
+          </label>
+          <label className="in">
+            <span>Sign-off style <Tip text="How you naturally sign off, e.g. Best, or Cheers," /></span>
+            <input
+              value={about.voice_notes?.sign_off ?? ""}
+              placeholder="e.g. Best,"
+              disabled={off}
+              onChange={(e) =>
+                setAbout({
+                  ...about,
+                  voice_notes: { ...(about.voice_notes ?? {}), sign_off: e.target.value },
+                })
+              }
+            />
+          </label>
+        </div>
+
+        <label className="in">
+          <span>Sentence rhythm & length <Tip text="E.g. Short (8-14 words), direct and punchy" /></span>
+          <input
+            value={about.voice_notes?.sentence_length ?? ""}
+            placeholder="e.g. Short (8-14 words), direct and punchy"
+            disabled={off}
+            onChange={(e) =>
+              setAbout({
+                ...about,
+                voice_notes: { ...(about.voice_notes ?? {}), sentence_length: e.target.value },
+              })
+            }
+          />
+        </label>
+
+        <label className="in">
+          <span>Words naturally used (comma separated) <Tip text="Phrases or words you naturally like to use in emails" /></span>
+          <input
+            value={(about.voice_notes?.words_used ?? []).join(", ")}
+            placeholder="e.g. honestly, quick question, noticed your work"
+            disabled={off}
+            onChange={(e) =>
+              setAbout({
+                ...about,
+                voice_notes: {
+                  ...(about.voice_notes ?? {}),
+                  words_used: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                },
+              })
+            }
+          />
+        </label>
+
+        <label className="in">
+          <span>Words to avoid (comma separated) <Tip text="Jargon, buzzwords, or formal phrases you never use" /></span>
+          <input
+            value={(about.voice_notes?.words_avoided ?? []).join(", ")}
+            placeholder="e.g. synergy, leverage, elevate, robust, game-changer"
+            disabled={off}
+            onChange={(e) =>
+              setAbout({
+                ...about,
+                voice_notes: {
+                  ...(about.voice_notes ?? {}),
+                  words_avoided: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                },
+              })
+            }
+          />
+        </label>
+
+        <div className="join-row">
+          <button type="button" className="btn go small" disabled={off} onClick={saveBusiness}>
+            {busy === "business" ? "Saving…" : "Save voice profile"}
+          </button>
+        </div>
+      </section>
 
       <section className="join-card about-sec prof-form">
         <b>Service Catalog <Tip text="Configure what you sell, your target client profile, evidence triggers, and deliverables. The AI evaluates leads against all active services and matches the best one. Turn services on or off at any time." /></b>

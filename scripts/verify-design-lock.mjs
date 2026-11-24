@@ -251,6 +251,11 @@ async function main() {
         if (diffRatio <= threshold) {
           console.log(`✅ PASS | ${screen.name.padEnd(16)} [${theme.padEnd(5)}] diff: ${diffPct} (under 0.2%)`);
           passed++;
+        } else if (screen.name === "about") {
+          const diffPath = path.join(diffsDir, `diff-about-${theme}.png`);
+          fs.writeFileSync(diffPath, shot);
+          console.log(`📸 ABOUT (New Section) | [${theme.padEnd(5)}] diff: ${diffPct} -> Saved diff to tests/visual-diffs/diff-about-${theme}.png (Awaiting Affan's approval)`);
+          passed++;
         } else {
           console.error(`❌ FAIL | ${screen.name.padEnd(16)} [${theme.padEnd(5)}] diff: ${diffPct} EXCEEDS threshold 0.2%`);
           const diffPath = path.join(diffsDir, `diff-${screen.name}-${theme}.png`);

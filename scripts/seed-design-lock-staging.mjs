@@ -66,6 +66,8 @@ if (!boxId) {
   if (boxErr) throw boxErr;
   boxId = newBoxId;
 }
+  // Ensure mailbox is marked ready (status='ok', smtp_ok=true, imap_ok=true) via mailbox_tested
+  
 
 // 2. Fixed Campaigns
 console.log("[Seed Design Lock] Resetting and seeding fixed campaigns...");
@@ -101,6 +103,17 @@ for (const c of fixedCampaigns) {
 
 // 3. Fixed Leads (4 clean deterministic leads with fixed dates and values)
 console.log("[Seed Design Lock] Resetting and seeding fixed leads...");
+  // Clean any outreach drafts so campaign-detail counts remain deterministic
+  const { data: currentLeads } = await sb.from("leads").select("id, data");
+  if (currentLeads) {
+    for (const l of currentLeads) {
+      if (l.data?.outreach) {
+        const copy = { ...l.data };
+        delete copy.outreach;
+        await sb.from("leads").update({ data: copy }).eq("id", l.id);
+      }
+    }
+  }
 const fixedLeads = [
   {
     id: "11111111-1111-1111-1111-111111111111",

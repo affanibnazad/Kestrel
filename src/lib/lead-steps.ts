@@ -9,6 +9,8 @@ import {
   EMPTY_SENDER, FIT_SCHEMA, PROVIDERS, QC_SCHEMA, RESEARCH_SCHEMA, VERDICT_COLUMN, cleanFit, cleanQc, cleanResearch, qcPayload, qcSystem, researchSystem, type Draft, type Qc, cleanFollowUps, cleanParts, emailMissing, emailPayload, emailSystem, fitSystem, leadPayload,
   makeDraft, offerReady, profileHash, readJson, sequenceSchema, type LeadData, type Offer, type Provider, type Sender
 } from "./ai";
+import type { About, VoiceNotes } from "./about";
+import { pickAngle } from "./angles";
 import { hostOf, hunterPick, hunterUrl, mergeContacts, setEmails, type Contact } from "./hunter";
 import { applyRules, cleanRules, type ScoreLead } from "./scoring";
 import { apolloFind, findymailFind } from "./finders";
@@ -25,11 +27,13 @@ export type AiPlan = {
   offer: Offer; sender: Sender; hash: string; system: string; schema: object; followUps: number;
   seq: { steps: Step[]; id?: string } | null;
   activeServices?: Offer[];
+  voiceNotes?: VoiceNotes;
+  about?: About | null;
   by?: string;   // who wrote it, when not the team's AI company (Kestrel MCP: "claude-code / codex")
 };
 // Checks the offer, sender, model and sequence, and builds what every lead in the batch shares. Returns an error in plain words.
 export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offer | null, settings: Record<string, unknown> | null, key: string,
-  sequence: { steps: unknown; id?: string } | "default" | null, activeServices?: Offer[]): AiPlan | { error: string } {
+  sequence: { steps: unknown; id?: string } | "default" | null, activeServices?: Offer[], voiceNotes?: VoiceNotes, about?: About | null): AiPlan | { error: string } {
   if (!offer) return { error: "Choose an offer profile first." };
   const s: Sender = { ...EMPTY_SENDER, ...(settings ?? {}) } as Sender;
   // "auto" (the default for Claude): Haiku 5.5 judges leads, Sonnet 5.5 writes emails. A model the team chose is used as it is.
@@ -47,8 +51,9 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
   const followUps = seq ? followUpCount(seq.steps) : 0;
   return {
     task, provider, key, model: pick.model, effort: provider === "anthropic" ? pick.effort : undefined, offer, sender: s, hash: profileHash(offer),
-    system: task === "score" ? fitSystem(offer, s.about ?? "", activeServices) : task === "research" ? researchSystem(offer, s.about ?? "") : task === "qc" ? qcSystem(offer) : emailSystem(offer, s, seq?.steps),
-    schema: task === "score" ? FIT_SCHEMA : task === "research" ? RESEARCH_SCHEMA : task === "qc" ? QC_SCHEMA : sequenceSchema(followUps), followUps, seq, activeServices
+    system: task === "score" ? fitSystem(offer, s.about ?? "", activeServices) : task === "research" ? researchSystem(offer, s.about ?? "") : task === "qc" ? qcSystem(offer) : emailSystem(offer, s, seq?.steps, voiceNotes),
+    schema: task === "score" ? FIT_SCHEMA : task === "research" ? RESEARCH_SCHEMA : task === "qc" ? QC_SCHEMA : sequenceSchema(followUps), followUps, seq, activeServices,
+    voiceNotes, about
   };
 }
 
@@ -76,12 +81,18 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
     site = r;
   }
   try {
+    const chosenAngle = p.task === "emails"
+      ? pickAngle(data, p.offer, p.about ?? null, (data as Record<string, unknown>).buying_trigger as string | null)
+      : null;
+    const sys = p.task === "emails" && chosenAngle
+      ? emailSystem(p.offer, p.sender, p.seq?.steps, p.voiceNotes, chosenAngle)
+      : p.system;
     const user = p.task === "research"
       ? `<website host="${site!.host}">\n${site!.text.replace(/<\/?website/gi, "")}\n</website>`
       : `<lead>${JSON.stringify(p.task === "score" ? leadPayload(data) : emailPayload({ ...data, email: l.email ?? (data as { email?: string }).email }))}</lead>`
       // Phase 4C: the QC bot's notes on the last draft, for the rewrite.
       + (fix.length ? `\n<qc_notes>\nA checker found these problems in your last version. Write it again and fix every one:\n${fix.map((x) => `- ${x}`).join("\n")}\n</qc_notes>` : "");
-    const a = await ask(p.provider, p.key, p.model, p.system, user, p.schema, p.task === "emails" ? 600 + p.followUps * 250 : p.task === "research" ? 800 : 1500, p.effort);
+    const a = await ask(p.provider, p.key, p.model, sys, user, p.schema, p.task === "emails" ? 600 + p.followUps * 250 : p.task === "research" ? 800 : 1500, p.effort);
     const cost = costOf(a.usage, p.provider, p.model);
     if (a.skip) return { ok: false, why: a.skip, cost };
     return aiAnswer(p, l, readJson(a.text), cost, site?.host, site?.text);
@@ -162,13 +173,13 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
     return { ok: true, patch, result: resObj, cost };
   }
   const parts = cleanParts(answer), fu = cleanFollowUps(answer, p.followUps);
-  if (!parts || fu.some((x) => !x)) return { ok: false, why: "unreadable answer", cost };
+  if (!parts) return { ok: false, why: "unreadable answer", cost };
   // Only a real person's name Kestrel has for this lead, never the company name (19 Nov 2026).
   parts.first_name = trustedFirstName(parts.first_name, {
     name: (data as { name?: string }).name, email: l.email ?? (data as { email?: string }).email,
     contacts: (data as { contacts?: { name?: string }[] }).contacts
   });
-  const outreach = { ...makeDraft(parts, p.offer, p.sender, p.provider, p.seq, fu, l.id), ...(p.by ? { by: p.by } : {}) };
+  const outreach = { ...makeDraft(parts, p.offer, p.sender, p.provider, p.seq, fu, l.id, p.voiceNotes), ...(p.by ? { by: p.by } : {}) };
   // Never save a draft that would send a visible [FIELD] (e.g. no booking link set) or price / trial / money words.
   const emails = (outreach.steps ?? [{ body: outreach.body, subject: outreach.subject }]).filter((x) => !("kind" in x) || !x.kind || x.kind === "email");
   const unfilled = emails.map((x) => `${x.subject} ${x.body}`.match(/\[([A-Z][A-Z_]{2,})\]/)?.[1]).find(Boolean);
@@ -177,7 +188,31 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
   // The database's own check (email_steps_problem), so a draft that Start would skip is caught now, with the reason.
   const problem = emailStepsProblem(emails as { subject?: string; body?: string; kind?: string }[]);
   if (problem) return { ok: false, why: `${problem}: rewrite it`, cost };
-  return { ok: true, patch: { data: { ...data, outreach } }, result: { id: l.id, draft: outreach }, cost };
+
+  const chosenAngle = pickAngle(data, p.offer, p.about ?? null, (data as Record<string, unknown>).buying_trigger as string | null);
+  const patch: Record<string, unknown> = {
+    data: {
+      ...data,
+      outreach,
+      angle: chosenAngle.angle,
+      angle_reason: chosenAngle.why,
+      angle_principles: chosenAngle.principles,
+    },
+    angle: chosenAngle.angle,
+    angle_reason: chosenAngle.why,
+  };
+  return {
+    ok: true,
+    patch,
+    result: {
+      id: l.id,
+      draft: outreach,
+      angle: chosenAngle.angle,
+      angle_reason: chosenAngle.why,
+      angle_principles: chosenAngle.principles,
+    },
+    cost
+  };
 }
 
 // ---------- QC (Phase 4C): the QC bot checks a written email; the Writer fixes it with QC's notes.
@@ -186,15 +221,15 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
   try {
     const a = await ask(p.provider, p.key, p.model, p.system, `<check>${JSON.stringify(qcPayload(data, draft))}</check>`, p.schema, 700, p.effort);
     const cost = costOf(a.usage, p.provider, p.model);
-    const q = a.skip ? null : cleanQc(readJson(a.text));
+    const fullDraftText = `${draft.subject || ""} ${draft.body || ""} ${(draft.steps || []).map((s) => s.body).join(" ")}`;
+    const q = a.skip ? null : cleanQc(readJson(a.text), fullDraftText);
     return q ? { ok: true, ...q, cost } : { ok: false, cost };
   } catch (e) {
     return { ok: false, cost: 0, fatal: e instanceof AiError ? e.message : undefined };
   }
 }
-// Write, check, and fix up to `rounds` times. The result's draft carries qc: passed, hold (campaigns leave it out until a
-// person approves it) or unchecked (QC could not run: no time or no answer). `more()` says whether there is time for another call.
-export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc: DncIndex, rounds: number, more: () => boolean = () => true):
+// Write, check, and fix up to `rounds` times (Stage D: default 2 fix rounds, then hold).
+export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc: DncIndex, rounds = 2, more: () => boolean = () => true):
   Promise<AiResult & { events?: QcEvent[] }> {
   let r = await aiOne(w, l, dnc);
   if (!r.ok || !qc) return r;
