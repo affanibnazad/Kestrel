@@ -1,13 +1,13 @@
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: var(--u-space-2);
+  gap: var(--ds-space-2);
   height: 26px;
-  padding: 0 var(--u-space-3);
-  border-radius: var(--u-radius-pill);
-  font-family: var(--u-font-family);
-  font-size: var(--u-font-size-12);
-  font-weight: var(--u-font-weight-medium);
+  padding: 0 var(--ds-space-3);
+  border-radius: var(--ds-radius-pill);
+  font-family: var(--ds-font-family);
+  font-size: var(--ds-font-size-12);
+  font-weight: var(--ds-font-weight-medium);
   line-height: 1;
   white-space: nowrap;
   user-select: none;
@@ -17,7 +17,7 @@
 .dot {
   width: 6px;
   height: 6px;
-  border-radius: var(--u-radius-pill);
+  border-radius: var(--ds-radius-pill);
   flex-shrink: 0;
 }
 
@@ -29,78 +29,78 @@
 /* Positive / Connected / Active */
 .positive,
 .active {
-  background-color: var(--u-badge-positive-bg);
-  color: var(--u-badge-positive-text);
-  border-color: var(--u-badge-positive-border);
+  background-color: var(--ds-badge-positive-bg);
+  color: var(--ds-badge-positive-text);
+  border-color: var(--ds-badge-positive-border);
 }
 
 .positive .dot,
 .active .dot {
-  background-color: var(--u-badge-positive-dot);
+  background-color: var(--ds-badge-positive-dot);
 }
 
 /* Good / Fit High (Apple Green) */
 .good {
-  background-color: var(--u-status-green-bg);
-  color: var(--u-status-green-text);
-  border-color: var(--u-status-green);
+  background-color: var(--ds-status-green-bg);
+  color: var(--ds-status-green-text);
+  border-color: var(--ds-status-green);
 }
 
 .good .dot {
-  background-color: var(--u-status-green);
+  background-color: var(--ds-status-green);
 }
 
 /* Maybe / Fit Medium (Apple Orange) */
 .maybe {
-  background-color: var(--u-status-orange-bg);
-  color: var(--u-status-orange-text);
-  border-color: var(--u-status-orange);
+  background-color: var(--ds-status-orange-bg);
+  color: var(--ds-status-orange-text);
+  border-color: var(--ds-status-orange);
 }
 
 .maybe .dot {
-  background-color: var(--u-status-orange);
+  background-color: var(--ds-status-orange);
 }
 
 /* No / Rejected / Bounce (Apple Red) */
 .no {
-  background-color: var(--u-status-red-bg);
-  color: var(--u-status-red-text);
-  border-color: var(--u-status-red);
+  background-color: var(--ds-status-red-bg);
+  color: var(--ds-status-red-text);
+  border-color: var(--ds-status-red);
 }
 
 .no .dot {
-  background-color: var(--u-status-red);
+  background-color: var(--ds-status-red);
 }
 
 /* Review / Pending (Apple Purple / Neutral) */
 .review {
-  background-color: var(--u-status-purple-bg);
-  color: var(--u-status-purple-text);
-  border-color: var(--u-status-purple);
+  background-color: var(--ds-status-purple-bg);
+  color: var(--ds-status-purple-text);
+  border-color: var(--ds-status-purple);
 }
 
 .review .dot {
-  background-color: var(--u-status-purple);
+  background-color: var(--ds-status-purple);
 }
 
 /* Info (Apple Blue) */
 .info {
-  background-color: var(--u-status-blue-bg);
-  color: var(--u-status-blue-text);
-  border-color: var(--u-status-blue);
+  background-color: var(--ds-status-blue-bg);
+  color: var(--ds-status-blue-text);
+  border-color: var(--ds-status-blue);
 }
 
 .info .dot {
-  background-color: var(--u-status-blue);
+  background-color: var(--ds-status-blue);
 }
 
 /* Neutral */
 .neutral {
-  background-color: var(--u-status-neutral-bg);
-  color: var(--u-status-neutral-text);
-  border-color: var(--u-border);
+  background-color: var(--ds-status-neutral-bg);
+  color: var(--ds-status-neutral-text);
+  border-color: var(--ds-border);
 }
 
 .neutral .dot {
-  background-color: var(--u-status-neutral);
+  background-color: var(--ds-status-neutral);
 }

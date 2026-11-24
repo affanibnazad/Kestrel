@@ -1,17 +1,17 @@
 .row {
   display: flex;
   align-items: center;
-  gap: var(--u-space-3);
+  gap: var(--ds-space-3);
   min-height: 64px;
-  padding: var(--u-space-3) var(--u-space-4);
-  border-radius: var(--u-radius-card);
-  border: 1px solid var(--u-border);
-  background-color: var(--u-row);
-  background-image: var(--u-row-wash);
-  color: var(--u-text);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-radius: var(--ds-radius-card);
+  border: 1px solid var(--ds-border);
+  background-color: var(--ds-row);
+  background-image: var(--ds-row-wash);
+  color: var(--ds-text);
   box-sizing: border-box;
-  transition: border-color var(--u-duration-press) var(--u-ease-out),
-    background-color var(--u-duration-press) var(--u-ease-out);
+  transition: border-color var(--ds-duration-press) var(--ds-ease-out),
+    background-color var(--ds-duration-press) var(--ds-ease-out);
 }
 
 .interactive {
@@ -19,10 +19,10 @@
 }
 
 .interactive:hover {
-  background-color: var(--u-btn-ghost-hover);
+  background-color: var(--ds-btn-ghost-hover);
 }
 
 .selected {
-  background-color: var(--u-selected);
-  border-color: var(--u-border-strong);
+  background-color: var(--ds-selected);
+  border-color: var(--ds-border-strong);
 }

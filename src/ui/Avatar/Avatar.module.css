@@ -2,12 +2,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--u-radius-pill);
-  border: 1px solid var(--u-border);
-  background-color: var(--u-selected);
-  color: var(--u-text);
-  font-family: var(--u-font-family);
-  font-weight: var(--u-font-weight-semibold);
+  border-radius: var(--ds-radius-pill);
+  border: 1px solid var(--ds-border);
+  background-color: var(--ds-selected);
+  color: var(--ds-text);
+  font-family: var(--ds-font-family);
+  font-weight: var(--ds-font-weight-semibold);
   overflow: hidden;
   user-select: none;
   flex-shrink: 0;
@@ -16,19 +16,19 @@
 .sm {
   width: 28px;
   height: 28px;
-  font-size: var(--u-font-size-12);
+  font-size: var(--ds-font-size-12);
 }
 
 .md {
   width: 36px;
   height: 36px;
-  font-size: var(--u-font-size-14);
+  font-size: var(--ds-font-size-14);
 }
 
 .lg {
   width: 48px;
   height: 48px;
-  font-size: var(--u-font-size-16);
+  font-size: var(--ds-font-size-16);
 }
 
 .image {

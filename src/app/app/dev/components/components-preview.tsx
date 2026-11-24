@@ -65,15 +65,16 @@ export default function ComponentsPreview({
 
   return (
     <div
+      className="ds-root"
       data-theme={currentTheme}
       style={{
         minHeight: "100vh",
-        backgroundColor: "var(--u-page)",
-        backgroundImage: "var(--u-page-wash)",
+        backgroundColor: "var(--ds-page)",
+        backgroundImage: "var(--ds-page-wash)",
         backgroundAttachment: "fixed",
-        color: "var(--u-text)",
+        color: "var(--ds-text)",
         padding: "32px 24px 80px",
-        fontFamily: "var(--u-font-family)",
+        fontFamily: "var(--ds-font-family)",
       }}
     >
       <div style={{ maxWidth: 1240, margin: "0 auto" }}>
@@ -87,9 +88,9 @@ export default function ComponentsPreview({
             gap: 16,
             marginBottom: 32,
             padding: "12px 16px",
-            borderRadius: "var(--u-radius-panel)",
-            backgroundColor: "var(--u-panel)",
-            border: "1px solid var(--u-border)",
+            borderRadius: "var(--ds-radius-panel)",
+            backgroundColor: "var(--ds-panel)",
+            border: "1px solid var(--ds-border)",
             backdropFilter: "blur(8px)",
           }}
         >
@@ -98,9 +99,9 @@ export default function ComponentsPreview({
               style={{
                 width: 32,
                 height: 32,
-                borderRadius: "var(--u-radius-pill)",
-                backgroundColor: "var(--u-accent)",
-                color: "var(--u-accent-text)",
+                borderRadius: "var(--ds-radius-pill)",
+                backgroundColor: "var(--ds-accent)",
+                color: "var(--ds-accent-text)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -112,7 +113,7 @@ export default function ComponentsPreview({
             </div>
             <div>
               <div style={{ fontWeight: 600, fontSize: 14 }}>Kestrel UI Showcase</div>
-              <div style={{ fontSize: 12, color: "var(--u-text-2)" }}>
+              <div style={{ fontSize: 12, color: "var(--ds-text-2)" }}>
                 Standard component catalog across 3 themes
               </div>
             </div>
@@ -120,7 +121,7 @@ export default function ComponentsPreview({
 
           {/* Theme Switcher Pills */}
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 13, color: "var(--u-text-muted)", marginRight: 4 }}>
+            <span style={{ fontSize: 13, color: "var(--ds-text-muted)", marginRight: 4 }}>
               Theme:
             </span>
             {(["light", "dark", "gradient"] as const).map((t) => (
@@ -283,7 +284,7 @@ export default function ComponentsPreview({
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
                 Reference Verification: Lead Row (v4 specification)
               </h2>
-              <p style={{ margin: "4px 0 0", fontSize: 14, color: "var(--u-text-2)" }}>
+              <p style={{ margin: "4px 0 0", fontSize: 14, color: "var(--ds-text-2)" }}>
                 Matches docs/ui-reference/leads.html: white pill row (min-height 68px), Business avatar, category/city, offer, contact check, social glyphs, fit pill, approval menu.
               </p>
             </div>
@@ -307,13 +308,13 @@ export default function ComponentsPreview({
                         href="https://apexmotion.co"
                         target="_blank"
                         rel="noreferrer"
-                        style={{ color: "var(--u-text-2)", display: "inline-flex" }}
+                        style={{ color: "var(--ds-text-2)", display: "inline-flex" }}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <Globe size={13} />
                       </a>
                     </div>
-                    <div style={{ fontSize: 13, color: "var(--u-text-2)" }}>
+                    <div style={{ fontSize: 13, color: "var(--ds-text-2)" }}>
                       Animation & Design · London, UK
                     </div>
                   </div>
@@ -332,8 +333,8 @@ export default function ComponentsPreview({
                       style={{
                         width: 14,
                         height: 14,
-                        borderRadius: "var(--u-radius-pill)",
-                        backgroundColor: "var(--u-status-green)",
+                        borderRadius: "var(--ds-radius-pill)",
+                        backgroundColor: "var(--ds-status-green)",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -344,7 +345,7 @@ export default function ComponentsPreview({
                     </span>
                     <span>sarah@apexmotion.co</span>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--u-text-2)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ds-text-2)" }}>
                     <Phone size={12} />
                     <span>+44 20 7946 0912</span>
                   </div>
@@ -352,12 +353,12 @@ export default function ComponentsPreview({
 
                 {/* Socials */}
                 <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 80 }}>
-                  <span style={{ color: "var(--u-text-2)", display: "inline-flex" }}>
+                  <span style={{ color: "var(--ds-text-2)", display: "inline-flex" }}>
                     <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
                       <path d={GLYPH.instagram[1]} fillRule="evenodd" />
                     </svg>
                   </span>
-                  <span style={{ color: "var(--u-text-2)", display: "inline-flex" }}>
+                  <span style={{ color: "var(--ds-text-2)", display: "inline-flex" }}>
                     <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
                       <path d={GLYPH.linkedin[1]} fillRule="evenodd" />
                     </svg>
@@ -399,13 +400,13 @@ export default function ComponentsPreview({
                         href="https://vortex.ai"
                         target="_blank"
                         rel="noreferrer"
-                        style={{ color: "var(--u-text-2)", display: "inline-flex" }}
+                        style={{ color: "var(--ds-text-2)", display: "inline-flex" }}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <Globe size={13} />
                       </a>
                     </div>
-                    <div style={{ fontSize: 13, color: "var(--u-text-2)" }}>
+                    <div style={{ fontSize: 13, color: "var(--ds-text-2)" }}>
                       AI SaaS · San Francisco, CA
                     </div>
                   </div>
@@ -424,8 +425,8 @@ export default function ComponentsPreview({
                       style={{
                         width: 14,
                         height: 14,
-                        borderRadius: "var(--u-radius-pill)",
-                        backgroundColor: "var(--u-status-orange)",
+                        borderRadius: "var(--ds-radius-pill)",
+                        backgroundColor: "var(--ds-status-orange)",
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -436,7 +437,7 @@ export default function ComponentsPreview({
                     </span>
                     <span>founders@vortex.ai</span>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--u-text-2)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ds-text-2)" }}>
                     <Phone size={12} />
                     <span>+1 415 555 0198</span>
                   </div>
@@ -444,12 +445,12 @@ export default function ComponentsPreview({
 
                 {/* Socials */}
                 <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 80 }}>
-                  <span style={{ color: "var(--u-text-2)", display: "inline-flex" }}>
+                  <span style={{ color: "var(--ds-text-2)", display: "inline-flex" }}>
                     <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
                       <path d={GLYPH.linkedin[1]} fillRule="evenodd" />
                     </svg>
                   </span>
-                  <span style={{ color: "var(--u-text-2)", display: "inline-flex" }}>
+                  <span style={{ color: "var(--ds-text-2)", display: "inline-flex" }}>
                     <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
                       <path d={GLYPH.youtube[1]} fillRule="evenodd" />
                     </svg>
@@ -512,21 +513,21 @@ export default function ComponentsPreview({
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
-              <div style={{ fontSize: 12, color: "var(--u-text-muted)", marginBottom: 4 }}>
+              <div style={{ fontSize: 12, color: "var(--ds-text-muted)", marginBottom: 4 }}>
                 Target Company
               </div>
               <div style={{ fontSize: 16, fontWeight: 600 }}>Apex Motion Studio Ltd</div>
-              <div style={{ fontSize: 14, color: "var(--u-text-2)" }}>
+              <div style={{ fontSize: 14, color: "var(--ds-text-2)" }}>
                 Verified domain: apexmotion.co
               </div>
             </div>
 
-            <div style={{ borderTop: "1px solid var(--u-border)", paddingTop: 16 }}>
-              <div style={{ fontSize: 12, color: "var(--u-text-muted)", marginBottom: 8 }}>
+            <div style={{ borderTop: "1px solid var(--ds-border)", paddingTop: 16 }}>
+              <div style={{ fontSize: 12, color: "var(--ds-text-muted)", marginBottom: 8 }}>
                 AI Match Score
               </div>
               <StatusPill variant="good">94% Fit Score</StatusPill>
-              <p style={{ fontSize: 13, color: "var(--u-text-2)", marginTop: 8, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 13, color: "var(--ds-text-2)", marginTop: 8, lineHeight: 1.5 }}>
                 Strong alignment with high-ticket 3D animation and branding services. Recent hiring signals detected for motion designers.
               </p>
             </div>

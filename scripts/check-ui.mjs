@@ -8,6 +8,7 @@
  * b) zero global class selectors in *.module.css (only :global for [data-theme])
  * c) globals.css "!important" count must not increase vs main (baseline 4,165)
  * d) no hex colors in src/ui/ — only var(--token)
+ * e) fail if src/styles or src/ui use any --u- or --k- variable (must use --ds-*)
  */
 
 import fs from "fs";
@@ -50,7 +51,6 @@ const targetFilesA = [...stylesFiles, ...uiFiles];
 let importantViolationsA = 0;
 for (const file of targetFilesA) {
   const content = fs.readFileSync(file, "utf8");
-  // Clean comments before checking for !important declarations
   const cleanContent = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
   const matches = cleanContent.match(/!important/g);
   if (matches) {
@@ -70,7 +70,6 @@ let globalViolationsB = 0;
 
 for (const file of moduleCssFiles) {
   const content = fs.readFileSync(file, "utf8");
-  // Check any :global usage
   const globalMatches = content.match(/:global(?:\(([^)]*)\))?/g) || [];
   for (const g of globalMatches) {
     if (!g.includes('[data-theme="') && !g.includes("[data-theme='") && !g.includes("[data-theme]")) {
@@ -105,13 +104,10 @@ if (fs.existsSync(globalsCssPath)) {
 console.log("\n[Rule D] Check no hex colors in src/ui/ (only var(--token))...");
 const uiAllFiles = getAllFiles(path.join(rootDir, "src/ui"), [".css", ".tsx", ".ts"]);
 let hexViolationsD = 0;
-
-// Hex color regex: # followed by 3, 4, 6, or 8 hex digits, bounded by word/symbol boundaries
 const hexRegex = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
 
 for (const file of uiAllFiles) {
   const content = fs.readFileSync(file, "utf8");
-  // Ignore comments if any
   const cleanContent = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
   const matches = cleanContent.match(hexRegex);
   if (matches) {
@@ -124,11 +120,31 @@ if (hexViolationsD === 0) {
   console.log("  PASS: 0 hex colors in src/ui/.");
 }
 
+// Check e: fail if src/styles or src/ui use any --u- or --k- variable (must use --ds-*)
+console.log("\n[Rule E] Check no --u- or --k- CSS variable usage in src/styles/ and src/ui/ (must use --ds-*)...");
+const targetFilesE = [...stylesFiles, ...uiFiles];
+let legacyVarViolationsE = 0;
+const legacyVarRegex = /--(?:u|k)-[a-zA-Z0-9_-]+/g;
+
+for (const file of targetFilesE) {
+  const content = fs.readFileSync(file, "utf8");
+  const cleanContent = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
+  const matches = cleanContent.match(legacyVarRegex);
+  if (matches) {
+    console.error(`  FAIL: ${path.relative(rootDir, file)} uses forbidden legacy CSS variables: ${[...new Set(matches)].join(", ")}`);
+    legacyVarViolationsE += matches.length;
+    hasErrors = true;
+  }
+}
+if (legacyVarViolationsE === 0) {
+  console.log("  PASS: 0 legacy --u- or --k- variables in src/styles/ and src/ui/ (all use --ds-*).");
+}
+
 console.log("\n==================================");
 if (hasErrors) {
   console.error("UI CHECK FAILED.");
   process.exit(1);
 } else {
-  console.log("ALL UI CHECKS PASSED (4/4).");
+  console.log("ALL UI CHECKS PASSED (5/5).");
   process.exit(0);
 }

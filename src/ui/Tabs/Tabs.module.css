@@ -1,44 +1,44 @@
 .tablist {
   display: inline-flex;
   align-items: center;
-  gap: var(--u-space-1);
-  padding: var(--u-space-1);
-  border-radius: var(--u-radius-pill);
-  background-color: var(--u-panel);
-  border: 1px solid var(--u-border);
+  gap: var(--ds-space-1);
+  padding: var(--ds-space-1);
+  border-radius: var(--ds-radius-pill);
+  background-color: var(--ds-panel);
+  border: 1px solid var(--ds-border);
   user-select: none;
 }
 
 .tab {
   display: inline-flex;
   align-items: center;
-  gap: var(--u-space-2);
+  gap: var(--ds-space-2);
   height: 32px;
-  padding: 0 var(--u-space-3);
-  border-radius: var(--u-radius-pill);
+  padding: 0 var(--ds-space-3);
+  border-radius: var(--ds-radius-pill);
   border: 1px solid transparent;
   background-color: transparent;
-  color: var(--u-text-2);
-  font-family: var(--u-font-family);
-  font-size: var(--u-font-size-14);
-  font-weight: var(--u-font-weight-medium);
+  color: var(--ds-text-2);
+  font-family: var(--ds-font-family);
+  font-size: var(--ds-font-size-14);
+  font-weight: var(--ds-font-weight-medium);
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
-  transition: color var(--u-duration-press) var(--u-ease-out),
-    background-color var(--u-duration-press) var(--u-ease-out),
-    border-color var(--u-duration-press) var(--u-ease-out);
+  transition: color var(--ds-duration-press) var(--ds-ease-out),
+    background-color var(--ds-duration-press) var(--ds-ease-out),
+    border-color var(--ds-duration-press) var(--ds-ease-out);
 }
 
 .tab:hover:not(.active) {
-  color: var(--u-text);
-  background-color: var(--u-btn-ghost-hover);
+  color: var(--ds-text);
+  background-color: var(--ds-btn-ghost-hover);
 }
 
 .active {
-  color: var(--u-text);
-  background-color: var(--u-selected);
-  border-color: var(--u-border);
+  color: var(--ds-text);
+  background-color: var(--ds-selected);
+  border-color: var(--ds-border);
   box-shadow: none;
 }
 
@@ -60,16 +60,16 @@
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  padding: 0 var(--u-space-1);
-  border-radius: var(--u-radius-pill);
-  font-size: var(--u-font-size-12);
-  font-weight: var(--u-font-weight-medium);
-  color: var(--u-text-muted);
-  background-color: var(--u-btn-ghost-hover);
+  padding: 0 var(--ds-space-1);
+  border-radius: var(--ds-radius-pill);
+  font-size: var(--ds-font-size-12);
+  font-weight: var(--ds-font-weight-medium);
+  color: var(--ds-text-muted);
+  background-color: var(--ds-btn-ghost-hover);
   line-height: 1;
 }
 
 .countActive {
-  color: var(--u-text);
-  background-color: var(--u-border);
+  color: var(--ds-text);
+  background-color: var(--ds-border);
 }

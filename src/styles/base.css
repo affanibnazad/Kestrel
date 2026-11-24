@@ -1,62 +1,31 @@
 /* Kestrel Base Styles (src/styles/base.css)
-   Reset, Inter font, focus ring, page background wash.
+   Scoped strictly under .ds-root.
+   Zero impact on external body, img, svg or existing screens.
    ZERO important declarations in this file.
 */
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-html {
-  font-family: var(--u-font-family);
-  -webkit-text-size-adjust: 100%;
-  tab-size: 4;
-}
-
-body {
-  margin: 0;
-  min-height: 100vh;
-  background-color: var(--u-page);
-  background-image: var(--u-page-wash);
+.ds-root {
+  font-family: var(--ds-font-family);
+  font-size: var(--ds-font-size-16);
+  line-height: 1.5;
+  color: var(--ds-text);
+  background-color: var(--ds-page);
+  background-image: var(--ds-page-wash);
   background-repeat: no-repeat;
   background-attachment: fixed;
-  color: var(--u-text);
-  font-family: var(--u-font-family);
-  font-size: var(--u-font-size-16);
-  line-height: 1.5;
+  box-sizing: border-box;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Global focus-visible ring for interactive elements */
-:focus-visible {
-  outline: 2px solid var(--u-focus);
+.ds-root *,
+.ds-root *::before,
+.ds-root *::after {
+  box-sizing: border-box;
+}
+
+/* Scoped focus ring for interactive elements inside .ds-root */
+.ds-root :focus-visible {
+  outline: 2px solid var(--ds-focus);
   outline-offset: 2px;
-}
-
-/* Responsive container defaults */
-img,
-svg,
-video,
-canvas,
-audio,
-iframe,
-embed,
-object {
-  display: block;
-  vertical-align: middle;
-}
-
-/* Reduced motion preference */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-    transition-duration: 0.01ms;
-    scroll-behavior: auto;
-  }
 }

@@ -2,10 +2,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--u-radius-pill);
-  border: 1px solid var(--u-border);
-  background-color: var(--u-row);
-  color: var(--u-text);
+  border-radius: var(--ds-radius-pill);
+  border: 1px solid var(--ds-border);
+  background-color: var(--ds-row);
+  color: var(--ds-text);
   flex-shrink: 0;
 }
 

@@ -1,7 +1,7 @@
 .wrapper {
   display: inline-flex;
   align-items: center;
-  gap: var(--u-space-2);
+  gap: var(--ds-space-2);
   cursor: pointer;
   user-select: none;
 }
@@ -29,12 +29,12 @@
   justify-content: center;
   width: 18px;
   height: 18px;
-  border-radius: var(--u-radius-sm);
-  border: 1px solid var(--u-border-strong);
-  background-color: var(--u-row);
-  color: var(--u-btn-main-text);
-  transition: background-color var(--u-duration-press) var(--u-ease-out),
-    border-color var(--u-duration-press) var(--u-ease-out);
+  border-radius: var(--ds-radius-sm);
+  border: 1px solid var(--ds-border-strong);
+  background-color: var(--ds-row);
+  color: var(--ds-btn-main-text);
+  transition: background-color var(--ds-duration-press) var(--ds-ease-out),
+    border-color var(--ds-duration-press) var(--ds-ease-out);
 }
 
 .checkIcon {
@@ -42,8 +42,8 @@
 }
 
 .input:checked + .customBox {
-  background-color: var(--u-accent);
-  border-color: var(--u-accent);
+  background-color: var(--ds-accent);
+  border-color: var(--ds-accent);
 }
 
 .input:checked + .customBox .checkIcon {
@@ -51,13 +51,13 @@
 }
 
 .input:focus-visible + .customBox {
-  outline: 2px solid var(--u-focus);
+  outline: 2px solid var(--ds-focus);
   outline-offset: 2px;
 }
 
 .label {
-  font-family: var(--u-font-family);
-  font-size: var(--u-font-size-14);
-  color: var(--u-text);
+  font-family: var(--ds-font-family);
+  font-size: var(--ds-font-size-14);
+  color: var(--ds-text);
   line-height: 1;
 }

@@ -11,12 +11,12 @@
 .dropdown {
   position: absolute;
   top: 100%;
-  margin-top: var(--u-space-1);
+  margin-top: var(--ds-space-1);
   min-width: 180px;
-  padding: var(--u-space-1);
-  border-radius: var(--u-radius-card);
-  border: 1px solid var(--u-border);
-  background-color: var(--u-panel);
+  padding: var(--ds-space-1);
+  border-radius: var(--ds-radius-card);
+  border: 1px solid var(--ds-border);
+  background-color: var(--ds-panel);
   z-index: 50;
   display: flex;
   flex-direction: column;
@@ -35,25 +35,25 @@
 .item {
   display: flex;
   align-items: center;
-  gap: var(--u-space-2);
+  gap: var(--ds-space-2);
   width: 100%;
   height: 36px;
-  padding: 0 var(--u-space-3);
-  border-radius: var(--u-radius-md);
+  padding: 0 var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
   border: none;
   background-color: transparent;
-  color: var(--u-text);
-  font-family: var(--u-font-family);
-  font-size: var(--u-font-size-14);
-  font-weight: var(--u-font-weight-regular);
+  color: var(--ds-text);
+  font-family: var(--ds-font-family);
+  font-size: var(--ds-font-size-14);
+  font-weight: var(--ds-font-weight-regular);
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--u-duration-press) var(--u-ease-out),
-    color var(--u-duration-press) var(--u-ease-out);
+  transition: background-color var(--ds-duration-press) var(--ds-ease-out),
+    color var(--ds-duration-press) var(--ds-ease-out);
 }
 
 .item:hover:not(:disabled) {
-  background-color: var(--u-btn-ghost-hover);
+  background-color: var(--ds-btn-ghost-hover);
 }
 
 .item:disabled {
@@ -62,11 +62,11 @@
 }
 
 .danger {
-  color: var(--u-status-red);
+  color: var(--ds-status-red);
 }
 
 .danger:hover:not(:disabled) {
-  background-color: var(--u-status-red-bg);
+  background-color: var(--ds-status-red-bg);
 }
 
 .icon {
