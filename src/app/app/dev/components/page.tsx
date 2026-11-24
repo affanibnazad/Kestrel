@@ -18,7 +18,9 @@ async function AuthenticatedShowcase({
 }) {
   await connection();
   const searchParams = await searchParamsPromise;
-  const theme = searchParams?.theme === "light" ? "light" : "dark";
+  const rawTheme = searchParams?.theme;
+  const theme: "light" | "dark" | "gradient" =
+    rawTheme === "light" ? "light" : rawTheme === "dark" ? "dark" : "gradient";
 
   const user = await currentUser();
   if (!user) {

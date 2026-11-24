@@ -4,6 +4,18 @@ Status: proposed · 24 Nov 2026 · Owner: Affan
 References: (1) Connections screenshot = the look and depth. (2) n8n-style workflow = the Lead Brain node canvas.
 Rule books used: design-review, spacing-audit, make-a-type-scale, find-animation-opportunities, desktop-to-mobile, better-interface. They were written for Figma; we use their RULES in code, not the Figma steps.
 
+
+## 0. Update 24 Nov (overrides section 1 where different)
+
+- THREE themes for the WHOLE app (every page, not only Settings): Light (solid), Dark (solid), Gradient.
+- Exact visual target: docs/ui-reference/connections.html (switch themes top right). Copy its tokens, not only the page.
+- Buttons: compact pills (height 34, radius 999, padding 0 16, 14px/500) like the current "Add campaign". Connect / Set up = solid accent #5b54e8, white text.
+- Cards and rows: rounded 14, own border, 36px icon tile.
+- "Connected" status: green pill with dot (gradient in Gradient theme).
+- Gradient theme: soft page washes + each card gets its OWN corner wash. Never the same color twice on one screen. Palette: purple #ebe3ff, blue #dcebff, peach #ffe7d4, green #d8f4e5, pink #ffe0ea, yellow #fff1c7. Assign by card index on the page.
+- Light and Dark: solid only, no gradients.
+- Design lock becomes 9 pages x 3 themes = 27 baselines.
+
 ## 1. Design rules (tokens) — taken from reference (1)
 
 | Token | Dark | Note |
