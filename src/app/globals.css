@@ -8753,7 +8753,7 @@ main#content:focus {
 }
 
 /* Review mode: one lead at a time on the soft grey page, three big keys to decide. */
-.review {
+div.review[role="dialog"] {
   position: fixed;
   inset: 0;
   z-index: 80;
@@ -9016,7 +9016,7 @@ main#content:focus {
 
 @media (prefers-reduced-motion: reduce) {
 
-  .review,
+  div.review[role="dialog"],
   .rv-card {
     animation: none;
   }
@@ -31138,9 +31138,11 @@ a {
   width: 248px !important;
   min-width: 248px !important;
   max-width: 248px !important;
-  position: static !important;
-  height: auto !important;
-  min-height: 100vh !important;
+  position: sticky !important;
+  top: 0 !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  align-self: flex-start !important;
   display: flex !important;
   flex-direction: column !important;
   gap: 2px !important;
@@ -31564,7 +31566,11 @@ a {
     min-width: 248px !important;
     max-width: 248px !important;
     display: flex !important;
-    position: static !important;
+    position: sticky !important;
+    top: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    align-self: flex-start !important;
     transform: none !important;
     border-right: 1px solid var(--u-border) !important;
   }
@@ -31602,7 +31608,11 @@ a {
     display: flex !important;
     visibility: visible !important;
     opacity: 1 !important;
-    position: static !important;
+    position: sticky !important;
+    top: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    align-self: flex-start !important;
     transform: none !important;
     border-right: 1px solid var(--u-border) !important;
     align-items: center !important;
