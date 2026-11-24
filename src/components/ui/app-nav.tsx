@@ -32,6 +32,8 @@ export interface AppNavProps {
   };
   activeId: string;
   onSelect?: (id: string) => void;
+  isOpen?: boolean;
+  onClose?: () => void;
   className?: string;
 }
 
@@ -43,6 +45,8 @@ export const AppNav: React.FC<AppNavProps> = ({
   user,
   activeId,
   onSelect,
+  isOpen,
+  onClose,
   className = "",
 }) => {
   const renderItem = (item: NavItem) => {
@@ -59,6 +63,8 @@ export const AppNav: React.FC<AppNavProps> = ({
         href={item.href ?? `#${item.id}`}
         className={itemClasses}
         aria-current={isCurrent ? "page" : undefined}
+        title={item.label}
+        data-tooltip={item.label}
         onClick={(e) => {
           if (!item.href || item.onClick || onSelect) {
             e.preventDefault();
@@ -68,10 +74,11 @@ export const AppNav: React.FC<AppNavProps> = ({
           } else {
             onSelect?.(item.id);
           }
+          onClose?.();
         }}
       >
         {item.icon}
-        {item.label}
+        <span className="u-side-label">{item.label}</span>
         {item.count !== undefined && item.count !== null && item.count !== "" && (
           <span className="count u-count">{item.count}</span>
         )}
@@ -80,7 +87,7 @@ export const AppNav: React.FC<AppNavProps> = ({
   };
 
   return (
-    <aside className={["side", "u-side", className].filter(Boolean).join(" ")} aria-label="Menu">
+    <aside className={["side", "u-side", isOpen ? "open" : "", className].filter(Boolean).join(" ")} aria-label="Menu">
       {brand && (
         <div
           className="brand u-brand"
@@ -88,7 +95,23 @@ export const AppNav: React.FC<AppNavProps> = ({
           style={{ cursor: brand.onClick ? "pointer" : "default" }}
         >
           <span className="logo u-logo">{brand.logo ?? "K"}</span>
-          {brand.name ?? "Kestrel"}
+          <span className="brand-text u-brand-text">{brand.name ?? "Kestrel"}</span>
+          {onClose && (
+            <button
+              type="button"
+              className="u-side-close"
+              aria-label="Close menu"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
 
@@ -114,6 +137,8 @@ export const AppNav: React.FC<AppNavProps> = ({
           style={{ cursor: user.onClick ? "pointer" : "default" }}
           role={user.onClick ? "button" : undefined}
           tabIndex={user.onClick ? 0 : undefined}
+          title={user.name}
+          data-tooltip={user.name}
         >
           <span className="avatar u-avatar">{user.avatar ?? (user.name ? user.name[0].toUpperCase() : "A")}</span>
           <span className="who u-who">

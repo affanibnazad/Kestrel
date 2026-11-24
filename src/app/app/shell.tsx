@@ -1116,12 +1116,37 @@ export default function AppShell({ email, loading = false, preview = false, acco
         }
         activeId={view === "settings" ? "settings" : view}
         onSelect={(id) => pick(id)}
+        isOpen={open}
+        onClose={() => setOpen(false)}
       />
-      <button type="button" className="side-scrim" aria-label="Close the menu" onClick={() => setOpen(false)} />
+      <button
+        type="button"
+        className={`side-scrim u-side-scrim${open ? " open" : ""}`}
+        aria-label="Close the menu"
+        onClick={() => setOpen(false)}
+      />
 
       {view === "settings" ? (
         <div className="main u-main" id="content" tabIndex={-1}>
-          
+          <div className="u-mobile-bar" aria-label="Mobile header">
+            <button
+              type="button"
+              className="u-mobile-menu-btn"
+              aria-label="Open menu"
+              aria-expanded={open}
+              onClick={() => setOpen(true)}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+            <div className="u-mobile-brand">
+              <span className="u-mobile-logo">K</span>
+              <span>Kestrel</span>
+            </div>
+          </div>
           <SettingsShell
             items={[
               { id: "general", label: "General" },
@@ -1181,7 +1206,26 @@ export default function AppShell({ email, loading = false, preview = false, acco
           </SettingsShell>
         </div>
       ) : (
-      <main className="pane" id="content" tabIndex={-1}>
+      <main className="pane u-main" id="content" tabIndex={-1}>
+        <div className="u-mobile-bar" aria-label="Mobile header">
+          <button
+            type="button"
+            className="u-mobile-menu-btn"
+            aria-label="Open menu"
+            aria-expanded={open}
+            onClick={() => setOpen(true)}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+          <div className="u-mobile-brand">
+            <span className="u-mobile-logo">K</span>
+            <span>Kestrel</span>
+          </div>
+        </div>
         <div className="app-band" aria-hidden="true" />
         {(isDemoMode || account?.team_id === "demo") ? (
           <div className="demo-mode-band" role="status" style={{

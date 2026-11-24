@@ -31455,10 +31455,6 @@ a {
 :root .u-side,
 .u-side,
 .u-app .side {
-  flex: 0 0 248px !important;
-  width: 248px !important;
-  min-width: 248px !important;
-  max-width: 248px !important;
   position: static !important;
   height: auto !important;
   min-height: 100vh !important;
@@ -31683,42 +31679,493 @@ a {
   max-width: none !important;
 }
 
-@media (max-width: 860px) {
-  :root .u-app,
-  .u-app {
-    flex-direction: column !important;
+/* ==========================================================================
+   Responsive Shell Architecture (Widths: 390, 768, 1024, 1440, 1920, 2560)
+   ========================================================================== */
+
+/* Universal App & Single Background (Bug 2 Fix) */
+:root .u-app,
+.u-app {
+  display: flex !important;
+  flex-direction: row !important;
+  min-height: 100vh !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+  background: var(--u-page-wash, none), var(--u-page) !important;
+  color: var(--u-text) !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+  position: relative !important;
+}
+
+:root .u-app .app-band,
+.u-app .app-band {
+  display: none !important;
+}
+
+:root .u-main,
+.u-main,
+.u-app .main,
+:root .u-app .pane,
+.u-app .pane {
+  flex: 1 1 0% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  background: transparent !important;
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
+}
+
+/* Page Padding: 32px >=1024, 24px tablet, 16px phone */
+@media (min-width: 1024px) {
+  :root .u-main,
+  .u-main,
+  .u-app .main,
+  :root .u-app .pane,
+  .u-app .pane {
+    padding: 32px !important;
   }
+}
+
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  :root .u-main,
+  .u-main,
+  .u-app .main,
+  :root .u-app .pane,
+  .u-app .pane {
+    padding: 24px !important;
+  }
+}
+
+@media (max-width: 767.98px) {
+  :root .u-main,
+  .u-main,
+  .u-app .main,
+  :root .u-app .pane,
+  .u-app .pane {
+    padding: 16px !important;
+  }
+}
+
+/* Close button for drawer: hidden on desktop/tablet, visible only on phone */
+:root .u-side .u-side-close,
+:root .u-side-close,
+:root button.u-side-close,
+.u-side .u-side-close,
+.u-side-close {
+  display: none !important;
+}
+
+/* Sidebar Breakpoint >=1024px: Full Sidebar (248px) with labels */
+@media (min-width: 1024px) {
   :root .u-side,
   .u-side,
   .u-app .side {
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex: 0 0 248px !important;
+    width: 248px !important;
+    min-width: 248px !important;
+    max-width: 248px !important;
+    position: static !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    padding: 16px 12px !important;
+    background: var(--u-panel) !important;
+    border-right: 1px solid var(--u-border) !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    border-left: none !important;
+    backdrop-filter: blur(8px) !important;
+    box-sizing: border-box !important;
+    overflow-y: auto !important;
+    transform: none !important;
+  }
+}
+
+/* Sidebar Breakpoint 768px–1023px: Icons only (64px) with Tooltip on Hover */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  :root .u-side,
+  .u-side,
+  .u-app .side {
+    visibility: visible !important;
+    opacity: 1 !important;
+    box-shadow: none !important;
+    flex: 0 0 64px !important;
+    width: 64px !important;
+    min-width: 64px !important;
+    max-width: 64px !important;
+    position: static !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    padding: 16px 8px !important;
+    background: var(--u-panel) !important;
+    border-right: 1px solid var(--u-border) !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    border-left: none !important;
+    backdrop-filter: blur(8px) !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+    transform: none !important;
+  }
+
+  :root .u-side .brand,
+  :root .u-side .u-brand,
+  .u-app .side .brand {
+    justify-content: center !important;
+    padding: 4px 0 16px !important;
+  }
+  .brand-text,
+  .u-brand-text {
+    display: none !important;
+  }
+  .u-side-close {
+    display: none !important;
+  }
+
+  :root .u-side .sec,
+  :root .u-side .u-sec,
+  .u-app .side .sec {
+    display: none !important;
+  }
+
+  :root .u-side a,
+  :root .u-side button.u-side-link,
+  :root .u-side .u-side-link,
+  .u-app .side a {
+    width: 44px !important;
+    height: 44px !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    justify-content: center !important;
+    border-radius: 9999px !important;
+    position: relative !important;
+  }
+
+  :root .u-side .u-side-label,
+  :root .u-side .count,
+  :root .u-side .u-count {
+    display: none !important;
+  }
+
+  /* Tooltip on hover */
+  :root .u-side a[data-tooltip]::after,
+  :root .u-side .u-side-link[data-tooltip]::after,
+  :root .u-side .u-user[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: #1d1d22 !important;
+    color: #ffffff !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 6px 12px !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    white-space: nowrap !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transition: opacity 0.15s ease, visibility 0.15s ease !important;
+    z-index: 1000 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+  }
+  :root .u-side a[data-tooltip]:hover::after,
+  :root .u-side .u-side-link[data-tooltip]:hover::after,
+  :root .u-side .u-user[data-tooltip]:hover::after {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  :root .u-side .user,
+  :root .u-side .u-user,
+  .u-app .side .user {
+    justify-content: center !important;
+    padding: 10px 0 !important;
+    position: relative !important;
+  }
+  :root .u-side .who,
+  :root .u-side .u-who {
+    display: none !important;
+  }
+}
+
+/* Sidebar Breakpoint <768px: Hidden Sidebar / Drawer over page */
+@media (max-width: 767.98px) {
+  :root .u-side,
+  .u-side,
+  .u-app .side {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 280px !important;
+    max-width: 85vw !important;
+    min-width: 0 !important;
+    height: 100vh !important;
+    z-index: 500 !important;
+    transform: translateX(-100%) !important;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 16px 12px !important;
+    background: var(--u-panel) !important;
+    border-right: 1px solid var(--u-border) !important;
+    overflow-y: auto !important;
+  }
+
+  :root .u-side.open,
+  .u-side.open,
+  .u-app.open .u-side,
+  :root .u-app.open .side {
+    transform: translateX(0) !important;
+  }
+
+  .u-side-scrim,
+  .side-scrim {
+    display: none;
+  }
+  .u-side-scrim.open,
+  .side-scrim.open,
+  .u-app.open .side-scrim,
+  .u-app.open .u-side-scrim {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0, 0, 0, 0.5) !important;
+    z-index: 490 !important;
+    backdrop-filter: blur(2px) !important;
+  }
+
+  :root .u-side .u-side-close,
+  :root .u-side-close,
+  :root button.u-side-close,
+  .u-side .u-side-close,
+  .u-side-close {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 9999px !important;
+    margin-left: auto !important;
+    border: 1px solid var(--u-border) !important;
+    background: var(--u-row, #ffffff) !important;
+    color: var(--u-text) !important;
+    cursor: pointer !important;
+  }
+}
+
+/* Mobile Header Bar (<768px) */
+.u-mobile-bar {
+  display: none !important;
+}
+
+@media (max-width: 767.98px) {
+  .app-top .btn.small,
+  :root .app-top .btn.small {
+    display: none !important;
+  }
+
+  .u-mobile-bar {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    height: 52px !important;
+    padding: 0 16px !important;
+    margin: -16px -16px 16px -16px !important;
+    border-bottom: 1px solid var(--u-border) !important;
+    background: var(--u-panel) !important;
+    box-sizing: border-box !important;
+  }
+
+  .u-mobile-menu-btn {
+    width: 44px !important;
+    height: 44px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 9999px !important;
+    border: 1px solid var(--u-border) !important;
+    background: var(--u-row, #ffffff) !important;
+    color: var(--u-text) !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    padding: 0 !important;
+  }
+
+  .u-mobile-brand {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    color: var(--u-text) !important;
+  }
+
+  .u-mobile-logo {
+    width: 24px !important;
+    height: 24px !important;
+    border-radius: 7px !important;
+    background: var(--u-accent) !important;
+    color: var(--u-accent-text) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+  }
+}
+
+/* Settings Responsive Layout */
+@media (min-width: 1024px) {
+  :root .u-shell,
+  .u-shell {
+    display: flex !important;
+    flex-direction: row !important;
+  }
+  :root .u-menu,
+  .u-menu {
+    flex: 0 0 240px !important;
+    padding: 24px 12px !important;
+    border-right: 1px solid var(--u-border) !important;
+    border-bottom: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+    width: 240px !important;
+  }
+  :root .u-menu-label,
+  .u-menu-label {
+    display: block !important;
+  }
+  :root .u-content,
+  .u-content {
+    flex: 1 !important;
+    min-width: 0 !important;
+    padding: 32px 40px 40px !important;
+  }
+}
+
+@media (max-width: 1023.98px) {
+  :root .u-shell,
+  .u-shell {
+    flex-direction: column !important;
+    min-height: auto !important;
+    border-radius: 14px !important;
+  }
+  :root .u-menu,
+  .u-menu {
     flex: none !important;
     width: 100% !important;
     max-width: 100% !important;
-    min-height: auto !important;
+    box-sizing: border-box !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--u-border) !important;
+    display: flex !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
     overflow-x: auto !important;
-    border-right: 0 !important;
-    border-bottom: 1px solid var(--u-border) !important;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px 16px !important;
+    gap: 8px !important;
   }
-  :root .u-side .sec,
-  :root .u-side .u-sec,
-  :root .u-side .spacer,
-  :root .u-side .u-spacer,
-  :root .u-side .user,
-  :root .u-side .u-user,
-  :root .u-side .brand,
-  :root .u-side .u-brand {
+  :root .u-menu-label,
+  .u-menu-label {
     display: none !important;
   }
-  :root .u-side a,
-  :root .u-side .u-side-link {
-    white-space: nowrap !important;
+  :root .u-menu-item,
+  :root .u-menu a,
+  :root .u-menu button,
+  .u-menu-item,
+  .u-menu a,
+  .u-menu button {
+    flex: none !important;
     width: auto !important;
+    white-space: nowrap !important;
+    padding: 0 16px !important;
+    height: 38px !important;
+    border-radius: 9999px !important;
   }
-  :root .u-main,
-  .u-main,
-  .u-app .main {
-    padding: 16px !important;
+  :root .u-content,
+  .u-content {
+    padding: 24px 16px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
+}
+
+/* Touch Targets (at least 44px on phone) & Typography (never smaller than 12px) */
+@media (max-width: 767.98px) {
+  :root .u-btn,
+  .u-btn,
+  :root button.u-btn,
+  :root .u-shell .u-btn,
+  .btn,
+  :root .btn {
+    min-height: 44px !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+  }
+
+  :root .u-side a,
+  :root .u-side .u-side-link,
+  .u-side a,
+  .u-side .u-side-link,
+  :root .u-menu-item,
+  :root .u-menu a,
+  :root .u-menu button,
+  .u-menu-item,
+  .u-menu a,
+  .u-menu button {
+    min-height: 44px !important;
+  }
+
+  .sec, .u-sec, .count, .u-count, .pl, .u-pl {
+    font-size: 12px !important;
+  }
+}
+
+/* Containment: ensure no horizontal scroll on the page at any width */
+html,
+body {
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
+}
+
+.table-card,
+.tbl-wrap,
+.table-wrap,
+.klead-card,
+.kinbox-container,
+.kcamp-listcard,
+.acct-table,
+.as-chat-wrap,
+.home-grid,
+.kcamp-grid,
+.plan-grid {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.table-card,
+.tbl-wrap,
+.table-wrap,
+.klead-card,
+.kinbox-container,
+.kcamp-listcard,
+.acct-table {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
 }

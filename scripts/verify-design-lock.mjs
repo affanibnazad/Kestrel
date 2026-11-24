@@ -30,6 +30,14 @@ const isUpdate = process.argv.includes("--update-baselines");
 const updateScreensArg = process.argv.find((a) => a.startsWith("--update-screens="));
 const updateScreens = updateScreensArg ? updateScreensArg.split("=")[1].split(",").map((s) => s.trim()) : isUpdate ? ["all"] : [];
 
+const widthsArg = process.argv.find((a) => a.startsWith("--widths="));
+const WIDTHS = widthsArg
+  ? widthsArg.split("=")[1].split(",").map((w) => parseInt(w.trim(), 10)).filter(Boolean)
+  : [390, 768, 1440, 2560];
+
+const screensArg = process.argv.find((a) => a.startsWith("--screens="));
+const filterScreens = screensArg ? screensArg.split("=")[1].split(",").map((s) => s.trim()) : null;
+
 /** Decodes a PNG buffer into raw uncompressed RGBA pixel data */
 function decodePng(buf) {
   let idx = 8;
@@ -236,62 +244,138 @@ async function main() {
     { name: "connections", path: "/app?view=settings&tab=connections", selector: ".u-list-group, .u-group" },
   ];
 
+  const targetScreens = filterScreens
+    ? SCREENS.filter((s) => filterScreens.includes(s.name))
+    : SCREENS;
+
   const THEMES = ["light", "dark", "gradient"];
   let passed = 0;
   let failed = 0;
 
-  for (const screen of SCREENS) {
-    const url = `${BASE_URL}${screen.path}`;
-    await page.goto(url, { waitUntil: "networkidle" });
-    if (screen.selector) {
+  for (const width of WIDTHS) {
+    const height = width === 390 ? 844 : width === 768 ? 1024 : width === 1440 ? 900 : width === 2560 ? 1440 : 800;
+    const context = await browser.newContext({ viewport: { width, height } });
+    await context.addCookies(playwrightCookies);
+    const page = await context.newPage();
+
+    await page.addInitScript(() => {
       try {
-        await page.waitForSelector(screen.selector, { state: "visible", timeout: 15000 });
-      } catch (e) {
-        console.warn(`Selector timeout for ${screen.name}: ${screen.selector}`);
+        localStorage.setItem("kestrel-consent", JSON.stringify({ v: 1, analytics: false, marketing: false, at: "2026-11-23T12:00:00Z" }));
+        localStorage.setItem("kestrel_cookie_consent", JSON.stringify({ v: 1, analytics: false, marketing: false, at: "2026-11-23T12:00:00Z" }));
+      } catch {}
+      const fixedTime = new Date("2026-11-23T12:00:00Z").getTime();
+      Date.now = () => fixedTime;
+      const OriginalDate = window.Date;
+      class MockDate extends OriginalDate {
+        constructor(...args) {
+          super(args.length === 0 ? fixedTime : args[0]);
+        }
       }
-    }
-    await page.addStyleTag({ content: MASK_CSS });
+      MockDate.now = () => fixedTime;
+      window.Date = MockDate;
+    });
 
-    for (const theme of THEMES) {
-      const baselineName = `${screen.name}-${theme}.png`;
-      const baselinePath = path.join(baselinesDir, baselineName);
-
-      await page.evaluate((t) => {
-        document.documentElement.setAttribute("data-theme", t);
-      }, theme);
+    for (const screen of targetScreens) {
+      const url = `${BASE_URL}${screen.path}`;
+      await page.goto(url, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(500);
+      if (screen.selector) {
+        try {
+          await page.waitForSelector(screen.selector, { state: "visible", timeout: 15000 });
+        } catch (e) {
+          console.warn(`Selector timeout for ${screen.name}: ${screen.selector}`);
+        }
+      }
+      await page.addStyleTag({ content: MASK_CSS });
 
-      const shot = await page.screenshot({ fullPage: screen.fullPage ?? false });
+      for (const theme of THEMES) {
+        const baselineName = `${screen.name}-${width}-${theme}.png`;
+        const baselinePath = path.join(baselinesDir, baselineName);
 
-      const shouldUpdate = updateScreens.includes("all") || updateScreens.includes(screen.name);
-      if (shouldUpdate) {
-        fs.writeFileSync(baselinePath, shot);
-        console.log(`📸 [Baseline Saved] ${baselineName}`);
-        passed++;
-      } else if (!fs.existsSync(baselinePath)) {
-        console.log(`⚠️ PENDING BASELINE | ${screen.name.padEnd(16)} [${theme.padEnd(5)}] (run --update-screens=${screen.name} after review)`);
-      } else {
-        const baselineBuf = fs.readFileSync(baselinePath);
-        const imgCurrent = decodePng(shot);
-        const imgBaseline = decodePng(baselineBuf);
-        const diffRatio = comparePixels(imgCurrent, imgBaseline);
+        await page.evaluate((t) => {
+          document.documentElement.setAttribute("data-theme", t);
+        }, theme);
+        await page.waitForTimeout(400);
 
-        // Strict design lock threshold: < 0.2% diff allowed for anti-aliasing
-        const threshold = 0.002;
-        const diffPct = (diffRatio * 100).toFixed(3) + "%";
+        const shot = await page.screenshot({ fullPage: screen.fullPage ?? false });
 
-        if (diffRatio <= threshold) {
-          console.log(`✅ PASS | ${screen.name.padEnd(16)} [${theme.padEnd(5)}] diff: ${diffPct} (under 0.2%)`);
+        const shouldUpdate = updateScreens.includes("all") || updateScreens.includes(screen.name);
+        if (shouldUpdate) {
+          fs.writeFileSync(baselinePath, shot);
+          console.log(`📸 [Baseline Saved] ${baselineName}`);
           passed++;
+        } else if (!fs.existsSync(baselinePath)) {
+          console.log(`⚠️ PENDING BASELINE | ${screen.name.padEnd(16)} @ ${String(width).padEnd(4)}px [${theme.padEnd(8)}] (run --update-screens=${screen.name} after review)`);
         } else {
-          console.error(`❌ FAIL | ${screen.name.padEnd(16)} [${theme.padEnd(5)}] diff: ${diffPct} EXCEEDS threshold 0.2%`);
-          const diffPath = path.join(diffsDir, `diff-${screen.name}-${theme}.png`);
-          fs.writeFileSync(diffPath, shot);
-          console.error(`   Current screenshot saved to: ${diffPath}`);
-          failed++;
+          const baselineBuf = fs.readFileSync(baselinePath);
+          const imgCurrent = decodePng(shot);
+          const imgBaseline = decodePng(baselineBuf);
+          const diffRatio = comparePixels(imgCurrent, imgBaseline);
+
+          // Strict design lock threshold: < 0.2% diff allowed for anti-aliasing
+          const threshold = 0.002;
+          const diffPct = (diffRatio * 100).toFixed(3) + "%";
+
+          if (diffRatio <= threshold) {
+            console.log(`✅ PASS | ${screen.name.padEnd(16)} @ ${String(width).padEnd(4)}px [${theme.padEnd(8)}] diff: ${diffPct} (under 0.2%)`);
+            passed++;
+          } else {
+            console.error(`❌ FAIL | ${screen.name.padEnd(16)} @ ${String(width).padEnd(4)}px [${theme.padEnd(8)}] diff: ${diffPct} EXCEEDS threshold 0.2%`);
+            const diffPath = path.join(diffsDir, `diff-${screen.name}-${width}-${theme}.png`);
+            fs.writeFileSync(diffPath, shot);
+            console.error(`   Current screenshot saved to: ${diffPath}`);
+            failed++;
+          }
         }
       }
     }
+
+    // Special check for phone drawer open at 390px
+    if (width === 390 && (!filterScreens || filterScreens.includes("drawer"))) {
+      await page.goto(`${BASE_URL}/app?view=settings&tab=connections`, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(500);
+      await page.addStyleTag({ content: MASK_CSS });
+      const menuBtn = page.locator(".u-mobile-menu-btn");
+      if (await menuBtn.isVisible()) {
+        await menuBtn.click();
+        await page.waitForTimeout(400);
+
+        for (const theme of THEMES) {
+          const baselineName = `drawer-390-${theme}.png`;
+          const baselinePath = path.join(baselinesDir, baselineName);
+
+          await page.evaluate((t) => {
+            document.documentElement.setAttribute("data-theme", t);
+          }, theme);
+          await page.waitForTimeout(300);
+
+          const shot = await page.screenshot();
+          const shouldUpdate = updateScreens.includes("all") || updateScreens.includes("drawer");
+          if (shouldUpdate) {
+            fs.writeFileSync(baselinePath, shot);
+            console.log(`📸 [Baseline Saved] ${baselineName}`);
+            passed++;
+          } else if (!fs.existsSync(baselinePath)) {
+            console.log(`⚠️ PENDING BASELINE | drawer           @ 390 px [${theme.padEnd(8)}] (run --update-screens=drawer after review)`);
+          } else {
+            const baselineBuf = fs.readFileSync(baselinePath);
+            const imgCurrent = decodePng(shot);
+            const imgBaseline = decodePng(baselineBuf);
+            const diffRatio = comparePixels(imgCurrent, imgBaseline);
+            const diffPct = (diffRatio * 100).toFixed(3) + "%";
+            if (diffRatio <= 0.002) {
+              console.log(`✅ PASS | drawer           @ 390 px [${theme.padEnd(8)}] diff: ${diffPct} (under 0.2%)`);
+              passed++;
+            } else {
+              console.error(`❌ FAIL | drawer           @ 390 px [${theme.padEnd(8)}] diff: ${diffPct} EXCEEDS threshold 0.2%`);
+              failed++;
+            }
+          }
+        }
+      }
+    }
+
+    await context.close();
   }
 
   await browser.close();
