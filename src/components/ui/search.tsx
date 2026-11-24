@@ -3,16 +3,28 @@ import { Search as SearchIcon, X as ClearIcon } from "lucide-react";
 
 export interface SearchProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> {
   onClear?: () => void;
+  icon?: React.ReactNode;
 }
 
 export const Search = React.forwardRef<HTMLInputElement, SearchProps>(
-  ({ className = "", value, onChange, onClear, placeholder = "Search...", ...props }, ref) => {
+  (
+    {
+      className = "",
+      value,
+      onChange,
+      onClear,
+      placeholder = "Search...",
+      icon,
+      ...props
+    },
+    ref
+  ) => {
     const hasValue = Boolean(value && String(value).length > 0);
 
     return (
-      <div className={["u-search-wrap", className].filter(Boolean).join(" ")}>
+      <div className={["u-search", className].filter(Boolean).join(" ")}>
         <span className="u-search-icon" aria-hidden="true">
-          <SearchIcon size={18} strokeWidth={1.5} />
+          {icon || <SearchIcon size={18} strokeWidth={1.5} />}
         </span>
         <input
           ref={ref}

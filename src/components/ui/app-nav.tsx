@@ -34,7 +34,7 @@ export const AppNav: React.FC<AppNavProps> = ({
               className={itemClass}
               aria-current={isActive ? "page" : undefined}
             >
-              {item.icon && <span aria-hidden="true">{item.icon}</span>}
+              {item.icon && <span className="u-nav-icon" aria-hidden="true">{item.icon}</span>}
               <span>{item.label}</span>
             </a>
           );
@@ -48,7 +48,7 @@ export const AppNav: React.FC<AppNavProps> = ({
             aria-current={isActive ? "page" : undefined}
             onClick={() => onSelect?.(item.id)}
           >
-            {item.icon && <span aria-hidden="true">{item.icon}</span>}
+            {item.icon && <span className="u-nav-icon" aria-hidden="true">{item.icon}</span>}
             <span>{item.label}</span>
           </button>
         );
@@ -56,3 +56,5 @@ export const AppNav: React.FC<AppNavProps> = ({
     </nav>
   );
 };
+
+AppNav.displayName = "AppNav";

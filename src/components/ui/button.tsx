@@ -1,27 +1,49 @@
 import React from "react";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "default" | "primary" | "danger" | "icon";
+  variant?: "default" | "primary" | "solid" | "danger" | "icon" | "advanced";
   size?: "default" | "sm";
-  asChild?: boolean;
+  icon?: React.ReactNode;
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = "", variant = "default", size = "default", disabled, children, ...props }, ref) => {
-    const variantClass =
-      variant === "primary"
-        ? "u-btn-primary"
-        : variant === "danger"
-        ? "u-btn-danger"
-        : variant === "icon"
-        ? "u-btn-icon"
-        : "u-btn-default";
+  (
+    {
+      className = "",
+      variant = "default",
+      size = "default",
+      icon,
+      disabled,
+      children,
+      ...props
+    },
+    ref
+  ) => {
+    let variantClass = "u-btn-default";
+    if (variant === "primary" || variant === "solid") {
+      variantClass = "u-btn-primary u-btn-solid";
+    } else if (variant === "danger") {
+      variantClass = "u-btn-danger";
+    } else if (variant === "icon") {
+      variantClass = "u-btn-icon";
+    }
 
+    const isAdvanced = variant === "advanced";
+    const baseClass = isAdvanced ? "u-adv" : "u-btn";
     const sizeClass = size === "sm" ? "u-btn-sm" : "";
-    const classes = ["u-btn", variantClass, sizeClass, className].filter(Boolean).join(" ");
+    const classes = [baseClass, !isAdvanced ? variantClass : "", sizeClass, className]
+      .filter(Boolean)
+      .join(" ");
 
     return (
-      <button ref={ref} className={classes} disabled={disabled} aria-disabled={disabled} {...props}>
+      <button
+        ref={ref}
+        className={classes}
+        disabled={disabled}
+        aria-disabled={disabled}
+        {...props}
+      >
+        {icon && <span className="u-btn-icon-wrap" aria-hidden="true">{icon}</span>}
         {children}
       </button>
     );

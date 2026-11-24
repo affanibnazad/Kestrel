@@ -1,22 +1,35 @@
 import React from "react";
 
 export interface ListGroupProps extends React.HTMLAttributes<HTMLDivElement> {
+  label?: React.ReactNode;
   children: React.ReactNode;
 }
 
-export const ListGroup: React.FC<ListGroupProps> = ({ className = "", children, ...props }) => {
+export const ListGroup: React.FC<ListGroupProps> = ({
+  label,
+  className = "",
+  children,
+  ...props
+}) => {
   return (
-    <div className={["u-list-group", className].filter(Boolean).join(" ")} {...props}>
-      {children}
-    </div>
+    <>
+      {label && <div className="u-group-label">{label}</div>}
+      <div className={["u-group", "u-list-group", className].filter(Boolean).join(" ")} {...props}>
+        {children}
+      </div>
+    </>
   );
 };
+
+ListGroup.displayName = "ListGroup";
 
 export interface ListRowProps extends React.HTMLAttributes<HTMLDivElement> {
   icon?: React.ReactNode;
   name: React.ReactNode;
   description?: React.ReactNode;
   action?: React.ReactNode;
+  washIndex?: 1 | 2 | 3 | 4 | 5 | 6;
+  washColor?: "purple" | "blue" | "peach" | "green" | "pink" | "yellow";
   clickable?: boolean;
   onClick?: () => void;
 }
@@ -26,11 +39,19 @@ export const ListRow: React.FC<ListRowProps> = ({
   name,
   description,
   action,
+  washIndex,
+  washColor,
   clickable = false,
   onClick,
   className = "",
   ...props
 }) => {
+  const washClass = washIndex
+    ? `u-wash-${washIndex} t${washIndex}`
+    : washColor
+    ? `u-wash-${washColor}`
+    : "";
+
   return (
     <div
       role={clickable ? "button" : undefined}
@@ -46,17 +67,29 @@ export const ListRow: React.FC<ListRowProps> = ({
             }
           : undefined
       }
-      className={["u-list-row", clickable ? "clickable" : "", className].filter(Boolean).join(" ")}
+      className={[
+        "u-row",
+        "u-list-row",
+        washClass,
+        clickable ? "clickable" : "",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
       {...props}
     >
-      <div className="u-list-row-left">
-        {icon && <span className="u-list-row-icon" aria-hidden="true">{icon}</span>}
-        <div className="u-list-row-text">
-          <span className="u-list-row-name">{name}</span>
-          {description && <span className="u-list-row-desc">{description}</span>}
-        </div>
+      {icon && (
+        <span className="u-ico" aria-hidden="true">
+          {icon}
+        </span>
+      )}
+      <div className="u-txt">
+        <div className="u-name">{name}</div>
+        {description && <div className="u-desc">{description}</div>}
       </div>
-      {action && <div className="u-list-row-right">{action}</div>}
+      {action && <div className="u-list-row-action">{action}</div>}
     </div>
   );
 };
+
+ListRow.displayName = "ListRow";

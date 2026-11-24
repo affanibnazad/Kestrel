@@ -37,7 +37,17 @@ async function AuthenticatedShowcase({
     redirect("/app");
   }
 
-  return <ComponentsPreview userEmail={user.email || ""} initialTheme={theme} />;
+  return (
+    <>
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet"
+      />
+      <ComponentsPreview userEmail={user.email || ""} initialTheme={theme} />
+    </>
+  );
 }
 
 export default function DevComponentsPage(props: {

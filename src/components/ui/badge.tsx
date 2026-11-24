@@ -6,7 +6,7 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 }
 
 export const Badge: React.FC<BadgeProps> = ({
-  variant = "neutral",
+  variant = "success",
   className = "",
   children,
   ...props
@@ -21,8 +21,13 @@ export const Badge: React.FC<BadgeProps> = ({
       : "u-badge-neutral";
 
   return (
-    <span className={["u-badge", variantClass, className].filter(Boolean).join(" ")} {...props}>
+    <span
+      className={["u-badge", variantClass, className].filter(Boolean).join(" ")}
+      {...props}
+    >
       {children}
     </span>
   );
 };
+
+Badge.displayName = "Badge";
