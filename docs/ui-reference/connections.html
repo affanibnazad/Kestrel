@@ -24,12 +24,12 @@
   --btn-bg:transparent; --btn-hover:#2a2a2a; --focus:#9aa4ff;
 }
 [data-theme="gradient"]{
-  --page:#eef0f3; --panel:rgba(255,255,255,.72); --row:#ffffff; --border:#e6e3f0; --border-strong:#d9d6e6;
+  --page:#fbfbfd; --panel:rgba(255,255,255,.55); --row:#ffffff; --border:#e6e3f0; --border-strong:#d9d6e6;
   --selected:#ffffff; --text:#1d1d22; --text-2:#5f6470; --text-muted:#6b7080;
   --accent:#5b54e8; --accent-text:#ffffff;
-  --ok-bg:linear-gradient(100deg,#d9f7e4 0%,#bdeccf 100%); --ok-text:#14713a; --ok-dot:#22a653;
+  --ok-bg:linear-gradient(90deg,#ffffff 0%, var(--tint,#bcecd2) 100%); --ok-text:#1d1d22; --ok-dot:#1f9d55;
   --btn-bg:#ffffff; --btn-hover:#f6f5fb; --focus:#5b54e8;
-  --page-wash:radial-gradient(60% 50% at 0% 0%, #efe9ff 0%, transparent 60%), radial-gradient(50% 50% at 100% 10%, #e3f6ec 0%, transparent 60%), radial-gradient(60% 60% at 80% 100%, #fff0e4 0%, transparent 60%);
+  --page-wash:radial-gradient(60% 60% at 0% 0%, color-mix(in srgb,#d6c6ff 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 100% 0%, color-mix(in srgb,#bcecd2 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(60% 65% at 100% 100%, color-mix(in srgb,#ffd2ad 70%,#fff) 0%, rgba(255,255,255,0) 70%), radial-gradient(55% 60% at 0% 100%, color-mix(in srgb,#c2dbff 70%,#fff) 0%, rgba(255,255,255,0) 70%);
 }
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;background:var(--page-wash),var(--page);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:16px;line-height:1.5;padding:32px}
@@ -68,12 +68,22 @@ h1{margin:0 0 4px;font-size:24px;font-weight:600;line-height:1.2}
 .adv{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px 0 10px;border-radius:999px;border:1px solid var(--border);background:var(--btn-bg);color:var(--text);font:inherit;font-size:14px;cursor:pointer}
 .adv svg{color:var(--text-2)}
 /* Gradient theme only: each row gets its OWN soft corner wash, like the campaign cards */
-[data-theme="gradient"] .row.t1{--row-wash:radial-gradient(90% 160% at 100% 0%, #ebe3ff 0%, rgba(255,255,255,0) 60%)}
-[data-theme="gradient"] .row.t2{--row-wash:radial-gradient(90% 160% at 100% 0%, #dcebff 0%, rgba(255,255,255,0) 60%)}
-[data-theme="gradient"] .row.t3{--row-wash:radial-gradient(90% 160% at 100% 0%, #ffe7d4 0%, rgba(255,255,255,0) 60%)}
-[data-theme="gradient"] .row.t4{--row-wash:radial-gradient(90% 160% at 100% 0%, #d8f4e5 0%, rgba(255,255,255,0) 60%)}
-[data-theme="gradient"] .row.t5{--row-wash:radial-gradient(90% 160% at 100% 0%, #ffe0ea 0%, rgba(255,255,255,0) 60%)}
-[data-theme="gradient"] .row.t6{--row-wash:radial-gradient(90% 160% at 100% 0%, #fff1c7 0%, rgba(255,255,255,0) 60%)}
+[data-theme="gradient"] .row.t1{--tint:#d6c6ff;--row-wash:radial-gradient(140% 240% at 100% 0%, #d6c6ff 0%, color-mix(in srgb, #d6c6ff 45%, #ffffff) 30%, color-mix(in srgb, #d6c6ff 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t2{--tint:#c2dbff;--row-wash:radial-gradient(140% 240% at 100% 0%, #c2dbff 0%, color-mix(in srgb, #c2dbff 45%, #ffffff) 30%, color-mix(in srgb, #c2dbff 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t3{--tint:#ffd2ad;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffd2ad 0%, color-mix(in srgb, #ffd2ad 45%, #ffffff) 30%, color-mix(in srgb, #ffd2ad 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t4{--tint:#bcecd2;--row-wash:radial-gradient(140% 240% at 100% 0%, #bcecd2 0%, color-mix(in srgb, #bcecd2 45%, #ffffff) 30%, color-mix(in srgb, #bcecd2 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t5{--tint:#ffc6da;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffc6da 0%, color-mix(in srgb, #ffc6da 45%, #ffffff) 30%, color-mix(in srgb, #ffc6da 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="gradient"] .row.t6{--tint:#ffe48f;--row-wash:radial-gradient(140% 240% at 100% 0%, #ffe48f 0%, color-mix(in srgb, #ffe48f 45%, #ffffff) 30%, color-mix(in srgb, #ffe48f 15%, #ffffff) 55%, rgba(255,255,255,0) 80%)}
+[data-theme="light"] .badge{background:#111113;color:#ffffff;border:0.2px solid #111113}
+[data-theme="light"] .badge::before{background:#ffffff}
+[data-theme="gradient"] .badge{background:linear-gradient(90deg,#ffffff 0%, var(--tint,#bcecd2) 100%);border:0.2px solid color-mix(in srgb, var(--tint,#bcecd2) 92%, #000000)}
+[data-theme="gradient"] .badge::before{background:color-mix(in srgb, var(--tint,#bcecd2) 45%, #000000)}
+[data-theme="dark"] .badge{background:#ffffff;color:#111113;border:0.2px solid #ffffff}
+[data-theme="dark"] .badge::before{background:#111113}
+[data-theme="dark"] .btn.solid{background:#3a3a3a;color:#ececec;border-color:#4a4a4a}
+[data-theme="dark"] .btn.solid:hover{background:#454545;filter:none}
+[data-theme="light"] .btn.solid,[data-theme="gradient"] .btn.solid{background:#ffffff;color:#1d1d22;border:0.2px solid #8a8d96}
+[data-theme="light"] .btn.solid:hover,[data-theme="gradient"] .btn.solid:hover{background:#f4f4f7;filter:none}
 @media (prefers-reduced-motion: reduce){.btn{transition:none}}
 @media (max-width:760px){body{padding:12px}.shell{flex-direction:column}.menu{flex:none;border-right:0;border-bottom:1px solid var(--border);flex-direction:row;overflow-x:auto}.menu-label{display:none}.menu a{white-space:nowrap}.content{padding:24px 16px}}
 </style>
