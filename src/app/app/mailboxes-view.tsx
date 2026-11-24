@@ -131,6 +131,7 @@ export default function MailboxesView({ account, demo, toast }: { account: Acct;
   const dnsOf = (b: Box) => { const d = dns[b.email.split("@")[1]]; return Array.isArray(d) ? d : undefined; };
   const shown = list.filter((b) => {
     if (q && !`${b.email} ${b.from_name}`.toLowerCase().includes(q.trim().toLowerCase())) return false;
+    if (filter === "error") return b.status === "error" || (b.scan_failures ?? 0) >= 3;
     return filter === "all" || b.status === filter;
   });
   const ready = list.filter((b) => b.status === "ok");
