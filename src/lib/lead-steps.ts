@@ -116,22 +116,75 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
         providerFn: p.providerFn,
       });
       if (!res.ok) {
-        const isBusy =
-          res.error?.includes("busy") ||
-          res.error?.includes("rate_limited") ||
-          res.error?.includes("can't answer right now") ||
-          res.status === "error";
-        if (isBusy) {
-          return { ok: false, why: "Not done — AI busy, try again", cost: res.cost_usd ?? 0 };
-        }
-        return { ok: false, why: res.status === "timeout" ? "timeout" : "error", cost: res.cost_usd ?? 0, fatal: res.error };
+        const mapped = aiLeadError(res);
+        return { ok: false, why: mapped.why, cost: res.cost_usd ?? 0, fatal: mapped.fatal };
       }
-      return aiAnswer(p, l, readJson(res.text), res.cost_usd, site?.host, site?.text);
+      const json = readJson(res.text);
+      if (!json) {
+        return { ok: false, why: "AI answer was broken. Try again.", cost: res.cost_usd ?? 0 };
+      }
+      return aiAnswer(p, l, json, res.cost_usd, site?.host, site?.text);
     }
     return { ok: false, why: "error", cost: 0, fatal: "Database connection not provided." };
   } catch (e) {
     return { ok: false, why: "error", cost: 0, fatal: e instanceof Error ? e.message : "Error" };
   }
+}
+
+// Plain, honest error classification for AI lead processing
+export function aiLeadError(res: {
+  error?: string;
+  status?: string;
+  lastError?: string;
+  statusCode?: number;
+}): { why: string; fatal?: string } {
+  const err = String(res.error || "");
+  const raw = String(res.lastError || "");
+  const statusCode = res.statusCode;
+  const combined = `${err} ${raw}`;
+
+  // 1. Real 429 / rate_limited
+  if (
+    statusCode === 429 ||
+    /\b429\b|rate_limited/i.test(combined) ||
+    (err.includes("busy") && !err.includes("can't answer"))
+  ) {
+    return { why: "Not done — AI busy, try again" };
+  }
+
+  // 2. Bad or missing key (401, 403, key rejected, unauthorized)
+  if (
+    statusCode === 401 ||
+    statusCode === 403 ||
+    /\b401\b|\b403\b|rejected|invalid.*key|unauthorized|permission|no.*key.*configured|no.*ai key/i.test(combined)
+  ) {
+    return { why: "Your AI key was rejected. Check Settings → AI.", fatal: res.error };
+  }
+
+  // 3. 413 too large
+  if (
+    statusCode === 413 ||
+    /\b413\b|too large|context length|page is too long/i.test(combined)
+  ) {
+    return { why: "This lead's page is too long for AI. Skipped." };
+  }
+
+  // 4. Timeout
+  if (res.status === "timeout" || /\btimeout\b|took too long|deadline|no time left/i.test(combined)) {
+    return { why: "AI took too long. Try again." };
+  }
+
+  // 5. Bad JSON from provider error
+  if (/failed to.*json|broken.*json|invalid json/i.test(combined)) {
+    return { why: "AI answer was broken. Try again." };
+  }
+
+  // 6. 500 Server error
+  if ((statusCode && statusCode >= 500 && statusCode < 600) || /\b5\d{2}\b|server error/i.test(combined)) {
+    return { why: "AI server error. Try again in a minute.", fatal: res.error };
+  }
+
+  return { why: err || "error", fatal: res.error };
 }
 
 // An AI answer (already parsed JSON) → the database change, with every check of the App's own AI: a readable fit, a full
@@ -143,13 +196,13 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
   const by = p.by ?? p.provider;
   if (p.task === "research") {
     const r = cleanResearch(answer, siteText, host);
-    if (!r) return { ok: false, why: "unreadable answer", cost };
+    if (!r) return { ok: false, why: "AI answer was broken. Try again.", cost };
     const research = { ...r, host: host.slice(0, 120), by, at: Date.now() };
     return { ok: true, patch: { data: { ...data, research } }, result: { id: l.id, research, dropped_observations: r.dropped_observations }, cost };
   }
   if (p.task === "score") {
     const f = cleanFit(answer);
-    if (!f) return { ok: false, why: "unreadable answer", cost };
+    if (!f) return { ok: false, why: "AI answer was broken. Try again.", cost };
 
     // Validate matched_service_id: keep it only if it equals the id of one of the team's ACTIVE services;
     // otherwise drop it and set matched_service_name from the real service, never from the AI text.
@@ -206,7 +259,7 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
     return { ok: true, patch, result: resObj, cost };
   }
   const parts = cleanParts(answer), fu = cleanFollowUps(answer, p.followUps);
-  if (!parts) return { ok: false, why: "unreadable answer", cost };
+  if (!parts) return { ok: false, why: "AI answer was broken. Try again.", cost };
   // Only a real person's name Kestrel has for this lead, never the company name (19 Nov 2026).
   parts.first_name = trustedFirstName(parts.first_name, {
     name: (data as { name?: string }).name, email: l.email ?? (data as { email?: string }).email,

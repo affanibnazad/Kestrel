@@ -54,6 +54,8 @@ export type RunAiTaskResult<T = unknown> =
       model?: string;
       source?: "kestrel" | "team_key";
       cost_usd?: number | null;
+      lastError?: string;
+      statusCode?: number;
     };
 
 export const CUSTOMER_ERROR_MESSAGE = "Kestrel AI can't answer right now. Try again in a minute.";
@@ -260,7 +262,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   // Resolve initial model by task tier
   const resolution = await resolveModelForTier(sb, teamId, cfg.tier, task);
   if ("error" in resolution) {
-    return { ok: false, error: CUSTOMER_ERROR_MESSAGE, status: "error" };
+    return { ok: false, error: CUSTOMER_ERROR_MESSAGE, status: "error", lastError: resolution.error, statusCode: 401 };
   }
 
   let currentTier: AiTier = cfg.tier;
@@ -269,6 +271,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   const maxAttempts = 1 + cfg.retries;
   let lastErrorMsg = "";
   let lastStatus: "timeout" | "error" | "skipped" = "error";
+  let lastStatusCode: number | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const timeLeft = absoluteDeadline - Date.now();
@@ -405,6 +408,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
       const status: "timeout" | "error" = isTimeout ? "timeout" : "error";
       lastStatus = status;
       lastErrorMsg = is429 ? "rate_limited" : (err instanceof Error ? err.message : String(err));
+      lastStatusCode = err instanceof ProviderCallError ? err.status : undefined;
 
       await logRunImpl(
         sb,
@@ -546,6 +550,8 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
           provider: currentResolution.provider,
           model: currentResolution.model,
           source: currentResolution.source,
+          lastError: "rate_limited",
+          statusCode: 429,
         };
       }
     }
@@ -723,6 +729,8 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
     provider: currentResolution.provider,
     model: currentResolution.model,
     source: currentResolution.source,
+    lastError: lastErrorMsg,
+    statusCode: lastStatusCode,
   };
 }
 

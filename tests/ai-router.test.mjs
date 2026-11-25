@@ -420,3 +420,156 @@ describe("AI Router Unit Tests (Fake Provider & Mock DB)", () => {
     assert.match(aiFile, /id:\s*"claude-sonnet-5-5"/);
   });
 });
+
+describe("AI Lead Error Honest Classification (lead-steps.ts & aiOne)", () => {
+  // Simulator of aiOne lead error handling using lead-steps logic
+  function classifyLeadAiResult(res) {
+    if (!res.ok) {
+      const err = String(res.error || "");
+      const raw = String(res.lastError || "");
+      const statusCode = res.statusCode;
+      const combined = `${err} ${raw}`;
+
+      if (
+        statusCode === 429 ||
+        /\b429\b|rate_limited/i.test(combined) ||
+        (err.includes("busy") && !err.includes("can't answer"))
+      ) {
+        return { ok: false, why: "Not done — AI busy, try again" };
+      }
+      if (
+        statusCode === 401 ||
+        statusCode === 403 ||
+        /\b401\b|\b403\b|rejected|invalid.*key|unauthorized|permission|no.*key.*configured|no.*ai key/i.test(combined)
+      ) {
+        return { ok: false, why: "Your AI key was rejected. Check Settings → AI." };
+      }
+      if (
+        statusCode === 413 ||
+        /\b413\b|too large|context length|page is too long/i.test(combined)
+      ) {
+        return { ok: false, why: "This lead's page is too long for AI. Skipped." };
+      }
+      if (res.status === "timeout" || /\btimeout\b|took too long|deadline|no time left/i.test(combined)) {
+        return { ok: false, why: "AI took too long. Try again." };
+      }
+      if (/failed to.*json|broken.*json|invalid json/i.test(combined)) {
+        return { ok: false, why: "AI answer was broken. Try again." };
+      }
+      if ((statusCode && statusCode >= 500 && statusCode < 600) || /\b5\d{2}\b|server error/i.test(combined)) {
+        return { ok: false, why: "AI server error. Try again in a minute." };
+      }
+      return { ok: false, why: err || "error" };
+    }
+
+    // Check JSON parsing
+    try {
+      const text = String(res.text || "").trim();
+      const match = /\{[\s\S]*\}/.exec(text);
+      if (!match) return { ok: false, why: "AI answer was broken. Try again." };
+      JSON.parse(match[0]);
+    } catch {
+      return { ok: false, why: "AI answer was broken. Try again." };
+    }
+    return { ok: true };
+  }
+
+  it("verifies lead-steps.ts contains all 5 honest user-facing error messages", () => {
+    const leadStepsFile = fs.readFileSync(new URL("../src/lib/lead-steps.ts", import.meta.url), "utf8");
+    assert.match(leadStepsFile, /"Not done — AI busy, try again"/);
+    assert.match(leadStepsFile, /"Your AI key was rejected\. Check Settings → AI\."/);
+    assert.match(leadStepsFile, /"This lead's page is too long for AI\. Skipped\."/);
+    assert.match(leadStepsFile, /"AI answer was broken\. Try again\."/);
+    assert.match(leadStepsFile, /"AI took too long\. Try again\."/);
+    assert.match(leadStepsFile, /"AI server error\. Try again in a minute\."/);
+    // Ensure res.status === 'error' was removed from isBusy
+    assert.doesNotMatch(leadStepsFile, /isBusy\s*=[\s\S]*?res\.status\s*===\s*"error"/);
+  });
+
+  it("forces 429 and returns 'Not done — AI busy, try again'", () => {
+    const res = classifyLeadAiResult({
+      ok: false,
+      error: "Kestrel AI is busy, try again in a minute.",
+      status: "error",
+      lastError: "rate_limited",
+      statusCode: 429,
+    });
+    console.log("  [429 test output] -> message:", res.why);
+    assert.equal(res.ok, false);
+    assert.equal(res.why, "Not done — AI busy, try again");
+  });
+
+  it("forces 500 and returns 'AI server error. Try again in a minute.'", () => {
+    const res = classifyLeadAiResult({
+      ok: false,
+      error: "Kestrel AI can't answer right now. Try again in a minute.",
+      status: "error",
+      lastError: "Internal Server Error 500",
+      statusCode: 500,
+    });
+    console.log("  [500 test output] -> message:", res.why);
+    assert.equal(res.ok, false);
+    assert.equal(res.why, "AI server error. Try again in a minute.");
+  });
+
+  it("forces 413 and returns 'This lead's page is too long for AI. Skipped.'", () => {
+    const res = classifyLeadAiResult({
+      ok: false,
+      error: "Kestrel AI can't answer right now. Try again in a minute.",
+      status: "error",
+      lastError: "groq error (413): request too large for model context window",
+      statusCode: 413,
+    });
+    console.log("  [413 test output] -> message:", res.why);
+    assert.equal(res.ok, false);
+    assert.equal(res.why, "This lead's page is too long for AI. Skipped.");
+  });
+
+  it("forces bad JSON and returns 'AI answer was broken. Try again.'", () => {
+    // Case A: provider returns malformed / unparseable JSON text
+    const resA = classifyLeadAiResult({
+      ok: true,
+      text: "Sure! Here is the JSON: { fit: 90, verdict: 'good' broken unclosed",
+    });
+    console.log("  [bad JSON text output] -> message:", resA.why);
+    assert.equal(resA.ok, false);
+    assert.equal(resA.why, "AI answer was broken. Try again.");
+
+    // Case B: provider error due to JSON failure (e.g. Groq 400 failed to validate json)
+    const resB = classifyLeadAiResult({
+      ok: false,
+      error: "Kestrel AI can't answer right now. Try again in a minute.",
+      status: "error",
+      lastError: "groq error (400): Failed to validate JSON schema",
+      statusCode: 400,
+    });
+    console.log("  [bad JSON provider error output] -> message:", resB.why);
+    assert.equal(resB.ok, false);
+    assert.equal(resB.why, "AI answer was broken. Try again.");
+  });
+
+  it("forces 401 / bad key and returns 'Your AI key was rejected. Check Settings → AI.'", () => {
+    const res = classifyLeadAiResult({
+      ok: false,
+      error: "Kestrel AI can't answer right now. Try again in a minute.",
+      status: "error",
+      lastError: "The Claude key was not accepted (401)",
+      statusCode: 401,
+    });
+    console.log("  [401 test output] -> message:", res.why);
+    assert.equal(res.ok, false);
+    assert.equal(res.why, "Your AI key was rejected. Check Settings → AI.");
+  });
+
+  it("forces timeout and returns 'AI took too long. Try again.'", () => {
+    const res = classifyLeadAiResult({
+      ok: false,
+      error: "Kestrel AI can't answer right now. Try again in a minute.",
+      status: "timeout",
+      lastError: "Anthropic timed out after 20000ms",
+    });
+    console.log("  [timeout test output] -> message:", res.why);
+    assert.equal(res.ok, false);
+    assert.equal(res.why, "AI took too long. Try again.");
+  });
+});

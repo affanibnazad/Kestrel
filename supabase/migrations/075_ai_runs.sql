@@ -29,16 +29,10 @@ revoke all on public.ai_runs from anon, authenticated;
 -- Direct inserts from anon or authenticated are strictly forbidden.
 -- Inserts must only happen via log_ai_run using the server secret.
 drop policy if exists "team owners admins read ai runs" on public.ai_runs;
-create policy "team owners admins read ai runs" on public.ai_runs
+drop policy if exists "admins read ai runs" on public.ai_runs;
+create policy "admins read ai runs" on public.ai_runs
   for select to authenticated
-  using (
-    public.is_admin() or exists (
-      select 1 from public.members m
-      where m.team_id = ai_runs.team_id
-        and m.user_id = auth.uid()
-        and m.role in ('owner', 'manager')
-    )
-  );
+  using (public.is_admin());
 
 grant select on public.ai_runs to authenticated;
 

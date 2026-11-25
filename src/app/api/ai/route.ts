@@ -6,7 +6,6 @@ import { aiOne, aiPlan, writeChecked } from "@/lib/lead-steps";
 import { cleanVoiceNotes, readJson, voiceSystem, VOICE_SCHEMA, type Offer, type Provider } from "@/lib/ai";
 import { aboutForAi, cleanAbout } from "@/lib/about";
 import { AI_TASKS, runAiTask } from "@/lib/ai-router";
-import { ProviderCallError } from "@/lib/ai-router/providers";
 import { LABEL_SCHEMA, LABEL_SYSTEM } from "@/lib/inbox";
 
 // AI in the App: judges leads (Good / Maybe / No) or writes the personal parts of first emails, a few leads per call.
@@ -18,7 +17,7 @@ import { LABEL_SCHEMA, LABEL_SYSTEM } from "@/lib/inbox";
 export const maxDuration = 60;
 const MAX_PER_CALL = 8, AT_ONCE = AI_TASKS.write.maxConcurrent ?? 3;
 
-type Body = { task?: string; ids?: unknown; offerId?: unknown; sequence?: unknown; samples?: unknown; timeoutMs?: unknown; text?: unknown; force429?: boolean; forceKestrelError?: boolean };
+type Body = { task?: string; ids?: unknown; offerId?: unknown; sequence?: unknown; samples?: unknown; timeoutMs?: unknown; text?: unknown };
 
 export async function POST(request: Request) {
   const started = Date.now();
@@ -126,12 +125,6 @@ export async function POST(request: Request) {
     const teamId = (member as { team_id?: string } | null)?.team_id || "";
     if (!teamId) return NextResponse.json({ error: "Team not found." }, { status: 403 });
 
-    const testFn = body.forceKestrelError
-      ? async () => {
-          throw new ProviderCallError("Included AI server error 500", 500, false, false);
-        }
-      : undefined;
-
     const res = await runAiTask({
       sb,
       teamId,
@@ -141,7 +134,6 @@ export async function POST(request: Request) {
       user: text,
       maxTokens: 500,
       timeoutMs: timeoutOverride,
-      providerFn: testFn,
     });
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: 500 });
     return NextResponse.json({ ok: true, text: res.text });
@@ -224,13 +216,7 @@ export async function POST(request: Request) {
   const batchTeamId = leads[0]?.team_id || (offer as { team_id?: string })?.team_id || "";
   const requestDeadline = started + 50_000;
 
-  const testProviderFn = body.force429
-    ? async () => {
-        throw new ProviderCallError("groq error (429): Rate limit reached", 429, false, false, 0);
-      }
-    : undefined;
-
-  const plan = { ...rawPlan, sb, teamId: batchTeamId, userId: user.id, deadlineMs: requestDeadline, providerFn: testProviderFn };
+  const plan = { ...rawPlan, sb, teamId: batchTeamId, userId: user.id, deadlineMs: requestDeadline };
   // Phase 4C: written emails are checked by the QC bot and fixed once; one it cannot pass is held from campaigns.
   const qcPlan = task === "emails" ? aiPlan("qc", offer as Offer, settings, typeof key === "string" ? key : "", null, activeServices, cleanAb?.voice_notes, cleanAb) : null;
   const qc = qcPlan && !("error" in qcPlan) ? { ...qcPlan, sb, teamId: batchTeamId, userId: user.id, deadlineMs: requestDeadline } : null;
