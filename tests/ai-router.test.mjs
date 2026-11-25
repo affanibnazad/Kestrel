@@ -459,4 +459,50 @@ describe("AI Lead Error Honest Classification (Real runAiTask -> aiLeadError)", 
     console.log("  [bad JSON unparseable text output] -> message:", leadErrB.why);
     assert.equal(leadErrB.why, "AI answer was broken. Try again.");
   });
+
+  it("resolution override: provider receives exact model+key, assistant_included NOT called", async () => {
+    let assistantIncludedCalled = false;
+    let capturedModel = "";
+    let capturedKey = "";
+
+    const sb = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async (fn) => {
+        if (fn === "assistant_included") {
+          assistantIncludedCalled = true;
+          // Return a valid row so we can detect if it was wrongly used
+          return { data: { provider: "anthropic", model: "claude-haiku-5-5", key: "wrong-key", enabled: true, name: null }, error: null };
+        }
+        if (fn === "log_ai_run") return { data: null, error: null };
+        return { data: null, error: null };
+      },
+    };
+
+    const res = await runAiTask({
+      sb,
+      teamId: "test-team",
+      task: "chat",
+      system: "sys",
+      user: "hello",
+      resolution: {
+        provider: "groq",
+        key: "my-groq-key",
+        model: "qwen/qwen3.8-27b",
+        effort: "low",
+        source: "kestrel",
+      },
+      providerFn: async (params) => {
+        capturedModel = params.model;
+        capturedKey = params.key;
+        return { text: "hi from groq", usage: { input_tokens: 5, output_tokens: 5 } };
+      },
+      logRunFn: async () => {},
+    });
+
+    assert.equal(res.ok, true, `runAiTask failed: ${res.ok === false ? res.error : ""}`);
+    assert.equal(capturedModel, "qwen/qwen3.8-27b", `expected model qwen/qwen3.8-27b, got ${capturedModel}`);
+    assert.equal(capturedKey, "my-groq-key", `expected key my-groq-key, got ${capturedKey}`);
+    assert.equal(assistantIncludedCalled, false, "assistant_included must NOT be called when resolution is provided");
+    console.log("  [resolution override] model:", capturedModel, "| key ends:", capturedKey.slice(-4), "| assistant_included called:", assistantIncludedCalled);
+  });
 });

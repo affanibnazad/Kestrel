@@ -617,7 +617,7 @@ export async function POST(req: Request) {
     let text = "";
     try {
       const assistantPromise = runAssistant({
-        provider: ai.provider, key: ai.key, model: ai.model, effort: ai.effort,
+        provider: ai.provider, key: ai.key, model: ai.model, effort: ai.effort, included: ai.included,
         system: `${SYSTEM}${ai.included ? `\n\n## Your name\nYou are ${ai.label}, Kestrel's own assistant. If someone asks what you are, say you are ${ai.label}, built into Kestrel. Do not bring up other AI companies or model names yourself.` : ""}${whereNow}\n\n## This person\n${personal}`, history,
         tools: TOOLS.map((t): NeutralTool => ({ name: t.name, description: t.description, schema: t.input_schema })),
         runTool: (name, input) => runTool(sb, name, input, turn), maxRounds: MAX_ROUNDS, images,

@@ -2,6 +2,7 @@ import "server-only";
 import { runAiTask } from "./ai-router";
 import type { supabaseServer } from "./supabase/server";
 import type { Provider } from "./ai";
+import type { ModelResolution } from "./ai-router/run";
 
 type Sb = Awaited<ReturnType<typeof supabaseServer>>;
 
@@ -13,6 +14,8 @@ export type EngineInput = {
   key: string;
   model: string;
   effort?: "low" | "medium" | "high";
+  /** True when this is Kestrel's included AI, false when the team's own key. */
+  included: boolean;
   system: string;
   history: ChatMsg[];
   tools: NeutralTool[];
@@ -35,6 +38,16 @@ export async function runAssistant(x: EngineInput): Promise<EngineResult> {
   const lastUserMsg = [...(x.history || [])].reverse().find((m) => m.role === "user")?.content || "";
 
   if (x.sb && x.teamId) {
+    // Build the resolution from the already-resolved provider/key/model so runAiTask
+    // skips its own resolveModelForTier DB call and uses exactly what assistant-server gave us.
+    const resolution: ModelResolution = {
+      provider: x.provider,
+      key: x.key,
+      model: x.model,
+      effort: x.effort,
+      source: x.included ? "kestrel" : "team_key",
+    };
+
     const res = await runAiTask({
       sb: x.sb,
       teamId: x.teamId,
@@ -48,6 +61,7 @@ export async function runAssistant(x: EngineInput): Promise<EngineResult> {
       images: x.images,
       maxTokens: 4000,
       effort: x.effort,
+      resolution,
     });
 
     if (!res.ok) {

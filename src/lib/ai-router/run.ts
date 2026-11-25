@@ -31,6 +31,10 @@ export type RunAiTaskParams = {
   // For unit tests / dependency injection
   providerFn?: typeof callProvider;
   logRunFn?: typeof logRun;
+  // Optional pre-resolved provider/key/model — skips resolveModelForTier for attempt 1.
+  // Passed by assistant-engine so the already-resolved pick (Kestrel included AI or team key)
+  // is used directly instead of doing another DB lookup.
+  resolution?: ModelResolution;
 };
 
 export type RunAiTaskResult<T = unknown> =
@@ -259,16 +263,21 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   const baseTaskTimeout = params.timeoutMs ?? cfg.timeoutMs;
   const maxTokens = params.maxTokens ?? cfg.maxTokens;
 
-  // Resolve initial model by task tier
-  const resolution = await resolveModelForTier(sb, teamId, cfg.tier, task);
-  if ("error" in resolution) {
-    const isDb = Boolean("isDbError" in resolution && resolution.isDbError) || /database|relation|failed to read/i.test(resolution.error);
-    const code = isDb ? 500 : 401;
-    return { ok: false, error: CUSTOMER_ERROR_MESSAGE, status: "error", lastError: resolution.error, statusCode: code };
-  }
-
+  // Resolve initial model by task tier — or use a pre-resolved override if provided
   let currentTier: AiTier = cfg.tier;
-  let currentResolution: ModelResolution = resolution;
+  let currentResolution: ModelResolution;
+
+  if (params.resolution) {
+    currentResolution = params.resolution;
+  } else {
+    const resolution = await resolveModelForTier(sb, teamId, cfg.tier, task);
+    if ("error" in resolution) {
+      const isDb = Boolean("isDbError" in resolution && resolution.isDbError) || /database|relation|failed to read/i.test(resolution.error);
+      const code = isDb ? 500 : 401;
+      return { ok: false, error: CUSTOMER_ERROR_MESSAGE, status: "error", lastError: resolution.error, statusCode: code };
+    }
+    currentResolution = resolution;
+  }
 
   const maxAttempts = 1 + cfg.retries;
   let lastErrorMsg = "";
