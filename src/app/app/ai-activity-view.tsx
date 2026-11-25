@@ -13,7 +13,7 @@ const ago = (iso: string) => new Date(iso).toLocaleString(undefined, { day: "num
 const DEMO: Row[] = [
   { id: 3, user_id: "me", kind: "set_lead_fit", summary: "Mark 3 leads as Good: “Northlight Studio (example)”, “Harbour Social (example)” and 1 more", ok: true, detail: null, ai: "Kestrel Pro", created_at: new Date(Date.UTC(2026, 10, 18, 15, 2)).toISOString() },
   { id: 2, user_id: "me", kind: "write_emails", summary: "Score and write: wrote emails for 12 leads (offer “Short clips for agencies”)", ok: true, detail: "2 skipped", ai: null, created_at: new Date(Date.UTC(2026, 10, 18, 11, 40)).toISOString() },
-  { id: 1, user_id: "me", kind: "add_to_campaign", summary: "Add 5 leads to the running campaign “Video agencies, London (example)”", ok: false, detail: "This campaign has no email account whose sending and reading tests both passed", ai: "Kestrel Vision", created_at: new Date(Date.UTC(2026, 10, 17, 9, 15)).toISOString() },
+  { id: 1, user_id: "me", kind: "add_to_campaign", summary: "Add 5 leads to the running campaign “Video agencies, London (example)”", ok: false, detail: "This campaign has no email account whose sending and reading tests both passed", ai: "Kestrel AI", created_at: new Date(Date.UTC(2026, 10, 17, 9, 15)).toISOString() },
 ];
 
 export default function AiActivityView({ account, demo }: { account: { team_id: string } | null; demo: boolean }) {

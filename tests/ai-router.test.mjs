@@ -1,11 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import http from "node:http";
 
 // Import REAL source modules using tsx TypeScript & @/ alias support
 import { aiLeadError } from "@/lib/lead-steps";
 import { runAiTask, AI_TASKS } from "@/lib/ai-router";
-import { ProviderCallError, costOf } from "@/lib/ai-router/providers";
+import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
 import { readJson } from "@/lib/ai";
 
 // Ensure server secret is valid for standalone test runner
@@ -66,40 +67,40 @@ function createMockSb(options = {}) {
 }
 
 describe("AI Router Configuration & Logic", () => {
-  it("verifies AI_TASKS table configuration in tasks.ts", () => {
-    assert.equal(AI_TASKS.research.tier, "fast");
+  it("verifies AI_TASKS table configuration in tasks.ts (task -> slot mapping)", () => {
+    assert.equal(AI_TASKS.research.slot, "swift");
     assert.equal(AI_TASKS.research.timeoutMs, 20_000);
     assert.equal(AI_TASKS.research.retries, 1);
 
-    assert.equal(AI_TASKS.explain.tier, "fast");
+    assert.equal(AI_TASKS.explain.slot, "swift");
     assert.equal(AI_TASKS.explain.timeoutMs, 10_000);
     assert.equal(AI_TASKS.explain.retries, 1);
     assert.equal(AI_TASKS.explain.fallback, "skip");
 
-    assert.equal(AI_TASKS.voice.tier, "fast");
+    assert.equal(AI_TASKS.voice.slot, "swift");
     assert.equal(AI_TASKS.voice.timeoutMs, 20_000);
     assert.equal(AI_TASKS.voice.retries, 1);
 
-    assert.equal(AI_TASKS.score.tier, "fast");
+    assert.equal(AI_TASKS.score.slot, "swift");
     assert.equal(AI_TASKS.score.timeoutMs, 20_000);
     assert.equal(AI_TASKS.score.retries, 1);
 
-    assert.equal(AI_TASKS.write.tier, "strong");
+    assert.equal(AI_TASKS.write.slot, "talon");
     assert.equal(AI_TASKS.write.timeoutMs, 40_000);
     assert.equal(AI_TASKS.write.retries, 1);
-    assert.equal(AI_TASKS.write.fallback, "fast");
+    assert.equal(AI_TASKS.write.fallback, "nest");
 
-    assert.equal(AI_TASKS.qc.tier, "fast");
+    assert.equal(AI_TASKS.qc.slot, "swift");
     assert.equal(AI_TASKS.qc.timeoutMs, 15_000);
     assert.equal(AI_TASKS.qc.retries, 1);
     assert.equal(AI_TASKS.qc.fallback, "code_checks_only");
 
-    assert.equal(AI_TASKS.reply_suggest.tier, "fast");
-    assert.equal(AI_TASKS.reply_label.tier, "fast");
-    assert.equal(AI_TASKS.spam_fix.tier, "fast");
-    assert.equal(AI_TASKS.chat.tier, "strong");
+    assert.equal(AI_TASKS.reply_suggest.slot, "talon");
+    assert.equal(AI_TASKS.reply_label.slot, "swift");
+    assert.equal(AI_TASKS.spam_fix.slot, "swift");
+    assert.equal(AI_TASKS.chat.slot, "talon");
     assert.equal(AI_TASKS.chat.retries, 0);
-    assert.equal(AI_TASKS.chat.fallback, "fast");
+    assert.equal(AI_TASKS.chat.fallback, "nest");
   });
 });
 
@@ -134,24 +135,37 @@ describe("AI Router Unit Tests (Real runAiTask & Injected Mocks)", () => {
     assert.equal(logs[1][12], "ok");      // second attempt status
   });
 
-  it("strong fails twice -> fallback fast -> ok (logs: error, error, fallback)", async () => {
+  it("swift fails -> nest used (logs: error, error, fallback)", async () => {
     const logs = [];
-    let callCount = 0;
     let lastUsedModel = "";
     const providerFn = async (params) => {
-      callCount++;
       lastUsedModel = params.model;
-      if (params.model === "claude-sonnet-5-5") {
-        throw new ProviderCallError("Sonnet unavailable", 500);
+      if (params.model === "swift-model") {
+        throw new ProviderCallError("Swift unavailable", 500);
       }
-      return { text: "fast fallback success", usage: { input_tokens: 10, output_tokens: 10 } };
+      return { text: "nest fallback success", usage: { input_tokens: 10, output_tokens: 10 } };
     };
 
-    const sb = createMockSb({ model: "auto" });
+    const sb = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async (fn, args) => {
+        if (fn === "ai_slot_for_server") {
+          if (args.p_slot === "swift") {
+            return { data: { slot: "swift", provider: "groq", model: "swift-model", key: "swift-key", enabled: true }, error: null };
+          }
+          if (args.p_slot === "nest") {
+            return { data: { slot: "nest", provider: "openai", model: "nest-model", key: "nest-key", enabled: true }, error: null };
+          }
+        }
+        if (fn === "log_ai_run") return { data: null, error: null };
+        return { data: null, error: null };
+      },
+    };
+
     const res = await runAiTask({
       sb,
       teamId: "team-test",
-      task: "write",
+      task: "reply_label",
       system: "sys",
       user: "usr",
       providerFn,
@@ -159,13 +173,129 @@ describe("AI Router Unit Tests (Real runAiTask & Injected Mocks)", () => {
     });
 
     assert.equal(res.ok, true);
-    assert.equal(res.text, "fast fallback success");
-    assert.equal(lastUsedModel, "claude-haiku-5-5");
-    assert.equal(res.model, "claude-haiku-5-5");
+    assert.equal(res.text, "nest fallback success");
+    assert.equal(lastUsedModel, "nest-model");
+    assert.equal(res.model, "nest-model");
+    assert.equal(res.slot, "nest");
     assert.equal(logs.length, 3);
     assert.equal(logs[0][12], "error");
     assert.equal(logs[1][12], "error");
     assert.equal(logs[2][12], "fallback");
+    assert.equal(logs[2][14], "nest");
+  });
+
+  it("nest fails -> honest error, no loop", async () => {
+    let callCount = 0;
+    const providerFn = async () => {
+      callCount++;
+      throw new ProviderCallError("Nest unavailable", 500);
+    };
+
+    const sb = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async (fn, args) => {
+        if (fn === "ai_slot_for_server") {
+          return { data: { slot: args.p_slot, provider: "groq", model: `${args.p_slot}-model`, key: "k", enabled: true }, error: null };
+        }
+        if (fn === "log_ai_run") return { data: null, error: null };
+        return { data: null, error: null };
+      },
+    };
+
+    const res = await runAiTask({
+      sb,
+      teamId: "team-test",
+      task: "chat",
+      system: "sys",
+      user: "usr",
+      resolution: { provider: "groq", model: "nest-model", key: "k", source: "kestrel", slot: "nest" },
+      providerFn,
+      logRunFn: async () => {},
+    });
+
+    assert.equal(res.ok, false);
+    assert.equal(res.error, CUSTOMER_MSG);
+    assert.equal(callCount, 1, "nest must not loop or fall back to itself");
+  });
+
+  it("slot not set -> old behaviour (assistant_included) used", async () => {
+    let assistantIncludedCalled = false;
+    let capturedModel = "";
+    const sb = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async (fn) => {
+        if (fn === "ai_slot_for_server") return { data: null, error: null };
+        if (fn === "assistant_included") {
+          assistantIncludedCalled = true;
+          return { data: { provider: "groq", model: "legacy-included-model", enabled: true, key: "legacy-key" }, error: null };
+        }
+        if (fn === "log_ai_run") return { data: null, error: null };
+        return { data: null, error: null };
+      },
+    };
+
+    const res = await runAiTask({
+      sb,
+      teamId: "team-test",
+      task: "chat",
+      system: "sys",
+      user: "usr",
+      providerFn: async (params) => {
+        capturedModel = params.model;
+        return { text: "legacy ok", usage: { input_tokens: 5, output_tokens: 5 } };
+      },
+      logRunFn: async () => {},
+    });
+
+    assert.equal(res.ok, true);
+    assert.equal(assistantIncludedCalled, true);
+    assert.equal(capturedModel, "legacy-included-model");
+  });
+
+  it("OpenAI-compatible adapter sends to slot base_url with slot model and key", async () => {
+    let capturedAuth = "";
+    let capturedModel = "";
+    let capturedPath = "";
+
+    const server = http.createServer((req, res) => {
+      capturedAuth = req.headers.authorization || "";
+      capturedPath = req.url || "";
+      let body = "";
+      req.on("data", (c) => { body += c; });
+      req.on("end", () => {
+        const parsed = JSON.parse(body || "{}");
+        capturedModel = parsed.model || "";
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          choices: [{ message: { content: "custom-endpoint-ok" } }],
+          usage: { prompt_tokens: 4, completion_tokens: 2 },
+        }));
+      });
+    });
+
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const addr = server.address();
+    const baseUrl = `http://127.0.0.1:${addr.port}/v1`;
+
+    try {
+      const ans = await callProvider({
+        provider: "custom",
+        baseUrl,
+        key: "slot-custom-key-xyz",
+        model: "my-custom-model",
+        system: "sys",
+        user: "hi",
+        maxTokens: 50,
+        timeoutMs: 5000,
+      });
+
+      assert.equal(ans.text, "custom-endpoint-ok");
+      assert.equal(capturedPath, "/v1/chat/completions");
+      assert.equal(capturedAuth, "Bearer slot-custom-key-xyz");
+      assert.equal(capturedModel, "my-custom-model");
+    } finally {
+      server.close();
+    }
   });
 
   it("deadline 5s left -> no retry, status 'skipped', friendly message, total time < 6s", async () => {

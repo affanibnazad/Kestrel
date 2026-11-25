@@ -39,7 +39,16 @@ export async function assistantConfig(sb: Sb): Promise<AssistantConfig | { error
 // ---- Any AI (database 027): which company, model and key answer this person's question.
 // "included" = Kestrel's own AI (Kestrel pays; counts against the team's daily messages).
 // "team" = the person chose their team's own key from Connections (the team pays; no daily limit from Kestrel).
-export type Resolved = { provider: Provider; key: string; model: string; effort: "low" | "medium" | "high"; included: boolean; label: string };
+export type Resolved = {
+  provider: string;
+  baseUrl?: string | null;
+  key: string;
+  model: string;
+  effort: "low" | "medium" | "high";
+  included: boolean;
+  label: string;
+  slot?: "swift" | "talon" | "nest";
+};
 export type Prefs = { source: "included" | "team"; provider: Provider | null; model: string | null; about: string; style: string };
 const COMPANY: Record<Provider, string> = { anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini", openrouter: "OpenRouter", groq: "Groq", nvidia: "NVIDIA" };
 
@@ -54,8 +63,29 @@ export async function resolveAssistant(sb: Sb, prefs: Prefs | null, question: st
     if (!prefs.model) return { error: `Choose a ${COMPANY[prefs.provider]} model in Kestrel AI → Personalize.` };
     return { provider: prefs.provider, key: data as string, model: prefs.model, effort: "low", included: false, label: `${COMPANY[prefs.provider]} (your team's key)` };
   }
-  // Kestrel's included AI: always use the Owner's default from assistant_included (ignore per-user prefs.model).
+  // Kestrel's included AI: try Talon slot from ai_slots first, then fall back to assistant_included (safe rollout).
   if (secret.length >= 32) {
+    try {
+      const { data: slotData, error: slotErr } = await sb.rpc("ai_slot_for_server", { server_secret: secret, p_slot: "talon" });
+      if (!slotErr && slotData) {
+        const s = slotData as { provider?: string; base_url?: string | null; model?: string; key?: string | null; enabled?: boolean };
+        if (s.enabled === false) return { error: "Kestrel AI is turned off for now. Try again later." };
+        if (s.provider && s.model && s.key) {
+          return {
+            provider: s.provider,
+            baseUrl: s.base_url ?? null,
+            key: s.key,
+            model: s.model,
+            effort: "medium",
+            included: true,
+            label: KESTREL_AI_NAME,
+            slot: "talon",
+          };
+        }
+      }
+    } catch {
+      // 077 not applied yet -> fall back to assistant_included
+    }
     const { data, error } = await sb.rpc("assistant_included", { server_secret: secret });
     if (!error && data) {
       const c = data as { provider: Provider; model: string; enabled: boolean; key: string | null; name?: string | null };

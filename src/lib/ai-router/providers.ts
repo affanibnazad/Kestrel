@@ -2,6 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { CHAT_BASE, type Provider, PROVIDERS } from "../ai";
 import { hasFallback } from "../ai-models";
+import { presetBaseUrl } from "../ai-slots";
 
 export class ProviderCallError extends Error {
   constructor(
@@ -50,7 +51,8 @@ export type ProviderAnswer = {
 };
 
 export type ProviderCallParams = {
-  provider: Provider;
+  provider: string;
+  baseUrl?: string | null;
   key: string;
   model: string;
   system: string;
@@ -85,9 +87,9 @@ export const geminiSchema = (s: unknown): unknown => {
 };
 
 // Cost calculation moved here from ai-server.ts
-export function costOf(usage: ProviderUsage, provider: Provider, model: string): number | null {
+export function costOf(usage: ProviderUsage, provider: string, model: string): number | null {
   if (Number.isFinite(usage.cost)) return usage.cost as number;
-  const m = PROVIDERS[provider]?.models?.find((x) => x.id === model);
+  const m = PROVIDERS[provider as Provider]?.models?.find((x) => x.id === model);
   return m && m.input !== null && m.output !== null
     ? (usage.input_tokens * m.input + usage.output_tokens * m.output) / 1e6
     : null;
@@ -320,9 +322,9 @@ async function callGemini(params: ProviderCallParams): Promise<ProviderAnswer> {
 // 3. OpenAI-Style Adapter (OpenAI, Groq, OpenRouter, NVIDIA)
 // ----------------------------------------------------------------------------
 async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnswer> {
-  const { provider, key, model, system, user, schema, maxTokens, timeoutMs, tools, history, runTool, images } = params;
-  const baseUrl = CHAT_BASE[provider] ?? CHAT_BASE.openai;
-  const url = `${baseUrl}/chat/completions`;
+  const { provider, baseUrl, key, model, system, user, schema, maxTokens, timeoutMs, tools, history, runTool, images } = params;
+  const resolvedBase = presetBaseUrl(provider, baseUrl || CHAT_BASE[provider as Provider]);
+  const url = `${resolvedBase}/chat/completions`;
   const headers: Record<string, string> = {
     "content-type": "application/json",
     authorization: `Bearer ${key}`,

@@ -3,7 +3,7 @@ import type { supabaseServer } from "../supabase/server";
 import type { Provider } from "../ai";
 import { HAIKU, SONNET, modelForTask } from "../ai-models";
 import { assistantConfig, serverSecret } from "../assistant-server";
-import { AI_TASKS, type AiTaskName, type AiTier } from "./tasks";
+import { AI_TASKS, type AiSlot, type AiTaskName } from "./tasks";
 import { callProvider, costOf, ProviderCallError, type ProviderAnswer } from "./providers";
 
 type Sb = Awaited<ReturnType<typeof supabaseServer>>;
@@ -31,9 +31,8 @@ export type RunAiTaskParams = {
   // For unit tests / dependency injection
   providerFn?: typeof callProvider;
   logRunFn?: typeof logRun;
-  // Optional pre-resolved provider/key/model — skips resolveModelForTier for attempt 1.
-  // Passed by assistant-engine so the already-resolved pick (Kestrel included AI or team key)
-  // is used directly instead of doing another DB lookup.
+  // Optional pre-resolved provider/key/model — skips resolveModelForSlot for attempt 1.
+  // Passed by assistant-engine (for chat) and Owner -> AI slot tester.
   resolution?: ModelResolution;
 };
 
@@ -45,6 +44,7 @@ export type RunAiTaskResult<T = unknown> =
       provider: string;
       model: string;
       source: "kestrel" | "team_key";
+      slot?: AiSlot;
       tokens_in: number;
       tokens_out: number;
       cost_usd: number | null;
@@ -58,6 +58,7 @@ export type RunAiTaskResult<T = unknown> =
       provider?: string;
       model?: string;
       source?: "kestrel" | "team_key";
+      slot?: AiSlot;
       cost_usd?: number | null;
       lastError?: string;
       statusCode?: number;
@@ -65,8 +66,7 @@ export type RunAiTaskResult<T = unknown> =
 
 export const CUSTOMER_ERROR_MESSAGE = "Kestrel AI can't answer right now. Try again in a minute.";
 
-// Tasks that must ALWAYS use Kestrel's AI (Owner → Assistant / assistant_included)
-// Reverted as per AI-1: chat, reply_suggest, reply_label, spam_fix never use the team's key.
+// Tasks that must ALWAYS use Kestrel's AI (ai_slots / assistant_included)
 export const KESTREL_ALWAYS_TASKS = new Set<AiTaskName>([
   "chat",
   "reply_suggest",
@@ -74,7 +74,7 @@ export const KESTREL_ALWAYS_TASKS = new Set<AiTaskName>([
   "spam_fix",
 ]);
 
-// Tasks that must ALWAYS use the team's key (from Settings / Connections)
+// Tasks that use the team's own key (from Settings / Connections)
 export const TEAM_KEY_TASKS = new Set<AiTaskName>([
   "research",
   "explain",
@@ -85,40 +85,83 @@ export const TEAM_KEY_TASKS = new Set<AiTaskName>([
 ]);
 
 export type ModelResolution = {
-  provider: Provider;
+  provider: string;
+  baseUrl?: string | null;
   model: string;
   key: string;
   source: "team_key" | "kestrel";
+  slot?: AiSlot;
   effort?: "low" | "medium" | "high";
 };
 
-// Helper: resolve backup model for fast tier fallback (Requirement 5)
-// Primary = included AI, Backup = Claude Haiku on Kestrel's Claude key
-export async function resolveFastBackup(
-  sb: Sb
-): Promise<ModelResolution | { error: string }> {
+// Resolve one of the 3 Kestrel AI slots (swift | talon | nest) from ai_slot_for_server RPC.
+// Returns null if the slot is not configured, disabled, or 077 migration is not applied yet.
+export async function resolveSlot(
+  sb: Sb,
+  slot: AiSlot
+): Promise<ModelResolution | null> {
+  const secret = serverSecret();
+  if (secret.length < 32) return null;
+  try {
+    const { data, error } = await sb.rpc("ai_slot_for_server", {
+      server_secret: secret,
+      p_slot: slot,
+    });
+    if (error || !data) return null;
+    const s = data as {
+      slot?: AiSlot;
+      provider?: string;
+      base_url?: string | null;
+      model?: string;
+      key?: string | null;
+      enabled?: boolean;
+    };
+    if (s.enabled !== false && s.provider && s.model && s.key) {
+      return {
+        provider: s.provider,
+        baseUrl: s.base_url ?? null,
+        model: s.model,
+        key: s.key,
+        source: "kestrel",
+        slot,
+        effort: slot === "talon" ? "medium" : "low",
+      };
+    }
+  } catch {
+    // Migration 077 not applied yet or RPC error -> safe rollout fallback
+  }
+  return null;
+}
+
+// Legacy backup for safe rollout before Nest slot is filled
+async function resolveLegacyBackup(sb: Sb): Promise<ModelResolution | null> {
   const claude = await assistantConfig(sb);
-  if ("error" in claude) return claude;
+  if ("error" in claude) return null;
   return {
     provider: "anthropic",
     model: HAIKU,
     key: claude.key,
     source: "kestrel",
+    slot: "nest",
     effort: "low",
   };
 }
 
-// Helper: resolve model for a given tier ("fast" vs "strong")
-export async function resolveModelForTier(
+// Resolve model for a given slot ("swift" | "talon" | "nest")
+export async function resolveModelForSlot(
   sb: Sb,
   teamId: string,
-  tier: AiTier,
+  slot: AiSlot,
   task: AiTaskName
 ): Promise<ModelResolution | { error: string; isDbError?: boolean }> {
   const secret = serverSecret();
 
-  // 1. Kestrel AI tasks ALWAYS use Kestrel's AI (never the team's key)
+  // 1. Kestrel AI tasks ALWAYS use Kestrel's AI (ai_slots first, then safe-rollout fallback)
   if (KESTREL_ALWAYS_TASKS.has(task)) {
+    const slotRes = await resolveSlot(sb, slot);
+    if (slotRes) return slotRes;
+
+    // Safe rollout: fall back to assistant_included if slot is not set yet
     if (secret.length >= 32) {
       try {
         const { data, error } = await sb.rpc("assistant_included", { server_secret: secret });
@@ -130,7 +173,8 @@ export async function resolveModelForTier(
               model: c.model,
               key: c.key,
               source: "kestrel",
-              effort: tier === "strong" ? "medium" : "low",
+              slot,
+              effort: slot === "talon" ? "medium" : "low",
             };
           }
         }
@@ -138,15 +182,15 @@ export async function resolveModelForTier(
         // fall back to assistantConfig
       }
     }
-    // Fall back to Kestrel's Claude key (assistantConfig)
     const claude = await assistantConfig(sb);
     if ("error" in claude) return claude;
     return {
       provider: "anthropic",
-      model: tier === "strong" ? SONNET : HAIKU,
+      model: slot === "talon" ? SONNET : HAIKU,
       key: claude.key,
       source: "kestrel",
-      effort: tier === "strong" ? "medium" : "low",
+      slot,
+      effort: slot === "talon" ? "medium" : "low",
     };
   }
 
@@ -157,7 +201,6 @@ export async function resolveModelForTier(
     .eq("team_id", teamId)
     .maybeSingle();
 
-  // If reading team_ai FAILS (error, not "no row"): do NOT fall back to Kestrel's key — return the error.
   if (teamAiError) {
     return { error: `Failed to read team AI configuration: ${teamAiError.message}`, isDbError: true };
   }
@@ -185,7 +228,7 @@ export async function resolveModelForTier(
   const pick = modelForTask(
     provider,
     String(teamAi?.model ?? ""),
-    tier === "fast" ? "score" : "emails"
+    slot === "swift" ? "score" : "emails"
   );
   if (!pick.model) {
     return {
@@ -198,6 +241,7 @@ export async function resolveModelForTier(
     model: pick.model,
     key,
     source: "team_key",
+    slot,
     effort: pick.effort,
   };
 }
@@ -217,26 +261,32 @@ export async function logRun(
   tokensOut: number,
   costUsd: number | null,
   status: "ok" | "timeout" | "error" | "fallback" | "skipped",
-  errorText: string | null
+  errorText: string | null,
+  slot?: AiSlot | null
 ) {
   const secret = serverSecret();
+  const baseArgs = {
+    server_secret: secret,
+    p_team_id: teamId,
+    p_user_id: userId ?? null,
+    p_task: task,
+    p_provider: provider,
+    p_model: model,
+    p_source: source,
+    p_attempt: attempt,
+    p_ms: ms,
+    p_tokens_in: tokensIn,
+    p_tokens_out: tokensOut,
+    p_cost_usd: costUsd,
+    p_status: status,
+    p_error: errorText ? errorText.slice(0, 300) : null,
+  };
   try {
-    await sb.rpc("log_ai_run", {
-      server_secret: secret,
-      p_team_id: teamId,
-      p_user_id: userId ?? null,
-      p_task: task,
-      p_provider: provider,
-      p_model: model,
-      p_source: source,
-      p_attempt: attempt,
-      p_ms: ms,
-      p_tokens_in: tokensIn,
-      p_tokens_out: tokensOut,
-      p_cost_usd: costUsd,
-      p_status: status,
-      p_error: errorText ? errorText.slice(0, 300) : null,
-    });
+    const res = await sb.rpc("log_ai_run", slot ? { ...baseArgs, p_slot: slot } : baseArgs);
+    // Safe rollout: if 077 isn't applied yet, PGRST202 rejects p_slot; retry without it
+    if (res?.error && slot && /PGRST202|p_slot/i.test(String(res.error.code || res.error.message || ""))) {
+      await sb.rpc("log_ai_run", baseArgs);
+    }
   } catch (err) {
     console.error("[ai-router] failed to log ai_run:", err);
   }
@@ -264,20 +314,21 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   const baseTaskTimeout = params.timeoutMs ?? cfg.timeoutMs;
   const maxTokens = params.maxTokens ?? cfg.maxTokens;
 
-  // Resolve initial model by task tier — or use a pre-resolved override if provided
-  let currentTier: AiTier = cfg.tier;
+  // Resolve initial model by task slot — or use pre-resolved override if provided
+  let currentSlot: AiSlot = params.resolution?.slot ?? cfg.slot;
   let currentResolution: ModelResolution;
 
   if (params.resolution) {
     currentResolution = params.resolution;
   } else {
-    const resolution = await resolveModelForTier(sb, teamId, cfg.tier, task);
+    const resolution = await resolveModelForSlot(sb, teamId, cfg.slot, task);
     if ("error" in resolution) {
       const isDb = Boolean("isDbError" in resolution && resolution.isDbError) || /database|relation|failed to read/i.test(resolution.error);
       const code = isDb ? 500 : 401;
-      return { ok: false, error: CUSTOMER_ERROR_MESSAGE, status: "error", lastError: resolution.error, statusCode: code };
+      return { ok: false, error: CUSTOMER_ERROR_MESSAGE, status: "error", slot: currentSlot, lastError: resolution.error, statusCode: code };
     }
     currentResolution = resolution;
+    currentSlot = resolution.slot ?? cfg.slot;
   }
 
   const maxAttempts = 1 + cfg.retries;
@@ -289,7 +340,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
     const timeLeft = absoluteDeadline - Date.now();
     const neededForStep = baseTaskTimeout + 2000;
 
-    // Before every attempt / retry: if time left is less than step's timeout + 2s, do NOT start it
+    // Before every retry: if time left is less than step's timeout + 2s, do NOT start it
     if (attempt > 1 && timeLeft < neededForStep) {
       await logRunImpl(
         sb,
@@ -305,7 +356,8 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         0,
         null,
         "skipped",
-        "no time left"
+        "no time left",
+        currentSlot
       );
       return {
         ok: false,
@@ -314,16 +366,17 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         provider: currentResolution.provider,
         model: currentResolution.model,
         source: currentResolution.source,
+        slot: currentSlot,
       };
     }
 
-    // Each attempt's timeout = min(task timeout, time left - 2s)
     const effectiveTimeout = Math.max(1, Math.min(baseTaskTimeout, timeLeft - 2000));
     const startMs = Date.now();
 
     try {
       const answer: ProviderAnswer = await callProviderImpl({
         provider: currentResolution.provider,
+        baseUrl: currentResolution.baseUrl,
         key: currentResolution.key,
         model: currentResolution.model,
         system,
@@ -358,7 +411,8 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
           tokensOut,
           cost,
           "skipped",
-          `AI skipped: ${answer.skip}`
+          `AI skipped: ${answer.skip}`,
+          currentSlot
         );
         return {
           ok: false,
@@ -368,6 +422,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
           provider: currentResolution.provider,
           model: currentResolution.model,
           source: currentResolution.source,
+          slot: currentSlot,
           cost_usd: cost,
         };
       }
@@ -386,10 +441,10 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         tokensOut,
         cost,
         "ok",
-        null
+        null,
+        currentSlot
       );
 
-      // Parse JSON if schema provided or caller expects structured data
       let parsedData: unknown = answer.text;
       if (schema) {
         parsedData = parseJsonObject(answer.text);
@@ -402,6 +457,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         provider: currentResolution.provider,
         model: currentResolution.model,
         source: currentResolution.source,
+        slot: currentSlot,
         tokens_in: tokensIn,
         tokens_out: tokensOut,
         cost_usd: cost,
@@ -414,9 +470,6 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
       const is429 =
         (err instanceof ProviderCallError && err.status === 429) ||
         /\b429\b|rate limit|too many requests/i.test(err instanceof Error ? err.message : String(err));
-      const is5xx =
-        (err instanceof ProviderCallError && typeof err.status === "number" && err.status >= 500 && err.status < 600) ||
-        /\b5\d{2}\b/i.test(err instanceof Error ? err.message : String(err));
 
       const status: "timeout" | "error" = isTimeout ? "timeout" : "error";
       lastStatus = status;
@@ -437,10 +490,11 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         0,
         null,
         status,
-        lastErrorMsg
+        lastErrorMsg,
+        currentSlot
       );
 
-      // On 429: read Retry-After / reset header; if wait fits in deadline, wait that long, else proceed to backup / exit
+      // On 429: read Retry-After / reset header; if wait fits in deadline, wait that long, else break to Nest fallback / exit
       if (is429) {
         if (attempt < maxAttempts) {
           const retryAfterMs = err instanceof ProviderCallError ? err.retryAfterMs : undefined;
@@ -452,287 +506,214 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
             }
           }
         }
-        // If wait doesn't fit or retries exhausted: do NOT retry same provider. Proceed to fast backup if applicable.
-      } else if (attempt < maxAttempts) {
+        break;
+      }
+
+      if (attempt < maxAttempts) {
         await wait(300);
         continue;
-      }
-
-      // Requirement 5: Provider backup on fast tier for Kestrel tasks only
-      // Team-key tasks NEVER use Kestrel's key. Only Kestrel tasks can use Kestrel backup.
-      // On 429, timeout or 5xx from primary, try backup once if deadline allows
-      if (currentResolution.source === "kestrel" && currentTier === "fast" && (isTimeout || is5xx || is429)) {
-        const backupRes = await resolveFastBackup(sb);
-        if (
-          !("error" in backupRes) &&
-          (backupRes.provider !== currentResolution.provider || backupRes.model !== currentResolution.model)
-        ) {
-          const timeLeftForBackup = absoluteDeadline - Date.now();
-          if (timeLeftForBackup >= baseTaskTimeout + 2000) {
-            const backupTimeout = Math.max(1, Math.min(baseTaskTimeout, timeLeftForBackup - 2000));
-            const backupStartMs = Date.now();
-            try {
-              const backupAnswer: ProviderAnswer = await callProviderImpl({
-                provider: backupRes.provider,
-                key: backupRes.key,
-                model: backupRes.model,
-                system,
-                user,
-                schema,
-                maxTokens,
-                effort: "low",
-                timeoutMs: backupTimeout,
-                history: params.history,
-                tools: params.tools,
-                runTool: params.runTool,
-                images: params.images,
-              });
-
-              const bElapsedMs = Date.now() - backupStartMs;
-              const bTokensIn = backupAnswer.usage.input_tokens || 0;
-              const bTokensOut = backupAnswer.usage.output_tokens || 0;
-              const bCost = costOf(backupAnswer.usage, backupRes.provider, backupRes.model);
-
-              await logRunImpl(
-                sb,
-                teamId,
-                userId,
-                task,
-                backupRes.provider,
-                backupRes.model,
-                backupRes.source,
-                Math.min(attempt, maxAttempts),
-                bElapsedMs,
-                bTokensIn,
-                bTokensOut,
-                bCost,
-                "fallback",
-                null
-              );
-
-              let parsedData: unknown = backupAnswer.text;
-              if (schema) {
-                parsedData = parseJsonObject(backupAnswer.text);
-              }
-
-              return {
-                ok: true,
-                data: parsedData as T,
-                text: backupAnswer.text,
-                provider: backupRes.provider,
-                model: backupRes.model,
-                source: backupRes.source,
-                tokens_in: bTokensIn,
-                tokens_out: bTokensOut,
-                cost_usd: bCost,
-                ms: bElapsedMs,
-              };
-            } catch (backupErr: unknown) {
-              const bElapsedMs = Date.now() - backupStartMs;
-              const bIsTimeout =
-                backupErr instanceof ProviderCallError
-                  ? backupErr.isTimeout
-                  : /timeout|abort/i.test(String(backupErr));
-              const bStatus = bIsTimeout ? "timeout" : "error";
-              await logRunImpl(
-                sb,
-                teamId,
-                userId,
-                task,
-                backupRes.provider,
-                backupRes.model,
-                backupRes.source,
-                Math.min(attempt, maxAttempts),
-                bElapsedMs,
-                0,
-                0,
-                null,
-                bStatus,
-                backupErr instanceof Error ? backupErr.message : String(backupErr)
-              );
-            }
-          }
-        }
-      }
-
-      if (is429) {
-        return {
-          ok: false,
-          error: "Kestrel AI is busy, try again in a minute.",
-          status: "error",
-          provider: currentResolution.provider,
-          model: currentResolution.model,
-          source: currentResolution.source,
-          lastError: "rate_limited",
-          statusCode: 429,
-        };
       }
     }
   }
 
-  // If retries exhausted and fallback exists
-  if (cfg.fallback) {
-    if (cfg.fallback === "skip") {
-      return {
-        ok: false,
-        error: CUSTOMER_ERROR_MESSAGE,
-        status: "skipped",
-        provider: currentResolution.provider,
-        model: currentResolution.model,
-        source: currentResolution.source,
-      };
-    }
+  // Retries exhausted (or 429 broke early): handle fallback
+  if (cfg.fallback === "skip") {
+    return {
+      ok: false,
+      error: CUSTOMER_ERROR_MESSAGE,
+      status: "skipped",
+      provider: currentResolution.provider,
+      model: currentResolution.model,
+      source: currentResolution.source,
+      slot: currentSlot,
+    };
+  }
 
-    if (cfg.fallback === "code_checks_only") {
-      const fallbackData = params.onCodeChecksOnly ? params.onCodeChecksOnly() : {};
-      await logRunImpl(
-        sb,
-        teamId,
-        userId,
-        task,
-        currentResolution.provider,
-        currentResolution.model,
-        currentResolution.source,
-        1,
-        0,
-        0,
-        0,
-        null,
-        "fallback",
-        "code_checks_only"
-      );
-      return {
-        ok: true,
-        data: fallbackData as T,
-        text: JSON.stringify(fallbackData),
-        provider: currentResolution.provider,
-        model: currentResolution.model,
-        source: currentResolution.source,
-        tokens_in: 0,
-        tokens_out: 0,
-        cost_usd: null,
-        ms: 0,
-      };
-    }
+  if (cfg.fallback === "code_checks_only") {
+    const fallbackData = params.onCodeChecksOnly ? params.onCodeChecksOnly() : {};
+    await logRunImpl(
+      sb,
+      teamId,
+      userId,
+      task,
+      currentResolution.provider,
+      currentResolution.model,
+      currentResolution.source,
+      1,
+      0,
+      0,
+      0,
+      null,
+      "fallback",
+      "code_checks_only",
+      currentSlot
+    );
+    return {
+      ok: true,
+      data: fallbackData as T,
+      text: JSON.stringify(fallbackData),
+      provider: currentResolution.provider,
+      model: currentResolution.model,
+      source: currentResolution.source,
+      slot: currentSlot,
+      tokens_in: 0,
+      tokens_out: 0,
+      cost_usd: null,
+      ms: 0,
+    };
+  }
 
-    if (cfg.fallback === "fast" && currentTier === "strong") {
+  // Nest fallback: Swift fails -> Nest. Talon fails -> Nest. Nest fails -> honest error. Never loop.
+  // Team-key tasks NEVER fall back to Kestrel's Nest slot.
+  if (
+    cfg.fallback === "nest" &&
+    currentResolution.source === "kestrel" &&
+    currentSlot !== "nest"
+  ) {
+    const nestRes = (await resolveSlot(sb, "nest")) ?? (await resolveLegacyBackup(sb));
+    const isSameModel =
+      nestRes &&
+      nestRes.provider === currentResolution.provider &&
+      nestRes.model === currentResolution.model &&
+      (nestRes.baseUrl ?? null) === (currentResolution.baseUrl ?? null);
+
+    if (nestRes && !isSameModel) {
       const timeLeft = absoluteDeadline - Date.now();
-      const fallbackTimeout = 20_000;
+      const fallbackTimeout = Math.min(baseTaskTimeout, 20_000);
       if (timeLeft < fallbackTimeout + 2000) {
         await logRunImpl(
           sb,
           teamId,
           userId,
           task,
-          currentResolution.provider,
-          currentResolution.model,
-          currentResolution.source,
+          nestRes.provider,
+          nestRes.model,
+          nestRes.source,
           1,
           0,
           0,
           0,
           null,
           "skipped",
-          "no time left"
+          "no time left",
+          "nest"
         );
         return {
           ok: false,
           error: CUSTOMER_ERROR_MESSAGE,
           status: "skipped",
-          provider: currentResolution.provider,
-          model: currentResolution.model,
-          source: currentResolution.source,
+          provider: nestRes.provider,
+          model: nestRes.model,
+          source: nestRes.source,
+          slot: "nest",
         };
       }
 
-      const fastRes = await resolveModelForTier(sb, teamId, "fast", task);
-      if (!("error" in fastRes)) {
-        currentTier = "fast";
-        currentResolution = fastRes;
-        const effectiveFallbackTimeout = Math.max(1, Math.min(fallbackTimeout, timeLeft - 2000));
-        const startMs = Date.now();
-        try {
-          const answer: ProviderAnswer = await callProviderImpl({
-            provider: currentResolution.provider,
-            key: currentResolution.key,
-            model: currentResolution.model,
-            system,
-            user,
-            schema,
-            maxTokens: Math.min(maxTokens, 1500),
-            effort: "low",
-            timeoutMs: effectiveFallbackTimeout,
-            history: params.history,
-            tools: params.tools,
-            runTool: params.runTool,
-            images: params.images,
-          });
+      const effectiveFallbackTimeout = Math.max(1, Math.min(fallbackTimeout, timeLeft - 2000));
+      const startMs = Date.now();
+      try {
+        const answer: ProviderAnswer = await callProviderImpl({
+          provider: nestRes.provider,
+          baseUrl: nestRes.baseUrl,
+          key: nestRes.key,
+          model: nestRes.model,
+          system,
+          user,
+          schema,
+          maxTokens: Math.min(maxTokens, 1500),
+          effort: "low",
+          timeoutMs: effectiveFallbackTimeout,
+          history: params.history,
+          tools: params.tools,
+          runTool: params.runTool,
+          images: params.images,
+        });
 
-          const elapsedMs = Date.now() - startMs;
-          const tokensIn = answer.usage.input_tokens || 0;
-          const tokensOut = answer.usage.output_tokens || 0;
-          const cost = costOf(answer.usage, currentResolution.provider, currentResolution.model);
+        const elapsedMs = Date.now() - startMs;
+        const tokensIn = answer.usage.input_tokens || 0;
+        const tokensOut = answer.usage.output_tokens || 0;
+        const cost = costOf(answer.usage, nestRes.provider, nestRes.model);
 
-          await logRunImpl(
-            sb,
-            teamId,
-            userId,
-            task,
-            currentResolution.provider,
-            currentResolution.model,
-            currentResolution.source,
-            1,
-            elapsedMs,
-            tokensIn,
-            tokensOut,
-            cost,
-            "fallback",
-            null
-          );
+        await logRunImpl(
+          sb,
+          teamId,
+          userId,
+          task,
+          nestRes.provider,
+          nestRes.model,
+          nestRes.source,
+          1,
+          elapsedMs,
+          tokensIn,
+          tokensOut,
+          cost,
+          "fallback",
+          null,
+          "nest"
+        );
 
-          let parsedData: unknown = answer.text;
-          if (schema) {
-            parsedData = parseJsonObject(answer.text);
-          }
-
-          return {
-            ok: true,
-            data: parsedData as T,
-            text: answer.text,
-            provider: currentResolution.provider,
-            model: currentResolution.model,
-            source: currentResolution.source,
-            tokens_in: tokensIn,
-            tokens_out: tokensOut,
-            cost_usd: cost,
-            ms: elapsedMs,
-          };
-        } catch (fallbackErr: unknown) {
-          const elapsedMs = Date.now() - startMs;
-          const isTimeout =
-            fallbackErr instanceof ProviderCallError
-              ? fallbackErr.isTimeout
-              : /timeout|abort/i.test(String(fallbackErr));
-          const status = isTimeout ? "timeout" : "error";
-          await logRunImpl(
-            sb,
-            teamId,
-            userId,
-            task,
-            currentResolution.provider,
-            currentResolution.model,
-            currentResolution.source,
-            1,
-            elapsedMs,
-            0,
-            0,
-            null,
-            status,
-            fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
-          );
+        let parsedData: unknown = answer.text;
+        if (schema) {
+          parsedData = parseJsonObject(answer.text);
         }
+
+        return {
+          ok: true,
+          data: parsedData as T,
+          text: answer.text,
+          provider: nestRes.provider,
+          model: nestRes.model,
+          source: nestRes.source,
+          slot: "nest",
+          tokens_in: tokensIn,
+          tokens_out: tokensOut,
+          cost_usd: cost,
+          ms: elapsedMs,
+        };
+      } catch (fallbackErr: unknown) {
+        const elapsedMs = Date.now() - startMs;
+        const isTimeout =
+          fallbackErr instanceof ProviderCallError
+            ? fallbackErr.isTimeout
+            : /timeout|abort/i.test(String(fallbackErr));
+        const bStatus = isTimeout ? "timeout" : "error";
+        const bMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+        lastStatus = bStatus;
+        lastErrorMsg = bMsg;
+        lastStatusCode = fallbackErr instanceof ProviderCallError ? fallbackErr.status : lastStatusCode;
+        await logRunImpl(
+          sb,
+          teamId,
+          userId,
+          task,
+          nestRes.provider,
+          nestRes.model,
+          nestRes.source,
+          1,
+          elapsedMs,
+          0,
+          0,
+          null,
+          bStatus,
+          bMsg,
+          "nest"
+        );
       }
     }
+  }
+
+  if (lastStatusCode === 429) {
+    return {
+      ok: false,
+      error: "Kestrel AI is busy, try again in a minute.",
+      status: "error",
+      provider: currentResolution.provider,
+      model: currentResolution.model,
+      source: currentResolution.source,
+      slot: currentSlot,
+      lastError: "rate_limited",
+      statusCode: 429,
+    };
   }
 
   return {
@@ -742,6 +723,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
     provider: currentResolution.provider,
     model: currentResolution.model,
     source: currentResolution.source,
+    slot: currentSlot,
     lastError: lastErrorMsg,
     statusCode: lastStatusCode,
   };

@@ -5,7 +5,7 @@ import { SUPABASE_KEY, SUPABASE_URL } from "./config";
 // page stayed on "Loading…" for good). Each database request now gives up after 15 s; reads are tried again up to two
 // more times. Changes (insert, update, delete and every other function) are never repeated, so nothing is done twice.
 const TIMEOUT_MS = 15_000;
-const READ_FUNCTIONS = /\/rest\/v1\/rpc\/(my_account|my_tracking|my_creator|list_team_keys|team_people|mailbox_today|mail_daily|admin_overview|assistant_model_choices|verifier_admin_status)(\?|$)/;
+const READ_FUNCTIONS = /\/rest\/v1\/rpc\/(my_account|my_tracking|my_creator|list_team_keys|team_people|mailbox_today|mail_daily|admin_overview|verifier_admin_status)(\?|$)/;
 
 function isRead(url: string, method: string) {
   if (!url.includes("/rest/v1/")) return false;

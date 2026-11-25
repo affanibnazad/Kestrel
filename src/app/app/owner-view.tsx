@@ -5,6 +5,7 @@ import { Tip } from "@/components/ui";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { planName, type PlanId } from "@/lib/plans";
 import AccessView from "./access-view";
+import OwnerAi from "./owner-ai";
 import OwnerAssistant from "./owner-assistant";
 import OwnerGoogle from "./owner-google";
 import CreatorsView from "./creators-view";
@@ -33,6 +34,7 @@ const TABS = [
   ["access", "Access codes"],
   ["creators", "Creators"],
   ["offers", "Offers"],
+  ["ai", "AI"],
   ["assistant", "Assistant"],
   ["google", "Google sign-in"],
   ["verifier", "Email verifier"],
@@ -77,6 +79,7 @@ export default function OwnerView({ toast, demo }: { toast: (t: string) => void;
   const [state, setState] = useState<"" | State>("");
   const [newsOnly, setNewsOnly] = useState(false);
   const [now] = useState(() => Date.now());
+  const [allSlotsSet, setAllSlotsSet] = useState(false);
   const [planFor, setPlanFor] = useState<{ team: string; name: string; plan: PlanId; days: number } | null>(null);
   // Owner → People → Change plan (database 049): free access of Starter, Pro or Agency for some days, or take it back.
   async function changePlan(clear = false) {
@@ -113,6 +116,19 @@ export default function OwnerView({ toast, demo }: { toast: (t: string) => void;
       }
       setData(d as Data);
       setLoading(false);
+      // Check if all 3 AI slots are set to hide legacy Assistant tab
+      try {
+        const { data: slotRows } = await supabaseBrowser().from("ai_slots").select("slot,model,secret_id,enabled");
+        if (Array.isArray(slotRows)) {
+          const readyCount = slotRows.filter(
+            (r: { slot: string; model?: string; secret_id?: string | null; enabled?: boolean }) =>
+              r.enabled !== false && Boolean(r.secret_id) && Boolean(r.model?.trim())
+          ).length;
+          setAllSlotsSet(readyCount >= 3);
+        }
+      } catch {
+        // 077 not applied yet
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "You don't have access.";
       setErrorMsg(msg);
@@ -157,10 +173,11 @@ export default function OwnerView({ toast, demo }: { toast: (t: string) => void;
     <div className="app-page">
       <header className="head"><div><h1>Owner <Tip text="Only you (Kestrel admins) can see this page: the business at a glance, everyone using Kestrel, access codes and contact messages." /></h1>
         <span className="sub">{t ? `${t.people} people · ${t.paid} paying · $${t.mrr} a month` : "Loading…"}</span></div></header>
-      <div className="owner-tabs seg" role="tablist" aria-label="Owner tabs">{TABS.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{label}{id === "messages" && t?.messages ? ` (${t.messages})` : ""}</button>)}</div>
+      <div className="owner-tabs seg" role="tablist" aria-label="Owner tabs">{TABS.filter(([id]) => !(allSlotsSet && id === "assistant")).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{label}{id === "messages" && t?.messages ? ` (${t.messages})` : ""}</button>)}</div>
 
       {tab === "access" ? <AccessView toast={toast} embedded /> : null}
-      {tab === "assistant" ? <OwnerAssistant toast={toast} /> : null}
+      {tab === "ai" ? <OwnerAi toast={toast} demo={demo} onSlotsStatus={setAllSlotsSet} /> : null}
+      {tab === "assistant" ? <OwnerAssistant toast={toast} demo={demo} /> : null}
       {tab === "google" ? <OwnerGoogle toast={toast} /> : null}
       {tab === "creators" ? <CreatorsView toast={toast} /> : null}
       {tab === "verifier" ? <OwnerVerifier toast={toast} /> : null}

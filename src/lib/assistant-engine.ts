@@ -1,8 +1,8 @@
 import "server-only";
 import { runAiTask } from "./ai-router";
 import type { supabaseServer } from "./supabase/server";
-import type { Provider } from "./ai";
 import type { ModelResolution } from "./ai-router/run";
+import type { AiSlot } from "./ai-router/tasks";
 
 type Sb = Awaited<ReturnType<typeof supabaseServer>>;
 
@@ -10,12 +10,14 @@ export type ChatMsg = { role: "user" | "assistant"; content: string };
 export type NeutralTool = { name: string; description: string; schema: Record<string, unknown> };
 
 export type EngineInput = {
-  provider: Provider;
+  provider: string;
+  baseUrl?: string | null;
   key: string;
   model: string;
   effort?: "low" | "medium" | "high";
   /** True when this is Kestrel's included AI, false when the team's own key. */
   included: boolean;
+  slot?: AiSlot;
   system: string;
   history: ChatMsg[];
   tools: NeutralTool[];
@@ -42,10 +44,12 @@ export async function runAssistant(x: EngineInput): Promise<EngineResult> {
     // skips its own resolveModelForTier DB call and uses exactly what assistant-server gave us.
     const resolution: ModelResolution = {
       provider: x.provider,
+      baseUrl: x.baseUrl ?? null,
       key: x.key,
       model: x.model,
       effort: x.effort,
       source: x.included ? "kestrel" : "team_key",
+      slot: x.slot ?? "talon",
     };
 
     const res = await runAiTask({
