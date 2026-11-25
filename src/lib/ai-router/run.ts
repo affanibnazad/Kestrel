@@ -112,47 +112,34 @@ export async function resolveModelForTier(
 
   // 1. Kestrel AI tasks ALWAYS use Kestrel's AI (never the team's key)
   if (KESTREL_ALWAYS_TASKS.has(task)) {
-    if (tier === "fast") {
-      if (secret.length >= 32) {
-        try {
-          const { data, error } = await sb.rpc("assistant_included", { server_secret: secret });
-          if (!error && data) {
-            const c = data as { provider: Provider; model: string; enabled: boolean; key: string | null };
-            if (c.enabled && c.key && c.model) {
-              return {
-                provider: c.provider,
-                model: c.model,
-                key: c.key,
-                source: "kestrel",
-                effort: "low",
-              };
-            }
+    if (secret.length >= 32) {
+      try {
+        const { data, error } = await sb.rpc("assistant_included", { server_secret: secret });
+        if (!error && data) {
+          const c = data as { provider: Provider; model: string; enabled: boolean; key: string | null };
+          if (c.enabled && c.key && c.model) {
+            return {
+              provider: c.provider,
+              model: c.model,
+              key: c.key,
+              source: "kestrel",
+              effort: tier === "strong" ? "medium" : "low",
+            };
           }
-        } catch {
-          // fall back to assistantConfig
         }
+      } catch {
+        // fall back to assistantConfig
       }
-      // Default fast: Haiku 5.5
-      const claude = await assistantConfig(sb);
-      if ("error" in claude) return claude;
-      return {
-        provider: "anthropic",
-        model: HAIKU,
-        key: claude.key,
-        source: "kestrel",
-        effort: "low",
-      };
     }
-
-    // Strong tier for Kestrel tasks (chat) -> Sonnet 5.5
+    // Fall back to Kestrel's Claude key (assistantConfig)
     const claude = await assistantConfig(sb);
     if ("error" in claude) return claude;
     return {
       provider: "anthropic",
-      model: SONNET,
+      model: tier === "strong" ? SONNET : HAIKU,
       key: claude.key,
       source: "kestrel",
-      effort: "medium",
+      effort: tier === "strong" ? "medium" : "low",
     };
   }
 
@@ -454,9 +441,10 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         continue;
       }
 
-      // Requirement 5: Provider backup on fast tier
+      // Requirement 5: Provider backup on fast tier for Kestrel tasks only
+      // Team-key tasks NEVER use Kestrel's key. Only Kestrel tasks can use Kestrel backup.
       // On 429, timeout or 5xx from primary, try backup once if deadline allows
-      if (currentTier === "fast" && (isTimeout || is5xx || is429)) {
+      if (currentResolution.source === "kestrel" && currentTier === "fast" && (isTimeout || is5xx || is429)) {
         const backupRes = await resolveFastBackup(sb);
         if (
           !("error" in backupRes) &&
