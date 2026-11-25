@@ -36,12 +36,17 @@ const SCHEMA = {
 };
 
 export async function POST(request: Request) {
-  if (!(await currentUser())) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
+  const userObj = await currentUser();
+  if (!userObj) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
   const body = (await request.json().catch(() => ({}))) as { reply?: unknown };
   const id = typeof body.reply === "string" && /^[0-9a-f-]{36}$/i.test(body.reply) ? body.reply : "";
   if (!id) return NextResponse.json({ error: "Choose a reply first." }, { status: 400 });
 
   const sb = await supabaseServer();
+  const { data: member } = await sb.from("members").select("team_id").eq("user_id", userObj.id).maybeSingle();
+  const teamId = (member as { team_id?: string } | null)?.team_id || "";
+  if (!teamId) return NextResponse.json({ error: "Team not found." }, { status: 403 });
+
   const { data: r } = await sb.from("mail_replies").select("id,subject,snippet,body,from_email,campaign_lead_id,kind").eq("id", id).maybeSingle();
   if (!r) return NextResponse.json({ error: "Reply not found." }, { status: 404 });
   const [{ data: cl }, { data: ai }] = await Promise.all([
@@ -67,7 +72,15 @@ export async function POST(request: Request) {
   const user = `<company>${lead || "unknown"}</company>\n<from>${r.from_email}</from>\n${sender ? `<sender_name>${sender}</sender_name>\n` : ""}${booking ? `<booking_link>${booking}</booking_link>\n` : "<booking_link>none: suggest replying with two times instead</booking_link>\n"}<reply>${text}</reply>`;
 
   try {
-    const json = await kestrelJson<{ options?: { title?: unknown; text?: unknown }[] }>(cfg, SYSTEM, user, SCHEMA, 900);
+    const json = await kestrelJson<{ options?: { title?: unknown; text?: unknown }[] }>(
+      cfg,
+      SYSTEM,
+      user,
+      SCHEMA,
+      900,
+      20_000,
+      { sb, teamId, userId: userObj.id, task: "reply_suggest" }
+    );
     if (!json) return NextResponse.json({ error: "No suggestions this time. Try again." }, { status: 502 });
     const options = (Array.isArray(json.options) ? json.options : []).slice(0, 3).map((o) => ({ title: String(o.title ?? "").slice(0, 40), text: String(o.text ?? "").slice(0, 1200) })).filter((o) => o.text.trim());
     if (!options.length) return NextResponse.json({ error: "No suggestions this time. Try again." }, { status: 502 });

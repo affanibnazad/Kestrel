@@ -5,8 +5,7 @@ import { currentUser, supabaseServer } from "@/lib/supabase/server";
 import { aiOne, aiPlan, writeChecked } from "@/lib/lead-steps";
 import { cleanVoiceNotes, readJson, voiceSystem, VOICE_SCHEMA, type Offer, type Provider } from "@/lib/ai";
 import { aboutForAi, cleanAbout } from "@/lib/about";
-import { modelForTask } from "@/lib/ai-models";
-import { ask } from "@/lib/ai-server";
+import { runAiTask } from "@/lib/ai-router";
 
 // AI in the App: judges leads (Good / Maybe / No) or writes the personal parts of first emails, a few leads per call.
 // With a sequence (Mail phase 2) the same call writes the first email and every follow-up for the lead in one go.
@@ -33,14 +32,25 @@ export async function POST(request: Request) {
     if (samples.length < 50) {
       return NextResponse.json({ error: "Please paste at least 5 to 10 sample emails (minimum 50 characters)." }, { status: 400 });
     }
-    const { data: ai } = await sb.from("team_ai").select("*").maybeSingle();
-    const provider = ((ai?.provider as Provider) || "anthropic");
-    const { data: key, error: keyError } = await sb.rpc("ai_key_for_server", { server_secret: process.env.MAIL_SERVER_SECRET || "", service: provider });
-    if (keyError || !key) return NextResponse.json({ error: "No AI key configured." }, { status: 403 });
-    const pick = modelForTask(provider, String(ai?.model ?? ""), "emails");
+    const { data: member } = await sb.from("members").select("team_id").eq("user_id", user.id).maybeSingle();
+    const teamId = (member as { team_id?: string } | null)?.team_id || "";
+    if (!teamId) return NextResponse.json({ error: "Team not found." }, { status: 403 });
+
     const userPrompt = `<sample_emails>\n${samples.slice(0, 15000)}\n</sample_emails>`;
-    const answer = await ask(provider, key, pick.model, voiceSystem(), userPrompt, VOICE_SCHEMA, 800, pick.effort);
-    const notes = cleanVoiceNotes(readJson(answer.text));
+    const res = await runAiTask({
+      sb,
+      teamId,
+      userId: user.id,
+      task: "voice",
+      system: voiceSystem(),
+      user: userPrompt,
+      schema: VOICE_SCHEMA,
+      maxTokens: 800,
+    });
+    if (!res.ok) {
+      return NextResponse.json({ error: res.error }, { status: 500 });
+    }
+    const notes = cleanVoiceNotes(readJson(res.text));
     return NextResponse.json({ ok: true, notes });
   }
 
@@ -79,16 +89,12 @@ export async function POST(request: Request) {
   }
   // Database 039: the key is read only with the server secret (never straight to a browser).
   const provider = ((settings?.provider as Provider) || "anthropic");
-  const { data: key, error: keyError } = await sb.rpc("ai_key_for_server", { server_secret: process.env.MAIL_SERVER_SECRET || "", service: provider });
+  const { data: key } = await sb.rpc("ai_key_for_server", { server_secret: process.env.MAIL_SERVER_SECRET || "", service: provider });
   // Check the offer, model and sender before the key, so the first missing thing is named.
   const pre = aiPlan(task, offer as Offer, settings, "-", sequence, activeServices, cleanAb?.voice_notes, cleanAb);
   if ("error" in pre) return NextResponse.json({ error: pre.error }, { status: 400 });
-  if (keyError) return NextResponse.json({ error: /can change leads/.test(keyError.message) ? "Your role can view leads but not run AI. Ask your team owner." : "AI is coming soon to your workspace." }, { status: 403 });
-  const plan = aiPlan(task, offer as Offer, settings, typeof key === "string" ? key : "", sequence, activeServices, cleanAb?.voice_notes, cleanAb);
-  if ("error" in plan) return NextResponse.json({ error: plan.error }, { status: 400 });
-  // Phase 4C: written emails are checked by the QC bot and fixed once; one it cannot pass is held from campaigns.
-  const qcPlan = task === "emails" ? aiPlan("qc", offer as Offer, settings, typeof key === "string" ? key : "", null, activeServices, cleanAb?.voice_notes, cleanAb) : null;
-  const qc = qcPlan && !("error" in qcPlan) ? qcPlan : null;
+  const rawPlan = aiPlan(task, offer as Offer, settings, typeof key === "string" ? key : "", sequence, activeServices, cleanAb?.voice_notes, cleanAb);
+  if ("error" in rawPlan) return NextResponse.json({ error: rawPlan.error }, { status: 400 });
 
   let rowsRes = await sb.from("leads").select("id,team_id,email,website,data,outreach_approved").in("id", ids);
   if (rowsRes.error && /outreach_approved/i.test(rowsRes.error.message)) {
@@ -100,6 +106,12 @@ export async function POST(request: Request) {
     .map(({ website, ...l }) => (task === "research" && website && !(l.data as { website?: string } | null)?.website ? { ...l, data: { ...(l.data ?? {}), website } } : l));
   // One team per batch, and its own Do-not-contact list: never write to anyone on it. If the check fails, nothing is written.
   if (leads.some((l) => l.team_id !== leads[0].team_id)) return NextResponse.json({ error: "These leads belong to different teams. Run one team at a time." }, { status: 400 });
+  const batchTeamId = leads[0]?.team_id || (offer as { team_id?: string })?.team_id || "";
+
+  const plan = { ...rawPlan, sb, teamId: batchTeamId, userId: user.id };
+  // Phase 4C: written emails are checked by the QC bot and fixed once; one it cannot pass is held from campaigns.
+  const qcPlan = task === "emails" ? aiPlan("qc", offer as Offer, settings, typeof key === "string" ? key : "", null, activeServices, cleanAb?.voice_notes, cleanAb) : null;
+  const qc = qcPlan && !("error" in qcPlan) ? { ...qcPlan, sb, teamId: batchTeamId, userId: user.id } : null;
   let dnc = dncIndex([]);
   if (task !== "score" && leads.length) {
     try { dnc = await teamDnc(sb, leads[0].team_id, leads.map((l) => ({ email: l.email, emails: (l.data as { emails?: string[] } | null)?.emails, website: (l.data as { website?: string } | null)?.website }))); }

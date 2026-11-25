@@ -14,10 +14,16 @@ const PER_CALL = 10, AT_ONCE = 5;
 type Row = { id: string; subject: string | null; snippet: string | null; body: string | null };
 
 export async function POST() {
-  if (!(await currentUser())) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
+  const user = await currentUser();
+  if (!user) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
   const secret = serverSecret();
   if (secret.length < 32) return NextResponse.json({ error: "Mail is not set up on the server yet." }, { status: 503 });
   const sb = await supabaseServer();
+
+  const { data: member } = await sb.from("members").select("team_id").eq("user_id", user.id).maybeSingle();
+  const teamId = (member as { team_id?: string } | null)?.team_id || "";
+  if (!teamId) return NextResponse.json({ error: "Team not found." }, { status: 403 });
+
   const { data, error } = await sb.from("mail_replies").select("id,subject,snippet,body").eq("kind", "reply").is("ai_label", null)
     .order("received_at", { ascending: false }).limit(PER_CALL);
   if (error) return NextResponse.json({ error: /ai_label|schema cache/i.test(error.message) ? "Reply labels are coming soon to your workspace." : "Could not read replies." }, { status: 400 });
@@ -33,7 +39,15 @@ export async function POST() {
     let out: { label: Label; reason: string; by: string } | null = { ...ruleLabel(text), by: "rules" };
     if (ai) {
       try {
-        const json = await kestrelJson<{ label?: unknown; reason?: unknown }>(ai, LABEL_SYSTEM, `<reply>${text}</reply>`, LABEL_SCHEMA, 300, 20_000);
+        const json = await kestrelJson<{ label?: unknown; reason?: unknown }>(
+          ai,
+          LABEL_SYSTEM,
+          `<reply>${text}</reply>`,
+          LABEL_SCHEMA,
+          300,
+          20_000,
+          { sb, teamId, userId: user.id, task: "reply_label" }
+        );
         if (json && isLabel(json.label)) out = { label: json.label, reason: String(json.reason ?? "").slice(0, 200), by: modelTag(ai) };
       } catch {
         out = null;   // the AI did not answer: save nothing, so the next visit to Replies tries the AI again

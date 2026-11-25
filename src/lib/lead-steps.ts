@@ -1,6 +1,5 @@
 import "server-only";
 import { dncBlocks, type DncIndex } from "./dnc";
-import { AiError, ask, costOf } from "./ai-server";
 import { modelForTask } from "./ai-models";
 import { DEFAULT_STEPS, checkSequence, cleanSteps, emailStepsProblem, followUpCount, type Step } from "./sequence";
 import { readSite } from "./site-read";
@@ -14,6 +13,10 @@ import { pickAngle } from "./angles";
 import { hostOf, hunterPick, hunterUrl, mergeContacts, setEmails, type Contact } from "./hunter";
 import { applyRules, cleanRules, type ScoreLead } from "./scoring";
 import { apolloFind, findymailFind } from "./finders";
+import { runAiTask, type AiTaskName } from "./ai-router";
+import type { supabaseServer } from "./supabase/server";
+
+type Sb = Awaited<ReturnType<typeof supabaseServer>>;
 
 // One lead through one step, without touching the database: the App's buttons (/api/ai, /api/emails) and Autopilot's
 // daily run (/api/autopilot/tick) all use these, so a lead is treated the same way whoever starts the work.
@@ -30,6 +33,9 @@ export type AiPlan = {
   voiceNotes?: VoiceNotes;
   about?: About | null;
   by?: string;   // who wrote it, when not the team's AI company (Kestrel MCP: "claude-code / codex")
+  sb?: Sb;
+  teamId?: string;
+  userId?: string | null;
 };
 // Checks the offer, sender, model and sequence, and builds what every lead in the batch shares. Returns an error in plain words.
 export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offer | null, settings: Record<string, unknown> | null, key: string,
@@ -92,12 +98,27 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
       : `<lead>${JSON.stringify(p.task === "score" ? leadPayload(data) : emailPayload({ ...data, email: l.email ?? (data as { email?: string }).email }))}</lead>`
       // Phase 4C: the QC bot's notes on the last draft, for the rewrite.
       + (fix.length ? `\n<qc_notes>\nA checker found these problems in your last version. Write it again and fix every one:\n${fix.map((x) => `- ${x}`).join("\n")}\n</qc_notes>` : "");
-    const a = await ask(p.provider, p.key, p.model, sys, user, p.schema, p.task === "emails" ? 600 + p.followUps * 250 : p.task === "research" ? 800 : 1500, p.effort);
-    const cost = costOf(a.usage, p.provider, p.model);
-    if (a.skip) return { ok: false, why: a.skip, cost };
-    return aiAnswer(p, l, readJson(a.text), cost, site?.host, site?.text);
+    const routerTask: AiTaskName = p.task === "emails" ? "write" : p.task === "score" ? "score" : "research";
+    if (p.sb && p.teamId) {
+      const res = await runAiTask({
+        sb: p.sb,
+        teamId: p.teamId,
+        userId: p.userId,
+        task: routerTask,
+        system: sys,
+        user,
+        schema: p.schema,
+        maxTokens: p.task === "emails" ? 600 + p.followUps * 250 : p.task === "research" ? 800 : 1500,
+        effort: p.effort,
+      });
+      if (!res.ok) {
+        return { ok: false, why: res.status === "timeout" ? "timeout" : "error", cost: res.cost_usd ?? 0, fatal: res.error };
+      }
+      return aiAnswer(p, l, readJson(res.text), res.cost_usd, site?.host, site?.text);
+    }
+    return { ok: false, why: "error", cost: 0, fatal: "Database connection not provided." };
   } catch (e) {
-    return e instanceof AiError ? { ok: false, why: "error", cost: 0, fatal: e.message } : { ok: false, why: "error", cost: 0 };
+    return { ok: false, why: "error", cost: 0, fatal: e instanceof Error ? e.message : "Error" };
   }
 }
 
@@ -219,13 +240,32 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
 export type QcEvent = { who: "qc" | "writer"; kind: "issue" | "fix" | "pass" | "hold"; text: string };
 export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ ok: true; pass: boolean; issues: string[]; cost: number | null } | { ok: false; fatal?: string; cost: number | null }> {
   try {
-    const a = await ask(p.provider, p.key, p.model, p.system, `<check>${JSON.stringify(qcPayload(data, draft))}</check>`, p.schema, 700, p.effort);
-    const cost = costOf(a.usage, p.provider, p.model);
     const fullDraftText = `${draft.subject || ""}\n\n${draft.body || ""}\n\n${(draft.steps || []).map((s) => s.body).join("\n\n")}`;
-    const q = a.skip ? null : cleanQc(readJson(a.text), fullDraftText, p.voiceNotes);
-    return q ? { ok: true, ...q, cost } : { ok: false, cost };
+    if (p.sb && p.teamId) {
+      const res = await runAiTask({
+        sb: p.sb,
+        teamId: p.teamId,
+        userId: p.userId,
+        task: "qc",
+        system: p.system,
+        user: `<check>${JSON.stringify(qcPayload(data, draft))}</check>`,
+        schema: p.schema,
+        maxTokens: 700,
+        effort: p.effort,
+        onCodeChecksOnly: () => {
+          const codeQc = cleanQc({ pass: true, issues: [] }, fullDraftText, p.voiceNotes);
+          return (codeQc ?? { pass: true, issues: [] }) as Record<string, unknown>;
+        },
+      });
+      if (!res.ok) {
+        return { ok: false, cost: res.cost_usd ?? null, fatal: res.error };
+      }
+      const q = cleanQc(readJson(res.text), fullDraftText, p.voiceNotes);
+      return q ? { ok: true, ...q, cost: res.cost_usd } : { ok: false, cost: res.cost_usd };
+    }
+    return { ok: false, cost: 0, fatal: "Database connection not provided." };
   } catch (e) {
-    return { ok: false, cost: 0, fatal: e instanceof AiError ? e.message : undefined };
+    return { ok: false, cost: 0, fatal: e instanceof Error ? e.message : undefined };
   }
 }
 // Write, check, and fix up to `rounds` times (Stage D: default 2 fix rounds, then hold).

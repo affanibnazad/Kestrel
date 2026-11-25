@@ -562,6 +562,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Nothing to answer." }, { status: 400 });
 
   const sb = await supabaseServer();
+  const { data: member } = await sb.from("members").select("team_id").eq("user_id", user.id).maybeSingle();
+  const teamId = (member as { team_id?: string } | null)?.team_id || "";
+  if (!teamId) return NextResponse.json({ error: "Team not found." }, { status: 403 });
+
   // This person's choices (027): which AI, about me, style, and what Kestrel AI remembers. Before 027: defaults.
   const [{ data: pr }, { data: mem }, { data: teamAbout }] = await Promise.all([
     sb.from("assistant_prefs").select("source,provider,model,about,style").eq("user_id", user.id).maybeSingle(),
@@ -617,6 +621,7 @@ export async function POST(req: Request) {
         system: `${SYSTEM}${ai.included ? `\n\n## Your name\nYou are ${ai.label}, Kestrel's own assistant. If someone asks what you are, say you are ${ai.label}, built into Kestrel. Do not bring up other AI companies or model names yourself.` : ""}${whereNow}\n\n## This person\n${personal}`, history,
         tools: TOOLS.map((t): NeutralTool => ({ name: t.name, description: t.description, schema: t.input_schema })),
         runTool: (name, input) => runTool(sb, name, input, turn), maxRounds: MAX_ROUNDS, images,
+        sb, teamId, userId: user.id,
       });
       let timer: NodeJS.Timeout;
       const timeoutPromise = new Promise<never>((_, reject) => {
