@@ -16,13 +16,14 @@ import { runAiTask } from "@/lib/ai-router";
 export const maxDuration = 60;
 const MAX_PER_CALL = 8, AT_ONCE = 4;
 
-type Body = { task?: string; ids?: unknown; offerId?: unknown; sequence?: unknown; samples?: unknown };
+type Body = { task?: string; ids?: unknown; offerId?: unknown; sequence?: unknown; samples?: unknown; timeoutMs?: unknown };
 
 export async function POST(request: Request) {
   const started = Date.now();
   const user = await currentUser();
   if (!user) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
   const body = (await request.json().catch(() => ({}))) as Body;
+  const timeoutOverride = typeof body.timeoutMs === "number" ? body.timeoutMs : undefined;
 
   const sb = await supabaseServer();
 
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
       user: userPrompt,
       schema: VOICE_SCHEMA,
       maxTokens: 800,
+      timeoutMs: timeoutOverride,
     });
     if (!res.ok) {
       return NextResponse.json({ error: res.error }, { status: 500 });
