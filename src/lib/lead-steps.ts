@@ -109,7 +109,7 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
         system: sys,
         user,
         schema: p.schema,
-        maxTokens: p.task === "emails" ? 600 + p.followUps * 250 : p.task === "research" ? 800 : 1500,
+        maxTokens: p.task === "emails" ? 2500 : p.task === "research" ? 800 : 1500,
         effort: p.effort,
         deadlineMs: p.deadlineMs,
       });

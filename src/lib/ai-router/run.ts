@@ -74,6 +74,22 @@ export type ModelResolution = {
   effort?: "low" | "medium" | "high";
 };
 
+// Helper: resolve backup model for fast tier fallback (Requirement 5)
+// Primary = included AI, Backup = Claude Haiku on Kestrel's Claude key
+export async function resolveFastBackup(
+  sb: Sb
+): Promise<ModelResolution | { error: string }> {
+  const claude = await assistantConfig(sb);
+  if ("error" in claude) return claude;
+  return {
+    provider: "anthropic",
+    model: HAIKU,
+    key: claude.key,
+    source: "kestrel",
+    effort: "low",
+  };
+}
+
 // Helper: resolve model for a given tier ("fast" vs "strong")
 export async function resolveModelForTier(
   sb: Sb,
@@ -380,9 +396,16 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
       const elapsedMs = Date.now() - startMs;
       const isTimeout =
         err instanceof ProviderCallError ? err.isTimeout : /timeout|abort/i.test(String(err));
+      const is429 =
+        (err instanceof ProviderCallError && err.status === 429) ||
+        /\b429\b|rate limit|too many requests/i.test(err instanceof Error ? err.message : String(err));
+      const is5xx =
+        (err instanceof ProviderCallError && typeof err.status === "number" && err.status >= 500 && err.status < 600) ||
+        /\b5\d{2}\b/i.test(err instanceof Error ? err.message : String(err));
+
       const status: "timeout" | "error" = isTimeout ? "timeout" : "error";
       lastStatus = status;
-      lastErrorMsg = err instanceof Error ? err.message : String(err);
+      lastErrorMsg = is429 ? "rate_limited" : (err instanceof Error ? err.message : String(err));
 
       await logRunImpl(
         sb,
@@ -401,9 +424,128 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         lastErrorMsg
       );
 
+      // On 429: read Retry-After / reset header; if wait fits in deadline, wait that long, else stop
+      if (is429) {
+        if (attempt < maxAttempts) {
+          const retryAfterMs = err instanceof ProviderCallError ? err.retryAfterMs : undefined;
+          if (retryAfterMs !== undefined && retryAfterMs > 0) {
+            const timeLeftAfterWait = absoluteDeadline - (Date.now() + retryAfterMs);
+            if (timeLeftAfterWait >= neededForStep) {
+              await wait(retryAfterMs);
+              continue;
+            }
+          }
+        }
+        // If wait doesn't fit or no retry header / retries exhausted: stop and return busy
+        return {
+          ok: false,
+          error: "Kestrel AI is busy, try again in a minute.",
+          status: "error",
+          provider: currentResolution.provider,
+          model: currentResolution.model,
+          source: currentResolution.source,
+        };
+      }
+
       if (attempt < maxAttempts) {
         await wait(300);
         continue;
+      }
+
+      // Requirement 5: Provider backup on fast tier
+      // On 429, timeout or 5xx from primary, try backup once if deadline allows
+      if (currentTier === "fast" && (isTimeout || is5xx || is429)) {
+        const backupRes = await resolveFastBackup(sb);
+        if (
+          !("error" in backupRes) &&
+          (backupRes.provider !== currentResolution.provider || backupRes.model !== currentResolution.model)
+        ) {
+          const timeLeftForBackup = absoluteDeadline - Date.now();
+          if (timeLeftForBackup >= baseTaskTimeout + 2000) {
+            const backupTimeout = Math.max(1, Math.min(baseTaskTimeout, timeLeftForBackup - 2000));
+            const backupStartMs = Date.now();
+            try {
+              const backupAnswer: ProviderAnswer = await callProviderImpl({
+                provider: backupRes.provider,
+                key: backupRes.key,
+                model: backupRes.model,
+                system,
+                user,
+                schema,
+                maxTokens,
+                effort: "low",
+                timeoutMs: backupTimeout,
+                history: params.history,
+                tools: params.tools,
+                runTool: params.runTool,
+                images: params.images,
+              });
+
+              const bElapsedMs = Date.now() - backupStartMs;
+              const bTokensIn = backupAnswer.usage.input_tokens || 0;
+              const bTokensOut = backupAnswer.usage.output_tokens || 0;
+              const bCost = costOf(backupAnswer.usage, backupRes.provider, backupRes.model);
+
+              await logRunImpl(
+                sb,
+                teamId,
+                userId,
+                task,
+                backupRes.provider,
+                backupRes.model,
+                backupRes.source,
+                attempt + 1,
+                bElapsedMs,
+                bTokensIn,
+                bTokensOut,
+                bCost,
+                "fallback",
+                null
+              );
+
+              let parsedData: unknown = backupAnswer.text;
+              if (schema) {
+                parsedData = parseJsonObject(backupAnswer.text);
+              }
+
+              return {
+                ok: true,
+                data: parsedData as T,
+                text: backupAnswer.text,
+                provider: backupRes.provider,
+                model: backupRes.model,
+                source: backupRes.source,
+                tokens_in: bTokensIn,
+                tokens_out: bTokensOut,
+                cost_usd: bCost,
+                ms: bElapsedMs,
+              };
+            } catch (backupErr: unknown) {
+              const bElapsedMs = Date.now() - backupStartMs;
+              const bIsTimeout =
+                backupErr instanceof ProviderCallError
+                  ? backupErr.isTimeout
+                  : /timeout|abort/i.test(String(backupErr));
+              const bStatus = bIsTimeout ? "timeout" : "error";
+              await logRunImpl(
+                sb,
+                teamId,
+                userId,
+                task,
+                backupRes.provider,
+                backupRes.model,
+                backupRes.source,
+                attempt + 1,
+                bElapsedMs,
+                0,
+                0,
+                null,
+                bStatus,
+                backupErr instanceof Error ? backupErr.message : String(backupErr)
+              );
+            }
+          }
+        }
       }
     }
   }
@@ -431,7 +573,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         currentResolution.provider,
         currentResolution.model,
         currentResolution.source,
-        maxAttempts + 1,
+        1,
         0,
         0,
         0,
@@ -465,7 +607,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
           currentResolution.provider,
           currentResolution.model,
           currentResolution.source,
-          maxAttempts + 1,
+          1,
           0,
           0,
           0,
@@ -519,7 +661,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
             currentResolution.provider,
             currentResolution.model,
             currentResolution.source,
-            maxAttempts + 1,
+            1,
             elapsedMs,
             tokensIn,
             tokensOut,
@@ -560,7 +702,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
             currentResolution.provider,
             currentResolution.model,
             currentResolution.source,
-            maxAttempts + 1,
+            1,
             elapsedMs,
             0,
             0,

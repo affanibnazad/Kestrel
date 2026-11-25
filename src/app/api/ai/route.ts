@@ -5,7 +5,7 @@ import { currentUser, supabaseServer } from "@/lib/supabase/server";
 import { aiOne, aiPlan, writeChecked } from "@/lib/lead-steps";
 import { cleanVoiceNotes, readJson, voiceSystem, VOICE_SCHEMA, type Offer, type Provider } from "@/lib/ai";
 import { aboutForAi, cleanAbout } from "@/lib/about";
-import { runAiTask } from "@/lib/ai-router";
+import { AI_TASKS, runAiTask } from "@/lib/ai-router";
 
 // AI in the App: judges leads (Good / Maybe / No) or writes the personal parts of first emails, a few leads per call.
 // With a sequence (Mail phase 2) the same call writes the first email and every follow-up for the lead in one go.
@@ -14,7 +14,7 @@ import { runAiTask } from "@/lib/ai-router";
 // The team's AI key is read here, used for the AI company, and never returned. Kestrel never sends any email.
 // The work on each lead is shared with Autopilot (lib/lead-steps.ts).
 export const maxDuration = 60;
-const MAX_PER_CALL = 8, AT_ONCE = 4;
+const MAX_PER_CALL = 8, AT_ONCE = AI_TASKS.write.maxConcurrent ?? 3;
 
 type Body = { task?: string; ids?: unknown; offerId?: unknown; sequence?: unknown; samples?: unknown; timeoutMs?: unknown };
 

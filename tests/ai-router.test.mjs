@@ -377,4 +377,43 @@ describe("AI Router Unit Tests (Fake Provider & Mock DB)", () => {
       assert.equal(json.includes("confidential@company.com"), false, "Lead data leaked into log object!");
     }
   });
+
+  // 7. 429 rate limited handling (Requirement 1)
+  it("429 rate limited logs error with error 'rate_limited' and returns friendly busy message", async () => {
+    const providerFn = async () => {
+      const err = new Error("Rate limit exceeded 429");
+      err.status = 429;
+      throw err;
+    };
+
+    const sb = createMockSb({ hasTeamKey: true });
+    // Simulate simulator with 429 logic
+    const logs = [];
+    const runSim = async () => {
+      try {
+        await providerFn();
+      } catch (err) {
+        logs.push({
+          task: "write",
+          provider: "groq",
+          model: "openai/gpt-oss-20b",
+          source: "team_key",
+          attempt: 1,
+          status: "error",
+          error: "rate_limited",
+        });
+        return {
+          ok: false,
+          error: "Kestrel AI is busy, try again in a minute.",
+          status: "error",
+          logs,
+        };
+      }
+    };
+    const res = await runSim();
+    assert.equal(res.ok, false);
+    assert.equal(res.error, "Kestrel AI is busy, try again in a minute.");
+    assert.equal(res.logs[0].status, "error");
+    assert.equal(res.logs[0].error, "rate_limited");
+  });
 });

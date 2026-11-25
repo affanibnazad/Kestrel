@@ -8,10 +8,33 @@ export class ProviderCallError extends Error {
     message: string,
     public status?: number,
     public isTimeout: boolean = false,
-    public isNetwork: boolean = false
+    public isNetwork: boolean = false,
+    public retryAfterMs?: number
   ) {
     super(message);
   }
+}
+
+export function parseResetHeader(val: string | null | undefined): number | null {
+  if (!val) return null;
+  val = val.trim();
+  // Case: "960ms" or "100 ms"
+  const msMatch = val.match(/^([\d.]+)\s*ms$/i);
+  if (msMatch) return Math.round(parseFloat(msMatch[1]));
+  // Case: pure seconds e.g. "6.975s" or "5s"
+  const secMatch = val.match(/^([\d.]+)\s*s$/i);
+  if (secMatch) return Math.round(parseFloat(secMatch[1]) * 1000);
+  // Case: compound minutes and seconds e.g. "25m55.199s" or "25m"
+  const compoundMatch = val.match(/^(?:(\d+)m)?(?:\s*([\d.]+)s)?$/i);
+  if (compoundMatch && (compoundMatch[1] || compoundMatch[2])) {
+    let ms = 0;
+    if (compoundMatch[1]) ms += parseInt(compoundMatch[1], 10) * 60 * 1000;
+    if (compoundMatch[2]) ms += Math.round(parseFloat(compoundMatch[2]) * 1000);
+    return ms;
+  }
+  // Case: standard numeric seconds e.g. "5" (standard HTTP Retry-After)
+  if (/^\d+$/.test(val)) return parseInt(val, 10) * 1000;
+  return null;
 }
 
 export type ProviderUsage = {
@@ -213,7 +236,9 @@ async function callAnthropic(params: ProviderCallParams): Promise<ProviderAnswer
 
   const detail = await res.json().catch(() => ({}));
   const msg = String((detail?.error && (detail.error.message || detail.error)) || res.statusText || "");
-  throw new ProviderCallError(`Anthropic error (${res.status}): ${msg}`.slice(0, 300), res.status);
+  const retryHeader = res.headers.get("retry-after") || res.headers.get("x-ratelimit-reset-tokens");
+  const retryAfterMs = parseResetHeader(retryHeader) ?? undefined;
+  throw new ProviderCallError(`Anthropic error (${res.status}): ${msg}`.slice(0, 300), res.status, false, false, retryAfterMs);
 }
 
 function handleAnthropicError(err: unknown, model: string): never {
@@ -286,7 +311,9 @@ async function callGemini(params: ProviderCallParams): Promise<ProviderAnswer> {
 
   const detail = await res.json().catch(() => ({}));
   const msg = String((detail?.error && (detail.error.message || detail.error)) || res.statusText || "");
-  throw new ProviderCallError(`Gemini error (${res.status}): ${msg}`.slice(0, 300), res.status);
+  const retryHeader = res.headers.get("retry-after") || res.headers.get("x-ratelimit-reset-tokens");
+  const retryAfterMs = parseResetHeader(retryHeader) ?? undefined;
+  throw new ProviderCallError(`Gemini error (${res.status}): ${msg}`.slice(0, 300), res.status, false, false, retryAfterMs);
 }
 
 // ----------------------------------------------------------------------------
@@ -442,6 +469,8 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
 
   const detail = await res.json().catch(() => ({}));
   const msg = String((detail?.error && (detail.error.message || detail.error)) || res.statusText || "");
+  const retryHeader = res.headers.get("retry-after") || res.headers.get("x-ratelimit-reset-tokens");
+  const retryAfterMs = parseResetHeader(retryHeader) ?? undefined;
 
   // Special groq 400 retry without response_format
   if (res.status === 400 && provider === "groq" && /Failed to validate JSON/i.test(msg) && schema) {
@@ -462,7 +491,7 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
     }
   }
 
-  throw new ProviderCallError(`${provider} error (${res.status}): ${msg}`.slice(0, 300), res.status);
+  throw new ProviderCallError(`${provider} error (${res.status}): ${msg}`.slice(0, 300), res.status, false, false, retryAfterMs);
 }
 
 function isAbortError(err: unknown): boolean {
