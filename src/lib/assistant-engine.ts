@@ -65,7 +65,8 @@ export async function runAssistant(x: EngineInput): Promise<EngineResult> {
     });
 
     if (!res.ok) {
-      if (res.status === "skipped") return { text: "", refused: true };
+      if (res.refused) return { text: "", refused: true };
+      if (res.status === "skipped") throw new EngineError("Kestrel AI took too long. Try again.", "other");
       throw new EngineError(res.error, "other");
     }
 

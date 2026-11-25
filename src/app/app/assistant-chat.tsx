@@ -36,7 +36,6 @@ type Msg = {
 };
 
 const SAVE_KEY = "kestrel-ai-chat-v1";
-const MODEL_KEY = "kestrel-ai-chat-model";
 
 type ChatTheme = "light" | "dark" | "gradient";
 
@@ -45,16 +44,10 @@ const KIND_ICON: Record<Receipt["kind"], string> = {
   business: "building", rules: "sliders", sequence: "list",
 };
 
-// The models you can pick, like Claude's model menu. They change how the
-// answer arrives: Fast writes quickly, Thinking takes longer and shows every
-// step. The engine behind them is the same until the live route is ready.
-const MODELS = [
-  { id: "pro", name: "Kestrel Pro", note: "Best answers, normal speed", think: 430, word: 68, pause: 240 },
-  { id: "fast", name: "Kestrel Fast", note: "Quick answers, shorter steps", think: 220, word: 40, pause: 130 },
-  { id: "thinking", name: "Kestrel Thinking", note: "Longer think, every step shown", think: 780, word: 68, pause: 290 },
-] as const;
-
-type ModelId = (typeof MODELS)[number]["id"];
+// Fixed animation speed for Kestrel AI answers.
+const ANIM_THINK_MS = 430;
+const ANIM_WORD_MS = 68;
+const ANIM_PAUSE_MS = 240;
 
 // The commands you can type after "/" (like Claude's slash commands).
 const COMMANDS = [
@@ -103,15 +96,6 @@ function GemStar({ size = 9, delay = 0, x = "0px", y = "0px", className }: {
         </linearGradient>
       </defs>
       <path d={SPARK_PATH} fill={`url(#${gid})`} />
-    </svg>
-  );
-}
-
-// The sparkle that sits in front of the model name, like Claude's.
-function SparkIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg className={styles.sparkIcon} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-      <path d={SPARK_PATH} fill="currentColor" />
     </svg>
   );
 }
@@ -244,7 +228,10 @@ function RevealAnswer({ text, wordMs, linePause, onDone, onTick }: {
   useEffect(() => { doneRef.current = onDone; tickRef.current = onTick; });
 
   useEffect(() => {
-    if (progress.current.text !== text) progress.current = { text, i: 0, done: false };
+    if (progress.current.text !== text) {
+      progress.current = { text, i: 0, done: false };
+      queueMicrotask(() => setShown(0));
+    }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     const finish = () => {
@@ -271,8 +258,8 @@ function RevealAnswer({ text, wordMs, linePause, onDone, onTick }: {
   }, [text, flat, wordMs, linePause]);
 
   // Only the lines that have started are on the page, and only the words that
-  // have been written.
-  const newest = shown - 1;
+  // have been written. Clamp index to avoid out-of-bounds if text/flat shrinks.
+  const newest = Math.min(shown, flat.length) - 1;
   const lastLine = newest >= 0 ? flat[newest].line : -1;
   const visible = lines.filter((l) => l.line <= lastLine);
 
@@ -361,8 +348,6 @@ export default function AiChat({ question, onAsked }: {
   const [busy, setBusy] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [model, setModel] = useState<ModelId>("pro");
-  const [modelOpen, setModelOpen] = useState(false);
   const [files, setFiles] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
   const [theme, setTheme] = useState<ChatTheme>("light");
@@ -371,7 +356,6 @@ export default function AiChat({ question, onAsked }: {
   const [writingId, setWritingId] = useState<string | null>(null);
   const thread = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
-  const picker = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   // The busy flag as a ref too, so a question can be started from a click
   // handler without waiting for the next render.
@@ -379,8 +363,6 @@ export default function AiChat({ question, onAsked }: {
   // Whether the conversation is pinned to the newest message. It is released
   // when the person scrolls up to read, and taken again when they come back.
   const stick = useRef(true);
-
-  const chosen = MODELS.find((m) => m.id === model) ?? MODELS[0];
 
   // The App's look. The chat only reads it, so a change in Profile →
   // Appearance reaches the chat too.
@@ -405,8 +387,6 @@ export default function AiChat({ question, onAsked }: {
       try {
         const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
         if (saved && Array.isArray(saved.msgs)) setMsgs(saved.msgs as Msg[]);
-        const m = localStorage.getItem(MODEL_KEY) as ModelId | null;
-        if (m && MODELS.some((x) => x.id === m)) setModel(m);
       } catch { /* private window: start empty */ }
       setLoaded(true);
     }, 0);
@@ -416,10 +396,6 @@ export default function AiChat({ question, onAsked }: {
     if (!loaded) return;
     try { localStorage.setItem(SAVE_KEY, JSON.stringify({ msgs })); } catch { /* private window */ }
   }, [msgs, loaded]);
-  useEffect(() => {
-    if (!loaded) return;
-    try { localStorage.setItem(MODEL_KEY, model); } catch { /* private window */ }
-  }, [model, loaded]);
 
   // The conversation follows the newest message, unless the person has
   // scrolled up to read something.
@@ -429,16 +405,6 @@ export default function AiChat({ question, onAsked }: {
     el.scrollTo({ top: el.scrollHeight, behavior: smooth && !calm() ? "smooth" : "auto" });
   }, []);
   useEffect(() => { toEnd(true); }, [msgs, toEnd]);
-
-  // The model menu closes when you click away from it.
-  useEffect(() => {
-    if (!modelOpen) return;
-    const away = (e: MouseEvent) => {
-      if (picker.current && !picker.current.contains(e.target as Node)) setModelOpen(false);
-    };
-    document.addEventListener("mousedown", away);
-    return () => document.removeEventListener("mousedown", away);
-  }, [modelOpen]);
 
   const patch = useCallback((id: string, fn: (m: Msg) => Msg) => {
     setMsgs((all) => all.map((m) => (m.id === id ? fn(m) : m)));
@@ -516,7 +482,7 @@ export default function AiChat({ question, onAsked }: {
       patch(botId, (m) => ({ ...m, turn: { ...m.turn!, steps: scripted.steps.map((s) => ({ ...s, state: "waiting" as const })) } }));
       for (const step of scripted.steps) {
         patch(botId, (m) => ({ ...m, turn: { ...m.turn!, steps: m.turn!.steps.map((s) => (s.id === step.id ? { ...s, state: "running" as const } : s)) } }));
-        await sleep(calm() ? 60 : chosen.think);
+        await sleep(calm() ? 60 : ANIM_THINK_MS);
         patch(botId, (m) => ({ ...m, turn: { ...m.turn!, steps: m.turn!.steps.map((s) => (s.id === step.id ? { ...s, state: "done" as const, ms: step.ms } : s)) } }));
         await sleep(calm() ? 20 : 150);
       }
@@ -526,7 +492,7 @@ export default function AiChat({ question, onAsked }: {
     })();
 
     return true;
-  }, [patch, chosen, files, msgs]);
+  }, [patch, files, msgs]);
 
   // A question handed in from the App (the search box at the top) or from the
   // address bar (?q=) is asked once. It waits for the saved conversation to come
@@ -695,8 +661,8 @@ export default function AiChat({ question, onAsked }: {
                           <Receipts receipts={m.turn.receipts} />
                           <RevealAnswer
                             text={m.turn.answer}
-                            wordMs={chosen.word}
-                            linePause={chosen.pause}
+                            wordMs={ANIM_WORD_MS}
+                            linePause={ANIM_PAUSE_MS}
                             onDone={() => setWritingId((id) => (id === m.id ? null : id))}
                             onTick={() => toEnd()}
                           />
@@ -804,36 +770,6 @@ export default function AiChat({ question, onAsked }: {
                     <Line name="sliders" />
                     <span className={styles.btnText}>Context</span>
                   </button>
-                  <div className={styles.modelWrap} ref={picker}>
-                    <button
-                      type="button"
-                      className={styles.modelBtn}
-                      onClick={() => setModelOpen((v) => !v)}
-                      aria-haspopup="listbox"
-                      aria-expanded={modelOpen}
-                    >
-                      <SparkIcon />
-                      <span className={styles.modelName}>{chosen.name}</span>
-                      <Line name="chevronDown" />
-                    </button>
-                    {modelOpen ? (
-                      <div className={styles.modelMenu} role="listbox">
-                        {MODELS.map((m) => (
-                          <button
-                            type="button"
-                            role="option"
-                            aria-selected={m.id === model}
-                            className={`${styles.modelItem} ${m.id === model ? styles.modelItemOn : ""}`}
-                            key={m.id}
-                            onClick={() => { setModel(m.id); setModelOpen(false); }}
-                          >
-                            <span className={styles.modelItemName}>{m.name}</span>
-                            <span className={styles.modelItemNote}>{m.note}</span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
                   <button type="submit" className={styles.send} disabled={!text.trim() || busy} aria-label="Send">
                     <ArrowUp />
                   </button>
@@ -860,7 +796,7 @@ export default function AiChat({ question, onAsked }: {
                 ))}
                 <div className={styles.railRow}>
                   <span className={styles.railLabel}>Model</span>
-                  <span className={styles.railValue}>{lastTurn.ai || chosen.name}</span>
+                  <span className={styles.railValue}>{lastTurn.ai || "Kestrel AI"}</span>
                 </div>
                 {lastFiles.length ? (
                   <div className={styles.railRow}>

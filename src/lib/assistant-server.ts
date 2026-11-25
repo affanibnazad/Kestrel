@@ -54,20 +54,12 @@ export async function resolveAssistant(sb: Sb, prefs: Prefs | null, question: st
     if (!prefs.model) return { error: `Choose a ${COMPANY[prefs.provider]} model in Kestrel AI → Personalize.` };
     return { provider: prefs.provider, key: data as string, model: prefs.model, effort: "low", included: false, label: `${COMPANY[prefs.provider]} (your team's key)` };
   }
-  // A Kestrel model the person picked above the chat (database 060): only names the Owner gave, with Kestrel's key.
-  if (prefs?.source !== "team" && prefs?.model && secret.length >= 32) {
-    const { data } = await sb.rpc("assistant_included_pick", { server_secret: secret, model: prefs.model });
-    const pk = data as { provider: Provider; model: string; name: string; key: string } | null;
-    if (pk?.key) return pk.provider === "anthropic" ? { provider: "anthropic", key: pk.key, ...assistantModel(pk.model, question, turns), included: true, label: pk.name }
-      : { provider: pk.provider, key: pk.key, model: pk.model, effort: "low", included: true, label: pk.name };
-    // A pick that can't be used any more (renamed, key removed): fall back to Kestrel's default below.
-  }
-  // Kestrel's included AI: the company and model chosen in the Owner panel (027); before 027, Claude from 023.
+  // Kestrel's included AI: always use the Owner's default from assistant_included (ignore per-user prefs.model).
   if (secret.length >= 32) {
     const { data, error } = await sb.rpc("assistant_included", { server_secret: secret });
     if (!error && data) {
       const c = data as { provider: Provider; model: string; enabled: boolean; key: string | null; name?: string | null };
-      const label = c.name || KESTREL_AI_NAME;   // the model's Kestrel name from the Owner panel (057)
+      const label = KESTREL_AI_NAME;
       if (!c.enabled) return { error: "Kestrel AI is turned off for now. Try again later." };
       if (!c.key && c.provider !== "anthropic") return { error: "Kestrel AI is not switched on yet. The Kestrel owner adds its AI key in the Owner panel." };
       // Claude without a saved key: fall through to the older path, which can use ANTHROPIC_API_KEY on Vercel.

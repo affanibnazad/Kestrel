@@ -54,6 +54,7 @@ export type RunAiTaskResult<T = unknown> =
       ok: false;
       error: string;
       status: "timeout" | "error" | "skipped";
+      refused?: boolean;
       provider?: string;
       model?: string;
       source?: "kestrel" | "team_key";
@@ -363,6 +364,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
           ok: false,
           error: CUSTOMER_ERROR_MESSAGE,
           status: "skipped",
+          refused: true,
           provider: currentResolution.provider,
           model: currentResolution.model,
           source: currentResolution.source,
