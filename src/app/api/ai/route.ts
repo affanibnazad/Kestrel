@@ -107,11 +107,12 @@ export async function POST(request: Request) {
   // One team per batch, and its own Do-not-contact list: never write to anyone on it. If the check fails, nothing is written.
   if (leads.some((l) => l.team_id !== leads[0].team_id)) return NextResponse.json({ error: "These leads belong to different teams. Run one team at a time." }, { status: 400 });
   const batchTeamId = leads[0]?.team_id || (offer as { team_id?: string })?.team_id || "";
+  const requestDeadline = started + 50_000;
 
-  const plan = { ...rawPlan, sb, teamId: batchTeamId, userId: user.id };
+  const plan = { ...rawPlan, sb, teamId: batchTeamId, userId: user.id, deadlineMs: requestDeadline };
   // Phase 4C: written emails are checked by the QC bot and fixed once; one it cannot pass is held from campaigns.
   const qcPlan = task === "emails" ? aiPlan("qc", offer as Offer, settings, typeof key === "string" ? key : "", null, activeServices, cleanAb?.voice_notes, cleanAb) : null;
-  const qc = qcPlan && !("error" in qcPlan) ? { ...qcPlan, sb, teamId: batchTeamId, userId: user.id } : null;
+  const qc = qcPlan && !("error" in qcPlan) ? { ...qcPlan, sb, teamId: batchTeamId, userId: user.id, deadlineMs: requestDeadline } : null;
   let dnc = dncIndex([]);
   if (task !== "score" && leads.length) {
     try { dnc = await teamDnc(sb, leads[0].team_id, leads.map((l) => ({ email: l.email, emails: (l.data as { emails?: string[] } | null)?.emails, website: (l.data as { website?: string } | null)?.website }))); }

@@ -19,7 +19,8 @@ export type RunAiTaskParams = {
   // Optional overrides or context
   maxTokens?: number;
   effort?: "low" | "medium" | "high";
-  timeoutMs?: number; // Override for tests or specific short jobs
+  timeoutMs?: number; // Override per-attempt timeout if specified
+  deadlineMs?: number; // Absolute timestamp (Date.now() + remaining) or relative ms
   // Chat / assistant context
   history?: { role: "user" | "assistant"; content: string }[];
   tools?: { name: string; description: string; schema: Record<string, unknown> }[];
@@ -27,6 +28,9 @@ export type RunAiTaskParams = {
   images?: { type: string; data: string }[];
   // Fallback handler for qc or custom
   onCodeChecksOnly?: () => Record<string, unknown>;
+  // For unit tests / dependency injection
+  providerFn?: typeof callProvider;
+  logRunFn?: typeof logRun;
 };
 
 export type RunAiTaskResult<T = unknown> =
@@ -54,7 +58,15 @@ export type RunAiTaskResult<T = unknown> =
 
 export const CUSTOMER_ERROR_MESSAGE = "Kestrel AI can't answer right now. Try again in a minute.";
 
-type ModelResolution = {
+// Tasks allowed to use Kestrel's AI when no team key is saved
+const KESTREL_ALLOWED_TASKS = new Set<AiTaskName>([
+  "chat",
+  "reply_suggest",
+  "reply_label",
+  "spam_fix",
+]);
+
+export type ModelResolution = {
   provider: Provider;
   model: string;
   key: string;
@@ -63,41 +75,62 @@ type ModelResolution = {
 };
 
 // Helper: resolve model for a given tier ("fast" vs "strong")
-async function resolveModelForTier(
+export async function resolveModelForTier(
   sb: Sb,
+  teamId: string,
   tier: AiTier,
   task: AiTaskName
 ): Promise<ModelResolution | { error: string }> {
   const secret = serverSecret();
 
   // 1. Check if team has its own key saved in Settings / Connections
-  try {
-    const { data: teamAi } = await sb.from("team_ai").select("*").maybeSingle();
-    const provider = (teamAi?.provider as Provider) || null;
-    if (provider && secret.length >= 32) {
-      const { data: key } = await sb.rpc("ai_key_for_server", {
-        server_secret: secret,
-        service: provider,
-      });
-      if (key && typeof key === "string") {
-        const pick = modelForTask(
+  // sb.from("team_ai").select("*").eq("team_id", teamId).maybeSingle()
+  const { data: teamAi, error: teamAiError } = await sb
+    .from("team_ai")
+    .select("*")
+    .eq("team_id", teamId)
+    .maybeSingle();
+
+  // If reading team_ai FAILS (error, not "no row"): do NOT fall back to Kestrel's key — return the error.
+  if (teamAiError) {
+    return { error: `Failed to read team AI configuration: ${teamAiError.message}` };
+  }
+
+  const provider = (teamAi?.provider as Provider) || null;
+  if (provider && secret.length >= 32) {
+    const { data: key, error: keyError } = await sb.rpc("ai_key_for_server", {
+      server_secret: secret,
+      service: provider,
+    });
+    if (keyError) {
+      return { error: keyError.message || "Failed to retrieve team AI key." };
+    }
+    if (key && typeof key === "string") {
+      const pick = modelForTask(
+        provider,
+        String(teamAi?.model ?? ""),
+        tier === "strong" || task === "write" ? "emails" : "score"
+      );
+      if (pick.model) {
+        return {
           provider,
-          String(teamAi?.model ?? ""),
-          tier === "strong" || task === "write" ? "emails" : "score"
-        );
-        if (pick.model) {
-          return {
-            provider,
-            model: pick.model,
-            key,
-            source: "team_key",
-            effort: pick.effort,
-          };
-        }
+          model: pick.model,
+          key,
+          source: "team_key",
+          effort: pick.effort,
+        };
       }
     }
-  } catch {
-    // ignore and fall back to kestrel
+  }
+
+  // If no team key is saved:
+  // ONLY tasks that already used Kestrel's AI before may use Kestrel's AI:
+  // (chat, reply_suggest, reply_label, spam_fix).
+  // Score / write / research / qc / voice keep needing the team key.
+  if (!KESTREL_ALLOWED_TASKS.has(task)) {
+    return {
+      error: `Your team has no AI key configured for ${task}. Add one in Settings → Connections.`,
+    };
   }
 
   // 2. Kestrel AI:
@@ -148,7 +181,7 @@ async function resolveModelForTier(
 }
 
 // Log one attempt to supabase public.ai_runs via log_ai_run RPC
-async function logRun(
+export async function logRun(
   sb: Sb,
   teamId: string,
   userId: string | null | undefined,
@@ -194,11 +227,23 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
     return { ok: false, error: CUSTOMER_ERROR_MESSAGE, status: "error" };
   }
 
-  const timeoutMs = params.timeoutMs ?? cfg.timeoutMs;
+  const callProviderImpl = params.providerFn ?? callProvider;
+  const logRunImpl = params.logRunFn ?? logRun;
+
+  // Deadline calculation: default 50s from start of request unless specified
+  const now = Date.now();
+  const absoluteDeadline =
+    params.deadlineMs !== undefined
+      ? params.deadlineMs > 1_000_000_000_000
+        ? params.deadlineMs
+        : now + params.deadlineMs
+      : now + 50_000;
+
+  const baseTaskTimeout = params.timeoutMs ?? cfg.timeoutMs;
   const maxTokens = params.maxTokens ?? cfg.maxTokens;
 
   // Resolve initial model by task tier
-  const resolution = await resolveModelForTier(sb, cfg.tier, task);
+  const resolution = await resolveModelForTier(sb, teamId, cfg.tier, task);
   if ("error" in resolution) {
     return { ok: false, error: CUSTOMER_ERROR_MESSAGE, status: "error" };
   }
@@ -211,9 +256,43 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   let lastStatus: "timeout" | "error" | "skipped" = "error";
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const timeLeft = absoluteDeadline - Date.now();
+    const neededForStep = baseTaskTimeout + 2000;
+
+    // Before every attempt / retry: if time left is less than step's timeout + 2s, do NOT start it
+    if (attempt > 1 && timeLeft < neededForStep) {
+      await logRunImpl(
+        sb,
+        teamId,
+        userId,
+        task,
+        currentResolution.provider,
+        currentResolution.model,
+        currentResolution.source,
+        attempt,
+        0,
+        0,
+        0,
+        null,
+        "skipped",
+        "no time left"
+      );
+      return {
+        ok: false,
+        error: CUSTOMER_ERROR_MESSAGE,
+        status: "skipped",
+        provider: currentResolution.provider,
+        model: currentResolution.model,
+        source: currentResolution.source,
+      };
+    }
+
+    // Each attempt's timeout = min(task timeout, time left - 2s)
+    const effectiveTimeout = Math.max(1, Math.min(baseTaskTimeout, timeLeft - 2000));
     const startMs = Date.now();
+
     try {
-      const answer: ProviderAnswer = await callProvider({
+      const answer: ProviderAnswer = await callProviderImpl({
         provider: currentResolution.provider,
         key: currentResolution.key,
         model: currentResolution.model,
@@ -222,7 +301,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         schema,
         maxTokens,
         effort: params.effort ?? currentResolution.effort,
-        timeoutMs,
+        timeoutMs: effectiveTimeout,
         history: params.history,
         tools: params.tools,
         runTool: params.runTool,
@@ -235,7 +314,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
       const cost = costOf(answer.usage, currentResolution.provider, currentResolution.model);
 
       if (answer.skip) {
-        await logRun(
+        await logRunImpl(
           sb,
           teamId,
           userId,
@@ -262,7 +341,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         };
       }
 
-      await logRun(
+      await logRunImpl(
         sb,
         teamId,
         userId,
@@ -305,7 +384,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
       lastStatus = status;
       lastErrorMsg = err instanceof Error ? err.message : String(err);
 
-      await logRun(
+      await logRunImpl(
         sb,
         teamId,
         userId,
@@ -323,7 +402,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
       );
 
       if (attempt < maxAttempts) {
-        await wait(500 * attempt);
+        await wait(300);
         continue;
       }
     }
@@ -344,7 +423,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
 
     if (cfg.fallback === "code_checks_only") {
       const fallbackData = params.onCodeChecksOnly ? params.onCodeChecksOnly() : {};
-      await logRun(
+      await logRunImpl(
         sb,
         teamId,
         userId,
@@ -375,13 +454,43 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
     }
 
     if (cfg.fallback === "fast" && currentTier === "strong") {
-      const fastRes = await resolveModelForTier(sb, "fast", task);
+      const timeLeft = absoluteDeadline - Date.now();
+      const fallbackTimeout = 20_000;
+      if (timeLeft < fallbackTimeout + 2000) {
+        await logRunImpl(
+          sb,
+          teamId,
+          userId,
+          task,
+          currentResolution.provider,
+          currentResolution.model,
+          currentResolution.source,
+          maxAttempts + 1,
+          0,
+          0,
+          0,
+          null,
+          "skipped",
+          "no time left"
+        );
+        return {
+          ok: false,
+          error: CUSTOMER_ERROR_MESSAGE,
+          status: "skipped",
+          provider: currentResolution.provider,
+          model: currentResolution.model,
+          source: currentResolution.source,
+        };
+      }
+
+      const fastRes = await resolveModelForTier(sb, teamId, "fast", task);
       if (!("error" in fastRes)) {
         currentTier = "fast";
         currentResolution = fastRes;
+        const effectiveFallbackTimeout = Math.max(1, Math.min(fallbackTimeout, timeLeft - 2000));
         const startMs = Date.now();
         try {
-          const answer: ProviderAnswer = await callProvider({
+          const answer: ProviderAnswer = await callProviderImpl({
             provider: currentResolution.provider,
             key: currentResolution.key,
             model: currentResolution.model,
@@ -390,7 +499,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
             schema,
             maxTokens: Math.min(maxTokens, 1500),
             effort: "low",
-            timeoutMs: 20_000,
+            timeoutMs: effectiveFallbackTimeout,
             history: params.history,
             tools: params.tools,
             runTool: params.runTool,
@@ -402,7 +511,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
           const tokensOut = answer.usage.output_tokens || 0;
           const cost = costOf(answer.usage, currentResolution.provider, currentResolution.model);
 
-          await logRun(
+          await logRunImpl(
             sb,
             teamId,
             userId,
@@ -443,7 +552,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
               ? fallbackErr.isTimeout
               : /timeout|abort/i.test(String(fallbackErr));
           const status = isTimeout ? "timeout" : "error";
-          await logRun(
+          await logRunImpl(
             sb,
             teamId,
             userId,

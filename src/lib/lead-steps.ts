@@ -36,6 +36,7 @@ export type AiPlan = {
   sb?: Sb;
   teamId?: string;
   userId?: string | null;
+  deadlineMs?: number;
 };
 // Checks the offer, sender, model and sequence, and builds what every lead in the batch shares. Returns an error in plain words.
 export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offer | null, settings: Record<string, unknown> | null, key: string,
@@ -110,6 +111,7 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
         schema: p.schema,
         maxTokens: p.task === "emails" ? 600 + p.followUps * 250 : p.task === "research" ? 800 : 1500,
         effort: p.effort,
+        deadlineMs: p.deadlineMs,
       });
       if (!res.ok) {
         return { ok: false, why: res.status === "timeout" ? "timeout" : "error", cost: res.cost_usd ?? 0, fatal: res.error };
@@ -252,6 +254,7 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
         schema: p.schema,
         maxTokens: 700,
         effort: p.effort,
+        deadlineMs: p.deadlineMs,
         onCodeChecksOnly: () => {
           const codeQc = cleanQc({ pass: true, issues: [] }, fullDraftText, p.voiceNotes);
           return (codeQc ?? { pass: true, issues: [] }) as Record<string, unknown>;
