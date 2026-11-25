@@ -75,7 +75,7 @@ export async function POST(req: Request) {
     task,
     system: "You are a health check. Reply with OK.",
     user: "OK",
-    maxTokens: 20,
+    maxTokens: 120,
     timeoutMs: 15_000,
     deadlineMs: 20_000,
     resolution: {

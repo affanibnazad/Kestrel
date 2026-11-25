@@ -75,7 +75,7 @@ export default function OwnerAi({
   const [loading, setLoading] = useState(true);
   const [migrationMissing, setMigrationMissing] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (initial = false) => {
     if (demo) {
       setLoading(false);
       setStats([
@@ -86,7 +86,7 @@ export default function OwnerAi({
       return;
     }
 
-    setLoading(true);
+    if (initial) setLoading(true);
     try {
       const sb = supabaseBrowser();
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -112,31 +112,33 @@ export default function OwnerAi({
 
       setMigrationMissing(false);
       const rows = (slotsRes.data ?? []) as SlotRow[];
-      const next: Record<AiSlotId, SlotFormState> = {
-        swift: defaultSlotState(),
-        talon: defaultSlotState(),
-        nest: defaultSlotState(),
-      };
+      setSlots((prev) => {
+        const next: Record<AiSlotId, SlotFormState> = {
+          swift: { ...defaultSlotState(), testResult: prev.swift.testResult },
+          talon: { ...defaultSlotState(), testResult: prev.talon.testResult },
+          nest: { ...defaultSlotState(), testResult: prev.nest.testResult },
+        };
 
-      for (const r of rows) {
-        if (r.slot === "swift" || r.slot === "talon" || r.slot === "nest") {
-          next[r.slot] = {
-            ...next[r.slot],
-            provider: r.provider || "groq",
-            baseUrl: r.base_url || "",
-            model: r.model || "",
-            hasKey: Boolean(r.secret_id),
-            enabled: r.enabled !== false,
-            useFreeText: true,
-          };
+        for (const r of rows) {
+          if (r.slot === "swift" || r.slot === "talon" || r.slot === "nest") {
+            next[r.slot] = {
+              ...next[r.slot],
+              provider: r.provider || "groq",
+              baseUrl: r.base_url || "",
+              model: r.model || "",
+              hasKey: Boolean(r.secret_id),
+              enabled: r.enabled !== false,
+              useFreeText: true,
+            };
+          }
         }
-      }
-      setSlots(next);
 
-      const allReady = (["swift", "talon", "nest"] as AiSlotId[]).every(
-        (id) => next[id].hasKey && next[id].model.trim().length > 0 && next[id].enabled
-      );
-      onSlotsStatus?.(allReady);
+        const allReady = (["swift", "talon", "nest"] as AiSlotId[]).every(
+          (id) => next[id].hasKey && next[id].model.trim().length > 0 && next[id].enabled
+        );
+        onSlotsStatus?.(allReady);
+        return next;
+      });
 
       // Aggregate 24h ai_runs per slot
       const runRows = (runsRes.data ?? []) as {
@@ -176,7 +178,7 @@ export default function OwnerAi({
   }, [demo, toast, onSlotsStatus]);
 
   useEffect(() => {
-    void load();
+    void load(true);
   }, [load]);
 
   function patchSlot(id: AiSlotId, patch: Partial<SlotFormState>) {
