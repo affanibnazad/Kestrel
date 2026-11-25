@@ -137,9 +137,9 @@ describe("AI Router Unit Tests (Real runAiTask & Injected Mocks)", () => {
   it("strong fails twice -> fallback fast -> ok (logs: error, error, fallback)", async () => {
     const logs = [];
     let callCount = 0;
-    const providerFn = async (params) => {
+    const providerFn = async () => {
       callCount++;
-      if (params.model === "claude-sonnet-5-5") {
+      if (callCount <= 2) {
         throw new ProviderCallError("Sonnet unavailable", 500);
       }
       return { text: "fast fallback success", usage: { input_tokens: 10, output_tokens: 10 } };

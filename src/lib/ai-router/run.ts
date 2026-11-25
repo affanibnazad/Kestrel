@@ -180,7 +180,7 @@ export async function resolveModelForTier(
   const pick = modelForTask(
     provider,
     String(teamAi?.model ?? ""),
-    tier === "fast" ? "score" : "emails"
+    tier === "strong" || task === "write" ? "emails" : "score"
   );
   if (!pick.model) {
     return {
