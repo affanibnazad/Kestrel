@@ -20,7 +20,7 @@ create table if not exists public.ai_slots (
 
 alter table public.ai_slots enable row level security;
 revoke all on public.ai_slots from anon, authenticated;
-grant select, update on public.ai_slots to authenticated;
+grant select on public.ai_slots to authenticated;
 
 drop policy if exists "admins read ai_slots" on public.ai_slots;
 create policy "admins read ai_slots" on public.ai_slots
@@ -28,10 +28,6 @@ create policy "admins read ai_slots" on public.ai_slots
   using (public.is_admin());
 
 drop policy if exists "admins update ai_slots" on public.ai_slots;
-create policy "admins update ai_slots" on public.ai_slots
-  for update to authenticated
-  using (public.is_admin())
-  with check (public.is_admin());
 
 -- ----------------------------------------------------------------------------
 -- 2. set_ai_slot(slot, provider, base_url, model, new_key, enabled, max_tokens)
@@ -166,6 +162,8 @@ grant execute on function public.ai_slot_for_server(text, text) to authenticated
 -- ----------------------------------------------------------------------------
 alter table public.ai_runs
   add column if not exists slot text check (slot is null or slot in ('swift', 'talon', 'nest'));
+
+drop function if exists public.log_ai_run(text, uuid, uuid, text, text, text, text, integer, integer, integer, integer, numeric, text, text);
 
 create or replace function public.log_ai_run(
   server_secret text,
