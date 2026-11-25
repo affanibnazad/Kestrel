@@ -48,7 +48,7 @@ async function run() {
   }
   console.log("Staging user authenticated. Cookies count:", Object.keys(cookieJar).length);
 
-  const outDir = path.resolve("public/screenshots/ui-setup");
+  const outDir = path.resolve("tests/ui-setup-proof");
   fs.mkdirSync(outDir, { recursive: true });
 
   const browser = await chromium.launch({ headless: true });
