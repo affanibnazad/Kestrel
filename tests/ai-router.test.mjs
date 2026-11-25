@@ -137,9 +137,11 @@ describe("AI Router Unit Tests (Real runAiTask & Injected Mocks)", () => {
   it("strong fails twice -> fallback fast -> ok (logs: error, error, fallback)", async () => {
     const logs = [];
     let callCount = 0;
-    const providerFn = async () => {
+    let lastUsedModel = "";
+    const providerFn = async (params) => {
       callCount++;
-      if (callCount <= 2) {
+      lastUsedModel = params.model;
+      if (params.model === "claude-sonnet-5-5") {
         throw new ProviderCallError("Sonnet unavailable", 500);
       }
       return { text: "fast fallback success", usage: { input_tokens: 10, output_tokens: 10 } };
@@ -158,6 +160,8 @@ describe("AI Router Unit Tests (Real runAiTask & Injected Mocks)", () => {
 
     assert.equal(res.ok, true);
     assert.equal(res.text, "fast fallback success");
+    assert.equal(lastUsedModel, "claude-haiku-5-5");
+    assert.equal(res.model, "claude-haiku-5-5");
     assert.equal(logs.length, 3);
     assert.equal(logs[0][12], "error");
     assert.equal(logs[1][12], "error");
