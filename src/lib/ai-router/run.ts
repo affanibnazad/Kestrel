@@ -109,7 +109,7 @@ export async function resolveModelForTier(
   teamId: string,
   tier: AiTier,
   task: AiTaskName
-): Promise<ModelResolution | { error: string }> {
+): Promise<ModelResolution | { error: string; isDbError?: boolean }> {
   const secret = serverSecret();
 
   // 1. Kestrel AI tasks ALWAYS use Kestrel's AI (never the team's key)
@@ -154,7 +154,7 @@ export async function resolveModelForTier(
 
   // If reading team_ai FAILS (error, not "no row"): do NOT fall back to Kestrel's key — return the error.
   if (teamAiError) {
-    return { error: `Failed to read team AI configuration: ${teamAiError.message}` };
+    return { error: `Failed to read team AI configuration: ${teamAiError.message}`, isDbError: true };
   }
 
   const provider = (teamAi?.provider as Provider) || null;
@@ -169,7 +169,7 @@ export async function resolveModelForTier(
     service: provider,
   });
   if (keyError) {
-    return { error: keyError.message || "Failed to retrieve team AI key." };
+    return { error: keyError.message || "Failed to retrieve team AI key.", isDbError: true };
   }
   if (!key || typeof key !== "string") {
     return {
@@ -180,7 +180,7 @@ export async function resolveModelForTier(
   const pick = modelForTask(
     provider,
     String(teamAi?.model ?? ""),
-    tier === "strong" || task === "write" ? "emails" : "score"
+    tier === "fast" ? "score" : "emails"
   );
   if (!pick.model) {
     return {
@@ -262,7 +262,9 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   // Resolve initial model by task tier
   const resolution = await resolveModelForTier(sb, teamId, cfg.tier, task);
   if ("error" in resolution) {
-    return { ok: false, error: CUSTOMER_ERROR_MESSAGE, status: "error", lastError: resolution.error, statusCode: 401 };
+    const isDb = Boolean("isDbError" in resolution && resolution.isDbError) || /database|relation|failed to read/i.test(resolution.error);
+    const code = isDb ? 500 : 401;
+    return { ok: false, error: CUSTOMER_ERROR_MESSAGE, status: "error", lastError: resolution.error, statusCode: code };
   }
 
   let currentTier: AiTier = cfg.tier;
