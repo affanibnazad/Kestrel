@@ -112,7 +112,18 @@ export const PROVIDERS: Record<Provider, { label: string; maker: string; keyUrl:
   openai: { label: "ChatGPT", maker: "OpenAI", keyUrl: "https://platform.openai.com/api-keys", models: [] },
   gemini: { label: "Gemini", maker: "Google", keyUrl: "https://aistudio.google.com/apikey", models: [] },
   openrouter: { label: "OpenRouter", maker: "Any model", keyUrl: "https://openrouter.ai/keys", models: [] },
-  groq: { label: "Groq", maker: "Very fast open models", keyUrl: "https://console.groq.com/keys", models: [] },
+  groq: {
+    label: "Groq",
+    maker: "Very fast open models",
+    keyUrl: "https://console.groq.com/keys",
+    models: [
+      { id: "qwen/qwen3.8-27b", label: "Qwen 2.5 27B", input: 0.2, output: 0.2 },
+      { id: "openai/gpt-oss-20b", label: "GPT-OSS 20B", input: 0.075, output: 0.3 },
+      { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B", input: 0.15, output: 0.6 },
+      { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", input: 0.59, output: 0.79 },
+      { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B", input: 0.05, output: 0.08 },
+    ],
+  },
   nvidia: { label: "NVIDIA", maker: "Nemotron and other open models", keyUrl: "https://build.nvidia.com/settings/api-keys", models: [] },
 };
 // The AI companies that speak the OpenAI chat format, and where (server code only calls these addresses).

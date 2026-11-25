@@ -6,6 +6,7 @@ import { aiOne, aiPlan, writeChecked } from "@/lib/lead-steps";
 import { cleanVoiceNotes, readJson, voiceSystem, VOICE_SCHEMA, type Offer, type Provider } from "@/lib/ai";
 import { aboutForAi, cleanAbout } from "@/lib/about";
 import { AI_TASKS, runAiTask } from "@/lib/ai-router";
+import { LABEL_SCHEMA, LABEL_SYSTEM } from "@/lib/inbox";
 
 // AI in the App: judges leads (Good / Maybe / No) or writes the personal parts of first emails, a few leads per call.
 // With a sequence (Mail phase 2) the same call writes the first email and every follow-up for the lead in one go.
@@ -16,7 +17,7 @@ import { AI_TASKS, runAiTask } from "@/lib/ai-router";
 export const maxDuration = 60;
 const MAX_PER_CALL = 8, AT_ONCE = AI_TASKS.write.maxConcurrent ?? 3;
 
-type Body = { task?: string; ids?: unknown; offerId?: unknown; sequence?: unknown; samples?: unknown; timeoutMs?: unknown };
+type Body = { task?: string; ids?: unknown; offerId?: unknown; sequence?: unknown; samples?: unknown; timeoutMs?: unknown; text?: unknown };
 
 export async function POST(request: Request) {
   const started = Date.now();
@@ -54,6 +55,89 @@ export async function POST(request: Request) {
     }
     const notes = cleanVoiceNotes(readJson(res.text));
     return NextResponse.json({ ok: true, notes });
+  }
+
+  // Task explain: explains email concepts in plain English
+  if (body.task === "explain") {
+    const text = typeof body.text === "string" ? body.text.trim() : "Explain why cold email requires SPF and DKIM.";
+    const { data: member } = await sb.from("members").select("team_id").eq("user_id", user.id).maybeSingle();
+    const teamId = (member as { team_id?: string } | null)?.team_id || "";
+    if (!teamId) return NextResponse.json({ error: "Team not found." }, { status: 403 });
+
+    const res = await runAiTask({
+      sb,
+      teamId,
+      userId: user.id,
+      task: "explain",
+      system: "You are a concise outreach specialist explaining email concepts in plain English under 50 words.",
+      user: text,
+      maxTokens: 500,
+      timeoutMs: timeoutOverride,
+    });
+    if (!res.ok) {
+      return NextResponse.json({ error: res.error }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, text: res.text });
+  }
+
+  // Task reply_suggest: AI reply options for an incoming email
+  if (body.task === "reply_suggest") {
+    const replyText = typeof body.text === "string" ? body.text : "Hi Affan, sounds interesting. Can you send over a proposal and pricing?";
+    const { data: member } = await sb.from("members").select("team_id").eq("user_id", user.id).maybeSingle();
+    const teamId = (member as { team_id?: string } | null)?.team_id || "";
+    if (!teamId) return NextResponse.json({ error: "Team not found." }, { status: 403 });
+
+    const res = await runAiTask({
+      sb,
+      teamId,
+      userId: user.id,
+      task: "reply_suggest",
+      system: "You help a small B2B business answer replies to its cold emails. Write three different short answers the sender could send back under 70 words each.",
+      user: `<reply>${replyText}</reply>`,
+      schema: {
+        type: "object",
+        properties: {
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                text: { type: "string" }
+              },
+              required: ["title", "text"]
+            }
+          }
+        },
+        required: ["options"]
+      },
+      maxTokens: 900,
+      timeoutMs: timeoutOverride,
+    });
+    if (!res.ok) return NextResponse.json({ error: res.error }, { status: 500 });
+    return NextResponse.json({ ok: true, data: res.data });
+  }
+
+  // Task reply_label: AI labeling of incoming email intent
+  if (body.task === "reply_label") {
+    const replyText = typeof body.text === "string" ? body.text : "Thanks for reaching out! Let's schedule a call next Tuesday at 2pm.";
+    const { data: member } = await sb.from("members").select("team_id").eq("user_id", user.id).maybeSingle();
+    const teamId = (member as { team_id?: string } | null)?.team_id || "";
+    if (!teamId) return NextResponse.json({ error: "Team not found." }, { status: 403 });
+
+    const res = await runAiTask({
+      sb,
+      teamId,
+      userId: user.id,
+      task: "reply_label",
+      system: LABEL_SYSTEM,
+      user: `<reply>${replyText}</reply>`,
+      schema: LABEL_SCHEMA,
+      maxTokens: 300,
+      timeoutMs: timeoutOverride,
+    });
+    if (!res.ok) return NextResponse.json({ error: res.error }, { status: 500 });
+    return NextResponse.json({ ok: true, data: res.data });
   }
 
   const task = body.task === "emails" ? "emails" : body.task === "score" ? "score" : body.task === "research" ? "research" : null;
@@ -136,7 +220,12 @@ export async function POST(request: Request) {
     cost = cost === null || r.cost === null ? null : cost + r.cost;
     if (!r.ok) {
       console.log(`[ai-route] task=${task} lead=${l.id} not ok: ${r.why || r.fatal}`);
-      if (r.fatal) fatal = r.fatal; else skipped.push({ id: l.id, why: r.why });
+      if (r.why) {
+        skipped.push({ id: l.id, why: r.why });
+      } else if (r.fatal) {
+        fatal = r.fatal;
+        skipped.push({ id: l.id, why: r.fatal });
+      }
       return;
     }
     let { error } = await sb.from("leads").update(r.patch).eq("id", l.id);
@@ -169,6 +258,13 @@ export async function POST(request: Request) {
       break;
     }
     await Promise.all(leads.slice(i, i + AT_ONCE).map(one));
+  }
+  if (stoppedEarly && remainingIds.length) {
+    for (const remId of remainingIds) {
+      if (!skipped.some((s) => s.id === remId)) {
+        skipped.push({ id: remId, why: "Not done — AI busy, try again" });
+      }
+    }
   }
   return NextResponse.json({
     done,

@@ -114,6 +114,14 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
         deadlineMs: p.deadlineMs,
       });
       if (!res.ok) {
+        const isBusy =
+          res.error?.includes("busy") ||
+          res.error?.includes("rate_limited") ||
+          res.error?.includes("can't answer right now") ||
+          res.status === "error";
+        if (isBusy) {
+          return { ok: false, why: "Not done — AI busy, try again", cost: res.cost_usd ?? 0 };
+        }
         return { ok: false, why: res.status === "timeout" ? "timeout" : "error", cost: res.cost_usd ?? 0, fatal: res.error };
       }
       return aiAnswer(p, l, readJson(res.text), res.cost_usd, site?.host, site?.text);

@@ -58,12 +58,23 @@ export type RunAiTaskResult<T = unknown> =
 
 export const CUSTOMER_ERROR_MESSAGE = "Kestrel AI can't answer right now. Try again in a minute.";
 
-// Tasks allowed to use Kestrel's AI when no team key is saved
-const KESTREL_ALLOWED_TASKS = new Set<AiTaskName>([
+// Tasks that must ALWAYS use Kestrel's AI (Owner → Assistant / assistant_included)
+// Reverted as per AI-1: chat, reply_suggest, reply_label, spam_fix never use the team's key.
+export const KESTREL_ALWAYS_TASKS = new Set<AiTaskName>([
   "chat",
   "reply_suggest",
   "reply_label",
   "spam_fix",
+]);
+
+// Tasks that must ALWAYS use the team's key (from Settings / Connections)
+export const TEAM_KEY_TASKS = new Set<AiTaskName>([
+  "research",
+  "explain",
+  "voice",
+  "score",
+  "write",
+  "qc",
 ]);
 
 export type ModelResolution = {
@@ -99,8 +110,53 @@ export async function resolveModelForTier(
 ): Promise<ModelResolution | { error: string }> {
   const secret = serverSecret();
 
-  // 1. Check if team has its own key saved in Settings / Connections
-  // sb.from("team_ai").select("*").eq("team_id", teamId).maybeSingle()
+  // 1. Kestrel AI tasks ALWAYS use Kestrel's AI (never the team's key)
+  if (KESTREL_ALWAYS_TASKS.has(task)) {
+    if (tier === "fast") {
+      if (secret.length >= 32) {
+        try {
+          const { data, error } = await sb.rpc("assistant_included", { server_secret: secret });
+          if (!error && data) {
+            const c = data as { provider: Provider; model: string; enabled: boolean; key: string | null };
+            if (c.enabled && c.key && c.model) {
+              return {
+                provider: c.provider,
+                model: c.model,
+                key: c.key,
+                source: "kestrel",
+                effort: "low",
+              };
+            }
+          }
+        } catch {
+          // fall back to assistantConfig
+        }
+      }
+      // Default fast: Haiku 5.5
+      const claude = await assistantConfig(sb);
+      if ("error" in claude) return claude;
+      return {
+        provider: "anthropic",
+        model: HAIKU,
+        key: claude.key,
+        source: "kestrel",
+        effort: "low",
+      };
+    }
+
+    // Strong tier for Kestrel tasks (chat) -> Sonnet 5.5
+    const claude = await assistantConfig(sb);
+    if ("error" in claude) return claude;
+    return {
+      provider: "anthropic",
+      model: SONNET,
+      key: claude.key,
+      source: "kestrel",
+      effort: "medium",
+    };
+  }
+
+  // 2. Team key tasks (research, explain, voice, score, write, qc) ALWAYS require the team's key
   const { data: teamAi, error: teamAiError } = await sb
     .from("team_ai")
     .select("*")
@@ -113,86 +169,42 @@ export async function resolveModelForTier(
   }
 
   const provider = (teamAi?.provider as Provider) || null;
-  if (provider && secret.length >= 32) {
-    const { data: key, error: keyError } = await sb.rpc("ai_key_for_server", {
-      server_secret: secret,
-      service: provider,
-    });
-    if (keyError) {
-      return { error: keyError.message || "Failed to retrieve team AI key." };
-    }
-    if (key && typeof key === "string") {
-      const pick = modelForTask(
-        provider,
-        String(teamAi?.model ?? ""),
-        tier === "strong" || task === "write" ? "emails" : "score"
-      );
-      if (pick.model) {
-        return {
-          provider,
-          model: pick.model,
-          key,
-          source: "team_key",
-          effort: pick.effort,
-        };
-      }
-    }
-  }
-
-  // If no team key is saved:
-  // ONLY tasks that already used Kestrel's AI before may use Kestrel's AI:
-  // (chat, reply_suggest, reply_label, spam_fix).
-  // Score / write / research / qc / voice keep needing the team key.
-  if (!KESTREL_ALLOWED_TASKS.has(task)) {
+  if (!provider || secret.length < 32) {
     return {
       error: `Your team has no AI key configured for ${task}. Add one in Settings → Connections.`,
     };
   }
 
-  // 2. Kestrel AI:
-  // fast = assistant_included()
-  // strong = assistant_config() (Kestrel's Claude)
-  if (tier === "fast") {
-    if (secret.length >= 32) {
-      try {
-        const { data, error } = await sb.rpc("assistant_included", { server_secret: secret });
-        if (!error && data) {
-          const c = data as { provider: Provider; model: string; enabled: boolean; key: string | null };
-          if (c.enabled && c.key && c.model) {
-            return {
-              provider: c.provider,
-              model: c.model,
-              key: c.key,
-              source: "kestrel",
-              effort: "low",
-            };
-          }
-        }
-      } catch {
-        // fall back
-      }
-    }
-    // Default fast: Haiku 5.5
-    const claude = await assistantConfig(sb);
-    if ("error" in claude) return claude;
+  const { data: key, error: keyError } = await sb.rpc("ai_key_for_server", {
+    server_secret: secret,
+    service: provider,
+  });
+  if (keyError) {
+    return { error: keyError.message || "Failed to retrieve team AI key." };
+  }
+  if (!key || typeof key !== "string") {
     return {
-      provider: "anthropic",
-      model: HAIKU,
-      key: claude.key,
-      source: "kestrel",
-      effort: "low",
+      error: `Your team has no AI key configured for ${task}. Add one in Settings → Connections.`,
     };
   }
 
-  // tier === "strong"
-  const claude = await assistantConfig(sb);
-  if ("error" in claude) return claude;
+  const pick = modelForTask(
+    provider,
+    String(teamAi?.model ?? ""),
+    tier === "strong" || task === "write" ? "emails" : "score"
+  );
+  if (!pick.model) {
+    return {
+      error: `Your team has no model configured for ${task}. Choose one in Settings → Connections.`,
+    };
+  }
+
   return {
-    provider: "anthropic",
-    model: SONNET,
-    key: claude.key,
-    source: "kestrel",
-    effort: "medium",
+    provider,
+    model: pick.model,
+    key,
+    source: "team_key",
+    effort: pick.effort,
   };
 }
 
@@ -424,7 +436,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         lastErrorMsg
       );
 
-      // On 429: read Retry-After / reset header; if wait fits in deadline, wait that long, else stop
+      // On 429: read Retry-After / reset header; if wait fits in deadline, wait that long, else proceed to backup / exit
       if (is429) {
         if (attempt < maxAttempts) {
           const retryAfterMs = err instanceof ProviderCallError ? err.retryAfterMs : undefined;
@@ -436,18 +448,8 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
             }
           }
         }
-        // If wait doesn't fit or no retry header / retries exhausted: stop and return busy
-        return {
-          ok: false,
-          error: "Kestrel AI is busy, try again in a minute.",
-          status: "error",
-          provider: currentResolution.provider,
-          model: currentResolution.model,
-          source: currentResolution.source,
-        };
-      }
-
-      if (attempt < maxAttempts) {
+        // If wait doesn't fit or retries exhausted: do NOT retry same provider. Proceed to fast backup if applicable.
+      } else if (attempt < maxAttempts) {
         await wait(300);
         continue;
       }
@@ -494,7 +496,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
                 backupRes.provider,
                 backupRes.model,
                 backupRes.source,
-                attempt + 1,
+                Math.min(attempt, maxAttempts),
                 bElapsedMs,
                 bTokensIn,
                 bTokensOut,
@@ -535,7 +537,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
                 backupRes.provider,
                 backupRes.model,
                 backupRes.source,
-                attempt + 1,
+                Math.min(attempt, maxAttempts),
                 bElapsedMs,
                 0,
                 0,
@@ -546,6 +548,17 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
             }
           }
         }
+      }
+
+      if (is429) {
+        return {
+          ok: false,
+          error: "Kestrel AI is busy, try again in a minute.",
+          status: "error",
+          provider: currentResolution.provider,
+          model: currentResolution.model,
+          source: currentResolution.source,
+        };
       }
     }
   }
