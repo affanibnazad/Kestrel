@@ -308,16 +308,18 @@ export default function OwnerAi({
 
   if (migrationMissing) {
     return (
-      <Card className={styles.wrap}>
-        <p className={styles.empty}>
-          AI slots require database migration <code>077_ai_slots.sql</code>. Apply it first, then reload this page.
-        </p>
-      </Card>
+      <div className={`${styles.wrap} ds-root`}>
+        <Card>
+          <p className={styles.empty}>
+            AI slots require database migration <code>077_ai_slots.sql</code>. Apply it first, then reload this page.
+          </p>
+        </Card>
+      </div>
     );
   }
 
   return (
-    <div className={styles.wrap}>
+    <div className={`${styles.wrap} ds-root`}>
       <div className={styles.grid}>
         {AI_SLOTS.map((meta) => {
           const s = slots[meta.id];
