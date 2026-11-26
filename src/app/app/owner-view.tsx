@@ -12,6 +12,7 @@ import CreatorsView from "./creators-view";
 import OwnerVerifier from "./owner-verifier";
 import OwnerOffers from "./owner-offers";
 import OwnerUsage from "./owner-usage";
+import OwnerHealth from "./owner-health";
 import { csvCell } from "@/lib/csv-cell";
 
 // The owner panel (Kestrel admins only): the business at a glance, everyone using Kestrel, access codes and messages.
@@ -29,6 +30,7 @@ type Data = { totals: Totals; people: Person[]; messages: Message[] };
 
 const TABS = [
   ["overview", "Overview"],
+  ["health", "Funnel & Health"],
   ["people", "People"],
   ["usage", "Usage"],
   ["access", "Access codes"],
@@ -81,6 +83,33 @@ export default function OwnerView({ toast, demo }: { toast: (t: string) => void;
   const [now] = useState(() => Date.now());
   const [allSlotsSet, setAllSlotsSet] = useState(false);
   const [planFor, setPlanFor] = useState<{ team: string; name: string; plan: PlanId; days: number } | null>(null);
+  const [replyIdx, setReplyIdx] = useState<number | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [replyBusy, setReplyBusy] = useState(false);
+
+  async function sendSupportReply(m: Message) {
+    if (!replyText.trim()) return;
+    setReplyBusy(true);
+    try {
+      const res = await fetch("/api/owner/reply", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ to: m.email, subject: `Re: ${m.topic} — Kestrel`, text: replyText.trim() }),
+      });
+      const out = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast(out?.error || "Could not send reply.");
+      } else {
+        toast(`Reply sent to ${m.email}.`);
+        setReplyIdx(null);
+        setReplyText("");
+      }
+    } catch {
+      toast("Could not reach reply endpoint.");
+    } finally {
+      setReplyBusy(false);
+    }
+  }
   // Owner → People → Change plan (database 049): free access of Starter, Pro or Agency for some days, or take it back.
   async function changePlan(clear = false) {
     if (!planFor) return;
@@ -183,6 +212,7 @@ export default function OwnerView({ toast, demo }: { toast: (t: string) => void;
       {tab === "verifier" ? <OwnerVerifier toast={toast} /> : null}
       {tab === "offers" ? <OwnerOffers toast={toast} /> : null}
       {tab === "usage" ? <OwnerUsage toast={toast} /> : null}
+      {tab === "health" ? <OwnerHealth demo={demo} /> : null}
 
       {tab === "overview" && errorMsg ? (
         <div className="join-card" style={{ margin: "20px 0", padding: "24px", textAlign: "center" }}>
@@ -254,7 +284,27 @@ export default function OwnerView({ toast, demo }: { toast: (t: string) => void;
             <article className="join-card" key={i}>
               <div className="owner-msg-top"><b>{m.name}{m.company ? ` · ${m.company}` : ""}</b><span>{m.topic} · {new Date(m.at).toLocaleString()}</span></div>
               <p className="owner-msg">{m.message}</p>
-              <div className="join-row"><a className="btn small glass" href={`mailto:${m.email}?subject=${encodeURIComponent("Re: your message to Kestrel")}`}>Reply to {m.email}</a></div>
+              <div className="join-row">
+                <button type="button" className="btn small go" onClick={() => { setReplyIdx(replyIdx === i ? null : i); setReplyText(""); }}>Reply in app</button>
+                <a className="btn small glass" href={`mailto:${m.email}?subject=${encodeURIComponent("Re: your message to Kestrel")}`}>Mail app ({m.email})</a>
+              </div>
+              {replyIdx === i ? (
+                <div style={{ marginTop: "10px", display: "grid", gap: "8px" }}>
+                  <textarea
+                    rows={3}
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder={`Write a reply to ${m.email}…`}
+                    style={{ width: "100%", padding: "10px", borderRadius: "10px", border: "1px solid var(--line, var(--ds-border-subtle))" }}
+                  />
+                  <div className="join-row">
+                    <button type="button" className="btn small go" disabled={replyBusy || !replyText.trim()} onClick={() => void sendSupportReply(m)}>
+                      {replyBusy ? "Sending…" : "Send reply"}
+                    </button>
+                    <button type="button" className="link-btn" onClick={() => { setReplyIdx(null); setReplyText(""); }}>Cancel</button>
+                  </div>
+                </div>
+              ) : null}
             </article>
           ))}</div>
         ) : <p className="plan-msg">No contact messages yet.</p>

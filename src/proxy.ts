@@ -50,8 +50,18 @@ export async function proxy(request: NextRequest) {
   if (path === "/login") {
     if (user) {
       const next = request.nextUrl.searchParams.get("next") ?? "";
-      const safeNext = /^\/app(\?.*)?$/i.test(next) ? next : "/app";
+      const safeNext = /^\/(app|admin)(\?.*)?$/i.test(next) ? next : "/app";
       return NextResponse.redirect(new URL(safeNext, request.nextUrl.origin));
+    }
+    return response;
+  }
+
+  // Protected /admin routes (never allow demo mode)
+  if (path === "/admin" || path.startsWith("/admin/")) {
+    if (!user) {
+      const loginUrl = new URL("/login", request.nextUrl.origin);
+      loginUrl.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
+      return NextResponse.redirect(loginUrl);
     }
     return response;
   }
@@ -89,4 +99,4 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
-export const config = { matcher: ["/", "/app/:path*", "/login", "/features", "/how-it-works", "/pricing", "/use-cases", "/security", "/about", "/contact", "/creators", "/signup", "/kestrel-ai-chat", "/ai-chat"] };
+export const config = { matcher: ["/", "/app/:path*", "/admin", "/admin/:path*", "/login", "/features", "/how-it-works", "/pricing", "/use-cases", "/security", "/about", "/contact", "/creators", "/signup", "/kestrel-ai-chat", "/ai-chat"] };
