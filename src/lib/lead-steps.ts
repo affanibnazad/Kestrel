@@ -45,11 +45,11 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
   if (!offer) return { error: "Choose an offer profile first." };
   const s: Sender = { ...EMPTY_SENDER, ...(settings ?? {}) } as Sender;
   // "auto" (the default for Claude): Haiku 5.5 judges leads, Sonnet 5.5 writes emails. A model the team chose is used as it is.
+  // When the team has no key (key === ""), Kestrel's included AI (Swift slot) is used instead.
   const provider = ((settings?.provider as Provider) || "anthropic"), pick = modelForTask(provider, String(settings?.model ?? ""), task === "emails" ? "emails" : "score");   // research uses the quick model
-  if (!pick.model) return { error: `Choose a ${PROVIDERS[provider]?.label ?? "AI"} model first: Integrations → Services → click Test on the key to load its models, then pick one under “AI for Score and write” and Save. Names have no spaces (e.g. gemini-2.5-flash).` };
+  if (key && !pick.model) return { error: `Choose a ${PROVIDERS[provider]?.label ?? "AI"} model first: Integrations → Services → click Test on the key to load its models, then pick one under “AI for Score and write” and Save. Names have no spaces (e.g. gemini-2.5-flash).` };
   if (!offerReady(offer)) return { error: "Add what you sell and your ideal customer to this offer first." };
   if (task === "emails") { const miss = emailMissing(offer, s); if (miss.length) return { error: `Add ${miss.join(", ")} first.` }; }
-  if (!key) return { error: "Your team has no AI key for this AI company yet. Add one in Integrations → Services." };
   let seq: AiPlan["seq"] = null;
   if (task === "emails" && sequence === "default") seq = { steps: DEFAULT_STEPS };
   else if (task === "emails" && sequence && sequence !== "default") {
@@ -58,7 +58,8 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
   }
   const followUps = seq ? followUpCount(seq.steps) : 0;
   return {
-    task, provider, key, model: pick.model, effort: provider === "anthropic" ? pick.effort : undefined, offer, sender: s, hash: profileHash(offer),
+    task, provider, key, model: pick.model, effort: key && provider === "anthropic" ? pick.effort : undefined, offer, sender: s, hash: profileHash(offer),
+    by: key ? undefined : "kestrel",
     system: task === "score" ? fitSystem(offer, s.about ?? "", activeServices) : task === "research" ? researchSystem() : task === "qc" ? qcSystem(offer, voiceNotes) : emailSystem(offer, s, seq?.steps, voiceNotes),
     schema: task === "score" ? FIT_SCHEMA : task === "research" ? RESEARCH_SCHEMA : task === "qc" ? QC_SCHEMA : sequenceSchema(followUps), followUps, seq, activeServices,
     voiceNotes, about
@@ -142,6 +143,11 @@ export function aiLeadError(res: {
   const raw = String(res.lastError || "");
   const statusCode = res.statusCode;
   const combined = `${err} ${raw}`;
+
+  // 0. Monthly Kestrel AI allowance exhausted
+  if (raw === "monthly_allowance_reached" || (res.status === "skipped" && /used up/i.test(err))) {
+    return { why: err, fatal: err };
+  }
 
   // 1. Real 429 / rate_limited
   if (

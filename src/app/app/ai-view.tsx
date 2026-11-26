@@ -347,7 +347,7 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
                       onBlur={(e) => { void saveSettings({ model: e.target.value }); }} />}
               </label>
             </div>
-            <p className="ai-key">{key ? <>Team key for {PROVIDERS[settings.provider].label} ends in <b>{key.last4}</b>.</> : <>No {PROVIDERS[settings.provider].label} key for the team yet. <button type="button" className="link-btn" onClick={() => go("connections")}>Add it in Integrations → Services</button>, or use Claude Code below.</>}</p>
+            <p className="ai-key">{key ? <>Team key for {PROVIDERS[settings.provider].label} ends in <b>{key.last4}</b>.</> : <>Using Kestrel AI included with your plan. Optional: <button type="button" className="link-btn" onClick={() => go("connections")}>use your own key in Integrations → Services</button>.</>}</p>
           </section>
 
           <section className="join-card prof-form">
@@ -385,9 +385,9 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
           <div><b>Judge leads <Tip text={HELP.judge} /></b>
             <p>{toJudge.length ? `${toJudge.length.toLocaleString()} leads are not judged for this offer yet. Cost ${usd(estimate(toJudge.length, settings.provider, settings.model, "score"))}.` : "Every lead is judged for this offer."}</p></div>
           <div className="join-row">
-            <button type="button" className="btn go" disabled={!canRun || !key || !toJudge.length} onClick={() => start("score")}>Judge {toJudge.length.toLocaleString()} {toJudge.length === 1 ? "lead" : "leads"}</button>
+            <button type="button" className="btn go" disabled={!canRun || !toJudge.length} onClick={() => start("score")}>Judge {toJudge.length.toLocaleString()} {toJudge.length === 1 ? "lead" : "leads"}</button>
           </div>
-          {toJudge.length && !(canRun && key) ? <p className="camp-note">{!offer.id ? "Save your offer first (above)." : !key ? <>Needs an AI key: <button type="button" className="link-btn" onClick={() => go("connections")}>add one in Integrations → Services</button>, or use Claude Code (no key) below.</> : busy ? "Working…" : !editable ? "Viewers cannot run AI." : ""}</p> : null}
+          {toJudge.length && !canRun ? <p className="camp-note">{!offer.id ? "Save your offer first (above)." : busy ? "Working…" : !editable ? "Viewers cannot run AI." : ""}</p> : null}
         </section>
         <section className="join-card">
           <div><b>Write emails <Tip text={HELP.write} /></b>
@@ -402,7 +402,7 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
             {followUps ? <label className="seq-check"><input type="checkbox" checked={redo} onChange={(e) => setRedo(e.target.checked)} /> Also redo drafts without follow-ups <Tip text={HELP.redo} /></label> : <span />}
           </div>
           <div className="join-row">
-            <button type="button" className="btn go" disabled={!canRun || !key || !toWrite.length || missing.length > 0} onClick={() => start("emails")}>Write {toWrite.length.toLocaleString()} {followUps ? (toWrite.length === 1 ? "sequence" : "sequences") : (toWrite.length === 1 ? "email" : "emails")}</button>
+            <button type="button" className="btn go" disabled={!canRun || !toWrite.length || missing.length > 0} onClick={() => start("emails")}>Write {toWrite.length.toLocaleString()} {followUps ? (toWrite.length === 1 ? "sequence" : "sequences") : (toWrite.length === 1 ? "email" : "emails")}</button>
             <button type="button" className="link-btn" onClick={() => go("sequences")}>Edit sequences</button>
           </div>
         </section>

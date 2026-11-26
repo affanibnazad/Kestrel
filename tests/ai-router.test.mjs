@@ -702,3 +702,224 @@ describe("AI Lead Error Honest Classification (Real runAiTask -> aiLeadError)", 
     assert.throws(() => callTimeout({ ...base, deadlineAt: now + 100 }, 1), /timeout/);
   });
 });
+
+describe("AI-4a Kestrel-Paid AI & Monthly Allowance", () => {
+  it("team without key -> Kestrel Swift model used, source kestrel", async () => {
+    let calledModel = "";
+    const sb = {
+      from: (table) => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () =>
+              table === "teams"
+                ? { data: { plan: "starter", active: true }, error: null }
+                : { data: null, error: null },
+          }),
+        }),
+      }),
+      rpc: async (fn, args) => {
+        if (fn === "ai_key_for_server") return { data: null, error: null };
+        if (fn === "ai_slot_for_server" && args?.p_slot === "swift") {
+          return { data: { slot: "swift", provider: "groq", model: "llama-swift-fast", key: "kestrel-swift-key", enabled: true }, error: null };
+        }
+        if (fn === "ai_usage_this_month") return { data: 5, error: null };
+        if (fn === "my_account") return { data: { plan: "starter", active: true }, error: null };
+        return { data: null, error: null };
+      },
+    };
+
+    const res = await runAiTask({
+      sb,
+      teamId: "team-no-key",
+      task: "score",
+      system: "s",
+      user: "u",
+      providerFn: async (p) => {
+        calledModel = p.model;
+        return { text: '{"fit":8,"verdict":"good","reason":"ok"}', usage: { input_tokens: 5, output_tokens: 5 } };
+      },
+      logRunFn: async () => {},
+    });
+
+    assert.equal(res.ok, true);
+    assert.equal(res.source, "kestrel");
+    assert.equal(res.slot, "swift");
+    assert.equal(calledModel, "llama-swift-fast");
+  });
+
+  it("team with key -> team key used, allowance NOT checked", async () => {
+    let allowanceChecked = false;
+    const sb = {
+      from: () => ({
+        select: () => ({
+          eq: (_col, val) => ({
+            maybeSingle: async () => ({
+              data: { team_id: val, provider: "anthropic", model: "claude-haiku-5-5" },
+              error: null,
+            }),
+          }),
+        }),
+      }),
+      rpc: async (fn) => {
+        if (fn === "ai_key_for_server") return { data: "team-own-key-123", error: null };
+        if (fn === "ai_usage_this_month") {
+          allowanceChecked = true;
+          return { data: 99999, error: null };
+        }
+        return { data: null, error: null };
+      },
+    };
+
+    const res = await runAiTask({
+      sb,
+      teamId: "team-with-key",
+      task: "score",
+      system: "s",
+      user: "u",
+      providerFn: async () => ({ text: "ok", usage: { input_tokens: 5, output_tokens: 5 } }),
+      logRunFn: async () => {},
+    });
+
+    assert.equal(res.ok, true);
+    assert.equal(res.source, "team_key");
+    assert.equal(allowanceChecked, false, "ai_usage_this_month must NOT be called when using team_key");
+  });
+
+  it("team key 401 -> honest error, Kestrel key NOT used", async () => {
+    const keysUsed = [];
+    const sb = {
+      from: () => ({
+        select: () => ({
+          eq: (_col, val) => ({
+            maybeSingle: async () => ({
+              data: { team_id: val, provider: "anthropic", model: "claude-haiku-5-5" },
+              error: null,
+            }),
+          }),
+        }),
+      }),
+      rpc: async (fn) => {
+        if (fn === "ai_key_for_server") return { data: "bad-team-key", error: null };
+        if (fn === "ai_slot_for_server") {
+          return { data: { slot: "swift", provider: "groq", model: "swift-model", key: "kestrel-secret-key", enabled: true }, error: null };
+        }
+        return { data: null, error: null };
+      },
+    };
+
+    const res = await runAiTask({
+      sb,
+      teamId: "team-bad-key",
+      task: "score",
+      system: "s",
+      user: "u",
+      retries: 0,
+      providerFn: async (p) => {
+        keysUsed.push(p.key);
+        throw new ProviderCallError("Invalid API key", 401);
+      },
+      logRunFn: async () => {},
+    });
+
+    assert.equal(res.ok, false);
+    assert.equal(res.source, "team_key");
+    assert.deepEqual(keysUsed, ["bad-team-key"], "Kestrel key must NOT be called when team key fails");
+    const mapped = aiLeadError(res);
+    assert.equal(mapped.why, "Your AI key was rejected. Check Settings → AI.");
+  });
+
+  it("usage = allowance -> provider NOT called, status skipped, used-up message returned", async () => {
+    let providerCalled = false;
+    const logged = [];
+    const sb = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: { plan: "trial", active: true }, error: null }),
+          }),
+        }),
+      }),
+      rpc: async (fn, args) => {
+        if (fn === "ai_key_for_server") return { data: null, error: null };
+        if (fn === "ai_slot_for_server" && args?.p_slot === "swift") {
+          return { data: { slot: "swift", provider: "groq", model: "llama-swift-fast", key: "kestrel-swift-key", enabled: true }, error: null };
+        }
+        if (fn === "ai_usage_this_month") return { data: 100, error: null }; // trial allowance = 100
+        if (fn === "my_account") return { data: { plan: "trial", active: true }, error: null };
+        return { data: null, error: null };
+      },
+    };
+
+    const res = await runAiTask({
+      sb,
+      teamId: "team-exhausted",
+      task: "score",
+      system: "s",
+      user: "u",
+      providerFn: async () => {
+        providerCalled = true;
+        return { text: "should not run", usage: { input_tokens: 1, output_tokens: 1 } };
+      },
+      logRunFn: async (...args) => {
+        logged.push({ source: args[6], status: args[12], error: args[13] });
+      },
+    });
+
+    assert.equal(providerCalled, false, "provider must NOT be called when allowance is used up");
+    assert.equal(res.ok, false);
+    assert.equal(res.status, "skipped");
+    assert.match(res.error, /^This month's Kestrel AI is used up\. It resets on .+\.$/);
+    assert.equal(logged.length, 1);
+    assert.equal(logged[0].status, "skipped");
+    assert.equal(logged[0].source, "kestrel");
+  });
+
+  it("write on Kestrel -> uses Swift slot model, not Talon/Sonnet", async () => {
+    let calledModel = "";
+    const requestedSlots = [];
+    const sb = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+          }),
+        }),
+      }),
+      rpc: async (fn, args) => {
+        if (fn === "ai_key_for_server") return { data: null, error: null };
+        if (fn === "ai_slot_for_server") {
+          requestedSlots.push(args?.p_slot);
+          if (args?.p_slot === "swift") {
+            return { data: { slot: "swift", provider: "groq", model: "llama-swift-fast", key: "kestrel-swift-key", enabled: true }, error: null };
+          }
+          if (args?.p_slot === "talon") {
+            return { data: { slot: "talon", provider: "anthropic", model: "claude-sonnet-5-5", key: "kestrel-talon-key", enabled: true }, error: null };
+          }
+        }
+        if (fn === "ai_usage_this_month") return { data: 0, error: null };
+        if (fn === "my_account") return { data: { plan: "pro", active: true }, error: null };
+        return { data: null, error: null };
+      },
+    };
+
+    const res = await runAiTask({
+      sb,
+      teamId: "team-write-kestrel",
+      task: "write",
+      system: "s",
+      user: "u",
+      providerFn: async (p) => {
+        calledModel = p.model;
+        return { text: '{"subject":"hi","body":"hello"}', usage: { input_tokens: 10, output_tokens: 10 } };
+      },
+      logRunFn: async () => {},
+    });
+
+    assert.equal(res.ok, true);
+    assert.equal(res.source, "kestrel");
+    assert.equal(res.slot, "swift");
+    assert.equal(requestedSlots[0], "swift");
+    assert.equal(requestedSlots.includes("talon"), false);
+    assert.equal(calledModel, "llama-swift-fast");
+  });
+});

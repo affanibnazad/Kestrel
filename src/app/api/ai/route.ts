@@ -5,7 +5,7 @@ import { currentUser, supabaseServer } from "@/lib/supabase/server";
 import { aiOne, aiPlan, writeChecked } from "@/lib/lead-steps";
 import { cleanVoiceNotes, readJson, voiceSystem, VOICE_SCHEMA, type Offer, type Provider } from "@/lib/ai";
 import { aboutForAi, cleanAbout } from "@/lib/about";
-import { AI_TASKS, runAiTask } from "@/lib/ai-router";
+import { AI_TASKS, checkKestrelAllowance, runAiTask } from "@/lib/ai-router";
 import { LABEL_SCHEMA, LABEL_SYSTEM } from "@/lib/inbox";
 
 // AI in the App: judges leads (Good / Maybe / No) or writes the personal parts of first emails, a few leads per call.
@@ -226,6 +226,17 @@ export async function POST(request: Request) {
     catch { return NextResponse.json({ error: "Could not check your Do-not-contact list just now. Try again in a minute." }, { status: 503 }); }
   }
   const done: Record<string, unknown>[] = [], skipped: { id: string; why: string }[] = [];
+  if (typeof key !== "string" || !key) {
+    const limit = await checkKestrelAllowance(sb, batchTeamId);
+    if (!limit.allowed) {
+      return NextResponse.json({
+        done: [],
+        skipped: leads.map((l) => ({ id: l.id, why: limit.message! })),
+        cost: 0,
+        error: limit.message!,
+      });
+    }
+  }
   let cost: number | null = 0, fatal = "";
   const one = async (l: (typeof leads)[number]) => {
     if (fatal) return;
@@ -241,10 +252,10 @@ export async function POST(request: Request) {
     cost = cost === null || r.cost === null ? null : cost + r.cost;
     if (!r.ok) {
       console.log(`[ai-route] task=${task} lead=${l.id} not ok: ${r.why || r.fatal}`);
+      if (r.fatal) fatal = r.fatal;
       if (r.why) {
         skipped.push({ id: l.id, why: r.why });
       } else if (r.fatal) {
-        fatal = r.fatal;
         skipped.push({ id: l.id, why: r.fatal });
       }
       return;
@@ -279,6 +290,14 @@ export async function POST(request: Request) {
       break;
     }
     await Promise.all(leads.slice(i, i + AT_ONCE).map(one));
+    if (fatal) {
+      for (const rem of leads.slice(i + AT_ONCE)) {
+        if (!skipped.some((s) => s.id === rem.id)) {
+          skipped.push({ id: rem.id, why: fatal });
+        }
+      }
+      break;
+    }
   }
   if (stoppedEarly && remainingIds.length) {
     for (const remId of remainingIds) {
