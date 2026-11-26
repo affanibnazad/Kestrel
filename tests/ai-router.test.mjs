@@ -4,10 +4,10 @@ import fs from "node:fs";
 import http from "node:http";
 
 // Import REAL source modules using tsx TypeScript & @/ alias support
-import { aiLeadError } from "@/lib/lead-steps";
+import { aiLeadError, aiAnswer } from "@/lib/lead-steps";
 import { runAiTask, AI_TASKS } from "@/lib/ai-router";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
-import { readJson } from "@/lib/ai";
+import { readJson, EMPTY_SENDER } from "@/lib/ai";
 
 // Ensure server secret is valid for standalone test runner
 process.env.MAIL_SERVER_SECRET = "1234567890123456789012345678901234";
@@ -700,5 +700,67 @@ describe("AI Lead Error Honest Classification (Real runAiTask -> aiLeadError)", 
     assert.ok(callTimeout(base, 0) <= 4_000);
     assert.ok(callTimeout(base, 1) <= 10_000 && callTimeout(base, 1) > 4_000);
     assert.throws(() => callTimeout({ ...base, deadlineAt: now + 100 }, 1), /timeout/);
+  });
+});
+
+
+// ── Score keeps / revokes outreach_approved ─────────────────────────
+describe("Score: outreach_approved preservation", () => {
+  // Minimal AiPlan stub for task=score
+  const basePlan = {
+    task: "score",
+    provider: "groq",
+    key: "test-key",
+    model: "test",
+    offer: { name: "Test", offer: "test", customer: "test", good: "good", bad: "bad", one_line: "test" },
+    sender: { ...EMPTY_SENDER },
+    hash: "testhash",
+    system: "",
+    schema: {},
+    followUps: 0,
+    seq: null,
+    activeServices: [],
+  };
+
+  const goodAnswer = { verdict: "good", fit: 85, reason: "Great fit" };
+  const badAnswer  = { verdict: "no",   fit: 10, reason: "Not a fit" };
+
+  it("approved Good lead re-scored Good → stays approved", () => {
+    const lead = { id: "aaa", email: "a@b.com", data: {}, outreach_approved: true };
+    const r = aiAnswer(basePlan, lead, goodAnswer);
+    assert.equal(r.ok, true);
+    assert.equal(r.patch.outreach_approved, true, "column must stay true");
+    assert.equal(r.patch.data.outreach_approved, true, "data field must stay true");
+  });
+
+  it("approved Good lead re-scored Bad → becomes unapproved", () => {
+    const lead = { id: "bbb", email: "b@b.com", data: {}, outreach_approved: true };
+    const r = aiAnswer(basePlan, lead, badAnswer);
+    assert.equal(r.ok, true);
+    assert.equal(r.patch.outreach_approved, false, "column must become false");
+    assert.equal(r.patch.data.outreach_approved, false, "data field must become false");
+  });
+
+  it("unapproved lead re-scored Good → stays unapproved", () => {
+    const lead = { id: "ccc", email: "c@b.com", data: {}, outreach_approved: false };
+    const r = aiAnswer(basePlan, lead, goodAnswer);
+    assert.equal(r.ok, true);
+    assert.equal(r.patch.outreach_approved, false, "unapproved stays false even if Good");
+    assert.equal(r.patch.data.outreach_approved, false, "data field stays false");
+  });
+
+  it("lead without outreach_approved scored Good → stays false", () => {
+    const lead = { id: "ddd", email: "d@b.com", data: {} };
+    const r = aiAnswer(basePlan, lead, goodAnswer);
+    assert.equal(r.ok, true);
+    assert.equal(r.patch.outreach_approved, false, "undefined → false");
+  });
+
+  it("approved lead re-scored Maybe → becomes unapproved", () => {
+    const lead = { id: "eee", email: "e@b.com", data: {}, outreach_approved: true };
+    const maybeAnswer = { verdict: "maybe", fit: 50, reason: "Unclear" };
+    const r = aiAnswer(basePlan, lead, maybeAnswer);
+    assert.equal(r.ok, true);
+    assert.equal(r.patch.outreach_approved, false, "Maybe revokes approval");
   });
 });
