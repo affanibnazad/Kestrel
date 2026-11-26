@@ -4,6 +4,7 @@ import { deliver, type OutboxItem } from "@/lib/integrations";
 import type { ImapFlow } from "imapflow";
 import { imapClient, smtpTransport } from "@/lib/mail-connect";
 import { plainMailError, scanMailboxes, withImapClient, type ImapLike, type ScanBox } from "@/lib/mail-scan";
+import { runDueAiJobs } from "@/lib/ai-jobs";
 import { createClient } from "@supabase/supabase-js";
 import { answerMessage, readAnswer, type Answer } from "@/lib/answer-mail";
 import { SUPABASE_KEY, SUPABASE_URL } from "@/lib/supabase/config";
@@ -178,6 +179,14 @@ export async function POST(request: Request) {
     await sb.rpc("integration_report", { server_secret: secret, item: item.id, success: r.ok, http_status: r.status, err: r.error || null });
     if (r.ok) delivered++;
   }));
+  // Phase 7 (AI-4b): run up to 2 queued AI jobs in parallel if >= 19s remain, then clean up old events/jobs.
+  const aiJobs = left() >= 19_000
+    ? await runDueAiJobs({ sb: sb as never, secret, phaseDeadlineMs: Math.min(15_000, left() - 4_000), maxJobs: 2 })
+    : { claimed: 0, done: 0, retried: 0, skipped: 0, error: 0 };
+  if (left() > 3_000) {
+    await Promise.resolve(sb.rpc("cleanup_ai_jobs_and_events", { server_secret: secret })).catch(() => {});
+  }
+
   return Response.json({ tasks: tasks ?? 0, delivered, answered, due: due.length, sent: results.filter((r) => r === "sent").length, replied: results.filter((r) => r === "replied").length,
-    failed: results.filter((r) => r === "failed").length, scanned, monitored });
+    failed: results.filter((r) => r === "failed").length, scanned, monitored, aiJobs });
 }

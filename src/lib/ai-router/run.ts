@@ -47,6 +47,9 @@ export type RunAiTaskParams = {
   // this task name instead (ai_usage_this_month leaves these names out) and the allowance is not checked first.
   // "slot_test": Owner -> AI Test clicks. "reply_label_auto": Replies labelling new replies when the inbox loads.
   uncounted?: UncountedTask;
+  // Server-to-server context (e.g. /api/mail/tick with no auth.uid()) passes serverSecret + preloaded team settings/plan.
+  serverSecret?: string;
+  serverTeamAi?: { provider?: string | null; model?: string | null; key?: string | null; plan?: { plan?: string | null; paid_until?: string | null; access_until?: string | null; access_plan?: string | null } | null };
 };
 
 export type UncountedTask = "slot_test" | "reply_label_auto";
@@ -234,11 +237,15 @@ async function resolveKestrelSlot(
 // Check monthly Kestrel-paid AI allowance for a team (chat has its own daily limit and does not count here).
 export async function checkKestrelAllowance(
   sb: Sb,
-  teamId: string
+  teamId: string,
+  opts?: { serverSecret?: string; planData?: { plan?: string | null; active?: boolean | null; paid_until?: string | null; access_until?: string | null; access_plan?: string | null } | null }
 ): Promise<{ allowed: boolean; used: number; allowance: number; message?: string; code?: string }> {
+  const usageArgs = opts?.serverSecret
+    ? { server_secret: opts.serverSecret, p_team_id: teamId }
+    : { p_team_id: teamId };
   const [usageRes, acctRes] = await Promise.all([
-    sb.rpc("ai_usage_this_month", { p_team_id: teamId }),
-    sb.rpc("my_account"),
+    sb.rpc("ai_usage_this_month", usageArgs),
+    opts?.serverSecret ? Promise.resolve({ data: opts.planData ?? null }) : sb.rpc("my_account"),
   ]);
 
   let planData = acctRes?.data as {
@@ -249,7 +256,7 @@ export async function checkKestrelAllowance(
     access_plan?: string | null;
   } | null;
 
-  if (!planData) {
+  if (!planData && !opts?.serverSecret) {
     const teamRes = await sb.from("teams").select("plan,paid_until").eq("id", teamId).maybeSingle();
     planData = (teamRes?.data as typeof planData) ?? null;
   }
@@ -280,12 +287,26 @@ export async function resolveModelForSlot(
   sb: Sb,
   teamId: string,
   slot: AiSlot,
-  task: AiTaskName
+  task: AiTaskName,
+  serverTeamAi?: RunAiTaskParams["serverTeamAi"]
 ): Promise<ModelResolution | ResolveError> {
   const secret = serverSecret();
 
   // 1. Kestrel AI tasks ALWAYS use Kestrel's AI (ai_slots first, then safe-rollout fallback)
   if (KESTREL_ALWAYS_TASKS.has(task)) {
+    return resolveKestrelSlot(sb, slot);
+  }
+
+  // Server-to-server worker context: never query team_ai with anon key; use preloaded RPC context.
+  if (serverTeamAi) {
+    if (serverTeamAi.key && serverTeamAi.provider) {
+      const provider = serverTeamAi.provider as Provider;
+      const pick = modelForTask(provider, String(serverTeamAi.model ?? ""), slot === "swift" ? "score" : "emails");
+      if (!pick.model) {
+        return { error: `Your team has no model configured for ${task}. Choose one in Settings → Connections.` };
+      }
+      return { provider, model: pick.model, key: serverTeamAi.key, source: "team_key", slot };
+    }
     return resolveKestrelSlot(sb, slot);
   }
 
@@ -440,7 +461,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   if (params.resolution) {
     currentResolution = params.resolution;
   } else {
-    const resolution = await resolveModelForSlot(sb, teamId, cfg.slot, task);
+    const resolution = await resolveModelForSlot(sb, teamId, cfg.slot, task, params.serverTeamAi);
     if ("error" in resolution) {
       if (resolution.code) {
         return { ok: false, error: resolution.customer ?? CUSTOMER_ERROR_MESSAGE, status: "skipped", slot: currentSlot, lastError: resolution.code, statusCode: 403 };
@@ -455,7 +476,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
 
   // Check monthly Kestrel AI allowance before every Kestrel-paid call (chat has its own daily limit).
   if (currentResolution.source === "kestrel" && task !== "chat" && !params.uncounted) {
-    const limit = await checkKestrelAllowance(sb, teamId);
+    const limit = await checkKestrelAllowance(sb, teamId, params.serverSecret ? { serverSecret: params.serverSecret, planData: params.serverTeamAi?.plan ?? null } : undefined);
     if (!limit.allowed) {
       await logRunImpl(
         sb,

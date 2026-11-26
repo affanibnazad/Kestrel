@@ -38,6 +38,8 @@ export type AiPlan = {
   teamId?: string;
   userId?: string | null;
   deadlineMs?: number;
+  serverSecret?: string;
+  serverTeamAi?: import("./ai-router/run").RunAiTaskParams["serverTeamAi"];
   providerFn?: typeof import("./ai-router/providers").callProvider;
 };
 // Checks the offer, sender, model and sequence, and builds what every lead in the batch shares. Returns an error in plain words.
@@ -116,6 +118,8 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
         maxTokens: p.task === "emails" ? 2500 : p.task === "research" ? 800 : 1500,
         effort: p.effort,
         deadlineMs: p.deadlineMs,
+        serverSecret: p.serverSecret,
+        serverTeamAi: p.serverTeamAi,
         providerFn: p.providerFn,
       });
       if (!res.ok) {
