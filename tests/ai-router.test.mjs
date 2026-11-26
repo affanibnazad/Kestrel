@@ -8,6 +8,7 @@ import { aiLeadError, aiAnswer, aiOne, NEEDS_RESEARCH } from "@/lib/lead-steps";
 import { runAiTask, AI_TASKS } from "@/lib/ai-router";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
 import { readJson, EMPTY_SENDER, assemble, emailSystem, emailPayload, qcSystem, cleanParts, cleanQc, hasObservations, cleanResearch, numbersNotInQuote } from "@/lib/ai";
+import { trustedFirstName } from "@/lib/email-check";
 
 // Ensure server secret is valid for standalone test runner
 process.env.MAIL_SERVER_SECRET = "1234567890123456789012345678901234";
@@ -1142,5 +1143,52 @@ describe("Email writer: facts only, no invented claims", () => {
     assert.match(q, /We build fast, scalable Next\.js web applications\./);
     assert.match(q, /assumes nothing and is valid/);
     assert.match(emailSystem(offer, sender), /must assume NOTHING about the lead/);
+  });
+});
+
+
+// ── Research contact first names ────────────────────────────────────
+describe("Research: verified contact names", () => {
+  it("cleanResearch keeps contacts whose name, role, and quote appear verbatim in siteText, and drops others", () => {
+    const site = "About Acme. Leadership: Jane Doe, Co-Founder & CEO leads product. Built for fast teams.";
+    const r = cleanResearch({
+      observations: [{ fact: "Built for fast teams", quote: "Built for fast teams." }],
+      contacts: [
+        { name: "Jane Doe", role: "Co-Founder & CEO", quote: "Jane Doe, Co-Founder & CEO leads product" },
+        { name: "Bob Smith", role: "CTO", quote: "Bob Smith, CTO runs infra" },
+        { name: "Support Team", role: "Support", quote: "Jane Doe, Co-Founder & CEO leads product" },
+      ],
+      hypotheses: [],
+      unknowns: [],
+      problem: "",
+      how: "",
+      detail: "",
+      sure: "high",
+    }, site, "acme.com");
+    assert.ok(r);
+    assert.equal(r.contacts?.length, 1);
+    assert.equal(r.contacts?.[0].name, "Jane Doe");
+    assert.equal(r.contacts?.[0].role, "Co-Founder & CEO");
+  });
+
+  it("emailPayload and trustedFirstName use verified research contact for generic email, never override personal email", () => {
+    const researchContacts = [{ name: "Jane Doe", role: "CEO", quote: "Jane Doe, CEO" }];
+
+    // Generic email -> uses Jane
+    const genericLead = { name: "Acme", email: "team@acme.com", research: { observations: [{ fact: "x", quote: "y" }], contacts: researchContacts } };
+    const p1 = emailPayload(genericLead);
+    assert.equal(p1.contact_name, "Jane Doe");
+    assert.equal(trustedFirstName("Jane", { name: "Acme", email: "team@acme.com", researchContacts }), "Jane");
+
+    // Personal email alice@ -> keeps Alice, rejects Jane
+    const personalLead = { name: "Acme", email: "alice@acme.com", research: { observations: [{ fact: "x", quote: "y" }], contacts: researchContacts } };
+    const p2 = emailPayload(personalLead);
+    assert.equal(p2.contact_name, "");
+    assert.equal(p2.name_from_email, "Alice");
+    assert.equal(trustedFirstName("Jane", { name: "Acme", email: "alice@acme.com", researchContacts }), "there");
+    assert.equal(trustedFirstName("Alice", { name: "Acme", email: "alice@acme.com", researchContacts }), "Alice");
+
+    // No contacts anywhere -> "there"
+    assert.equal(trustedFirstName("Jane", { name: "Acme", email: "team@acme.com", researchContacts: [] }), "there");
   });
 });

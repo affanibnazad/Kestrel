@@ -79,13 +79,19 @@ export function nameFromEmail(raw: string | null | undefined, company?: string |
 // The greeting name the email may use (19 Nov 2026: "Hi Social," for "Social HQ"). The AI's first_name is used only
 // when it is a real person's first name Kestrel has for this lead: from a contact person or from the email address
 // (e.g. sarah@…). Otherwise the email says "Hi there,". Never the company name.
-export function trustedFirstName(aiName: string | null | undefined, lead: { name?: string | null; email?: string | null; contacts?: { name?: string | null }[] | null }): string {
+export function trustedFirstName(
+  aiName: string | null | undefined,
+  lead: { name?: string | null; email?: string | null; contacts?: { name?: string | null }[] | null; researchContacts?: { name?: string | null }[] | null },
+): string {
   const want = String(aiName ?? "").trim().toLowerCase();
   if (!want || want === "there") return "there";
-  const firsts = [
-    ...(lead.contacts ?? []).map((c) => String(c?.name ?? "").trim().split(/\s+/)[0]),
-    nameFromEmail(lead.email ?? "", lead.name ?? ""),
-  ].filter(Boolean);
+  const fromEmail = nameFromEmail(lead.email ?? "", lead.name ?? "");
+  const contactFirsts = (lead.contacts ?? []).map((c) => String(c?.name ?? "").trim().split(/\s+/)[0]).filter(Boolean);
+  // Only use research contacts when no personal name came from the email, or it matches that email's first name.
+  const researchFirsts = (!fromEmail ? (lead.researchContacts ?? []) : (lead.researchContacts ?? []).filter((c) => String(c?.name ?? "").trim().split(/\s+/)[0]?.toLowerCase() === fromEmail.toLowerCase()))
+    .map((c) => String(c?.name ?? "").trim().split(/\s+/)[0])
+    .filter(Boolean);
+  const firsts = [...contactFirsts, ...(fromEmail ? [fromEmail] : []), ...researchFirsts];
   const hit = firsts.find((f) => f.toLowerCase() === want);
   return hit ? greetName(hit, lead.name) : "there";
 }

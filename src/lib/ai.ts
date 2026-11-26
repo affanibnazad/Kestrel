@@ -42,8 +42,10 @@ export type LeadData = Record<string, unknown> & {
 };
 // Blueprint Stage C: Evidence items extracted from lead's own website
 export type Observation = { fact: string; quote: string; url?: string };
+export type ResearchContact = { name: string; role: string; quote: string; url?: string };
 export type Research = {
   observations: Observation[];
+  contacts?: ResearchContact[];
   hypotheses: string[];
   unknowns: string[];
   problem?: string;
@@ -170,6 +172,21 @@ export const RESEARCH_SCHEMA = {
       },
       description: "Facts seen on the site, each with the exact quote and URL it came from.",
     },
+    contacts: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Full name of a real person at this company." },
+          role: { type: "string", description: "Their role or title at the company." },
+          quote: { type: "string", description: "Verbatim quote from the page text containing both the person's name and role." },
+          url: { type: "string", description: "The website host or page URL." },
+        },
+        required: ["name", "role", "quote"],
+        additionalProperties: false,
+      },
+      description: "Real people on the company's own site with a verbatim quote containing name and role; [] if none.",
+    },
     hypotheses: {
       type: "array",
       items: { type: "string" },
@@ -185,7 +202,7 @@ export const RESEARCH_SCHEMA = {
     detail: { type: "string", description: "One specific, true detail from their website that only they have (a client, project, product, launch, niche or hiring), under 20 words." },
     sure: { type: "string", enum: ["high", "low"], description: "high when the website clearly shows it, low when it is a guess from little text." },
   },
-  required: ["observations", "hypotheses", "unknowns", "problem", "how", "detail", "sure"],
+  required: ["observations", "contacts", "hypotheses", "unknowns", "problem", "how", "detail", "sure"],
   additionalProperties: false,
 };
 export function researchSystem() {
@@ -198,6 +215,7 @@ Output Requirements:
   * "fact": the specific fact observed.
   * "quote": an EXACT, VERBATIM quote copied word-for-word from the provided website text that proves this fact. Never paraphrase or alter the quote. Quotes not found in the page text will be dropped.
   * "url": the website host or URL.
+- contacts: 0 to 3 real people who work at this company (founders, executives, or team members) ONLY when both their full name and role appear in an exact verbatim quote from the website text (e.g. "Jane Doe, Co-Founder & CEO"). Never include blog authors, customers, testimonials, or guessed names. Return [] if none are named.
 - hypotheses: 1 to 3 reasonable guesses or inferences derived from the observations regarding their business model, audience, or operations. Clearly prefix or phrase each as a guess (e.g. "Guess: ..."). Never assume software, technology, or agency needs unless explicitly stated on their website.
 - unknowns: 1 to 3 key things that could not be found or verified on their website.
 - problem: one plain sentence under 25 words describing an operational bottleneck, pain point, or business challenge evident from their site. Do NOT pitch or mention any external services.
@@ -215,6 +233,35 @@ export function numbersNotInQuote(fact: string, quote: string): string[] {
   return nums(fact).filter((n) => !inQuote.has(n));
 }
 const RESEARCH_BAD = /https?:|www\.|@|<|>|\{\{|\[[A-Z_]{3,}\]/i;
+const NOT_PERSON_WORDS = /\b(team|support|admin|sales|info|contact|press|office|studio|agency|media|group|company|ltd|limited|llc|inc|gmbh)\b/i;
+
+function cleanResearchContacts(raw: unknown, normalizedSiteText: string, host: string): ResearchContact[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ResearchContact[] = [];
+  const seen = new Set<string>();
+  const norm = (s: string) => s.replace(/["'“”‘’]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const name = String(rec.name ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+    const role = String(rec.role ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+    const quote = String(rec.quote ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
+    const url = String(rec.url ?? host).slice(0, 200);
+    if (!name || !quote || RESEARCH_BAD.test(name) || RESEARCH_BAD.test(role) || NOT_PERSON_WORDS.test(name)) continue;
+    const words = name.split(/\s+/);
+    if (words.length < 2 || words.length > 4 || words.some((w) => !/^[A-Za-z][A-Za-z'.-]{0,24}$/.test(w))) continue;
+    const nq = norm(quote);
+    if (normalizedSiteText && (nq.length < 4 || !normalizedSiteText.includes(nq))) continue;
+    if (!nq.includes(norm(name))) continue;
+    if (role && !nq.includes(norm(role))) continue;
+    const key = norm(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, role, quote, ...(url ? { url } : {}) });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
 export function cleanResearch(d: Record<string, unknown> | null, siteText?: string, host = ""): Omit<Research, "host" | "by" | "at"> & { dropped_observations?: Observation[] } | null {
   if (!d) return null;
   const f = (k: string, n: number) => String(d[k] ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
@@ -263,8 +310,11 @@ export function cleanResearch(d: Record<string, unknown> | null, siteText?: stri
     .map((u) => String(u ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200))
     .filter((u) => u.length > 3);
 
+  const contacts = cleanResearchContacts(d.contacts, normalizedSiteText, host);
+
   return {
     observations: validObs,
+    ...(contacts.length > 0 ? { contacts } : {}),
     hypotheses,
     unknowns,
     problem: problem || undefined,
@@ -682,14 +732,23 @@ export function leadPayload(l: LeadData) {
 export const hasObservations = (l: LeadData | null | undefined) =>
   (l?.research?.observations ?? []).some((o) => String(o?.quote || "").trim().length > 0);
 export function emailPayload(l: LeadData) {
-  const person = (l.contacts || []).find((c) => c && c.name);
-  const fromEmail = person?.name ? "" : nameFromEmail(typeof l.email === "string" ? l.email : "", l.name);
+  const email = typeof l.email === "string" ? l.email : "";
+  const direct = (l.contacts || []).find((c) => c && c.name);
+  const fromEmail = direct?.name ? "" : nameFromEmail(email, l.name);
   const r = l.research;
+  // Use a Research-verified contact only when no direct contact exists and the email isn't for a different person.
+  const researched = !direct?.name ? (r?.contacts || []).find((c) => {
+    if (!c?.name) return false;
+    if (!fromEmail) return true;
+    return c.name.trim().split(/\s+/)[0]?.toLowerCase() === fromEmail.toLowerCase();
+  }) : undefined;
+  const personName = direct?.name || researched?.name || "";
+  const personRole = direct ? direct.position || direct.role || "" : researched?.role || "";
   return {
     ...leadPayload(l),
     // The writer gets each observation's exact quote only: the "fact" is the AI's own rewording and can add things.
     ...(r ? { evidence: { observations: (r.observations || []).filter((o) => String(o?.quote || "").trim()).map((o) => ({ quote: o.quote })) } } : {}),
-    contact_name: person?.name || "", contact_role: person ? person.position || person.role || "" : "", name_from_email: fromEmail,
+    contact_name: personName, contact_role: personRole, name_from_email: fromEmail,
     // AI guesses (fit reason, research problem / how / detail): never facts. The writer and QC are told so.
     unverified_notes: { fit_reason: l.ai?.reason || "", ...(r ? { website_detail: r.detail, likely_problem: r.problem, how_they_work: r.how } : {}) },
   };
