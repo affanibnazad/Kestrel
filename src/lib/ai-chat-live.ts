@@ -15,15 +15,33 @@ import type { Step } from "@/lib/ai-chat-script";
 export type LiveMessage = { role: "user" | "assistant"; content: string; sig?: string };
 
 export type LiveResult =
-  | { kind: "live"; text: string; steps: Step[]; ai: string; usage: { used: number; limit: number } | null; sig?: string }
+  | { kind: "live"; text: string; steps: Step[]; thoughts: string[]; thoughtAt: number[]; ai: string; usage: { used: number; limit: number } | null; sig?: string }
   | { kind: "fallback" }
-  | { kind: "error"; error: string };
+  // partial: the answer text that had already been written when it failed (shown above the error).
+  | { kind: "error"; error: string; partial?: string; thoughts?: string[]; thoughtAt?: number[] };
 
-const step = (i: number, label: string): Step => ({ id: `live-${i}`, label, state: "done" });
+// What the page hears while the answer is being worked out.
+export type LiveListener = {
+  // The steps so far. The newest one is still running; the ones before it are done, with how long each took.
+  onSteps?: (steps: Step[]) => void;
+  // The model's own thinking so far (one entry per stretch of thinking), as it streams in. thoughtAt[i] is how
+  // many steps had started when thoughts[i] began, so the page can show thinking and steps in the order they happened.
+  onThinking?: (thoughts: string[], thoughtAt: number[]) => void;
+  // The answer written so far, as it streams in.
+  onText?: (text: string) => void;
+};
 
-// Ask the route. onStep is called as each step arrives, so the page can show the
-// work while it happens.
-export async function liveTurn(history: LiveMessage[], onStep?: (s: Step) => void): Promise<LiveResult> {
+// The page is told at most this often while text streams in, so a fast model does not re-draw the chat on every
+// token.
+const PAINT_MS = 32;
+
+// Ask the route. The listener hears each step and each piece of thinking as it arrives, so the page can show
+// the work while it happens.
+// (A bare function still works: it hears each new step, as the parked first chat expects.)
+export async function liveTurn(history: LiveMessage[], listener: LiveListener | ((s: Step) => void) = {}): Promise<LiveResult> {
+  const listen: LiveListener = typeof listener === "function"
+    ? { onSteps: (all) => listener(all[all.length - 1]) }
+    : listener;
   // No Supabase in this build, or nobody is logged in: keep the scripted answer.
   if (!supabaseReady) return { kind: "fallback" };
   try {
@@ -56,6 +74,32 @@ export async function liveTurn(history: LiveMessage[], onStep?: (s: Step) => voi
 
   // The route sends its steps as they happen, then the finished answer.
   const steps: Step[] = [];
+  const thoughts: string[] = [];
+  const thoughtAt: number[] = [];
+  let clientT0 = Date.now();  // the route's "start", on this browser's clock
+  let written = "";          // the answer text streamed so far
+  let newThought = true;     // the next piece of thinking starts a new entry (after a step or a tool note)
+  let paintTimer: ReturnType<typeof setTimeout> | null = null;
+  let dirtyThinking = false, dirtyText = false;
+  const paint = () => {
+    paintTimer = null;
+    if (dirtyThinking) { dirtyThinking = false; listen.onThinking?.([...thoughts], [...thoughtAt]); }
+    if (dirtyText) { dirtyText = false; listen.onText?.(written); }
+  };
+  const later = () => { if (!paintTimer) paintTimer = setTimeout(paint, PAINT_MS); };
+  const think = (t: string) => {
+    if (newThought || !thoughts.length) { thoughts.push(""); thoughtAt.push(steps.length); newThought = false; }
+    thoughts[thoughts.length - 1] += t;
+    dirtyThinking = true;
+    later();
+  };
+  // When each step started (ms since the question reached the route), so each step can show how long it took.
+  const startedAt: number[] = [];
+  const close = (until: number) => {
+    const last = steps.length - 1;
+    if (last < 0 || steps[last].state === "done") return;
+    steps[last] = { ...steps[last], state: "done", ms: Math.max(0, until - startedAt[last]) || undefined };
+  };
   let turn: { text?: unknown; messages?: unknown; ai?: unknown; usage?: unknown } | null = null;
   let failure = "";
   const contentType = res.headers.get("content-type") ?? "";
@@ -64,11 +108,38 @@ export async function liveTurn(history: LiveMessage[], onStep?: (s: Step) => voi
     // reading), this used to throw past the chat, which then stayed on "Thinking" forever.
     try {
       await readNdjson(res.body, (ev) => {
-        if (ev.t === "step" && typeof ev.text === "string") {
-          const s = step(steps.length + 1, ev.text);
-          steps.push(s);
-          onStep?.(s);
+        const at = typeof ev.at === "number" && Number.isFinite(ev.at) ? ev.at : NaN;
+        if (ev.t === "start") {
+          clientT0 = Date.now() - (Number.isFinite(at) ? at : 0);
+        } else if (ev.t === "step" && typeof ev.text === "string") {
+          close(at);
+          startedAt.push(at);
+          steps.push({ id: `live-${steps.length + 1}`, label: ev.text, state: "running" });
+          newThought = true;
+          listen.onSteps?.([...steps]);
+        } else if (ev.t === "think" && typeof ev.text === "string") {
+          think(ev.text);
+        } else if (ev.t === "text" && typeof ev.text === "string") {
+          // The answer has started: the last step is over.
+          if (!written) close(Date.now() - clientT0);
+          written = written ? written + ev.text : ev.text.replace(/^\s+/, "");
+          dirtyText = true;
+          later();
+        } else if (ev.t === "text_reset") {
+          // What was written was a note before a tool call: it moves into the thinking.
+          const note = written.trim();
+          written = "";
+          dirtyText = true;
+          if (note) { newThought = true; think(note); }
+          newThought = true;
+          later();
+        } else if (ev.t === "thought" && typeof ev.text === "string" && ev.text.trim()) {
+          // An older route sent whole pieces of thinking.
+          newThought = true;
+          think(ev.text.trim());
+          newThought = true;
         } else if (ev.t === "done") {
+          close(at);
           turn = ev.turn as typeof turn;
         } else if (ev.t === "error" && typeof ev.error === "string") {
           failure = ev.error;
@@ -84,7 +155,13 @@ export async function liveTurn(history: LiveMessage[], onStep?: (s: Step) => voi
     if (body && typeof body === "object") turn = body;
   }
 
-  if (failure) return { kind: "error", error: failure };
+  if (paintTimer) { clearTimeout(paintTimer); paint(); }
+  const keep = thoughts.map((t, i) => [t.trim(), thoughtAt[i]] as const).filter(([t]) => t);
+  const thoughtsOut = keep.map(([t]) => t);
+  const thoughtAtOut = keep.map(([, n]) => n);
+  // A step with no time (an older route) still finishes.
+  for (let i = 0; i < steps.length; i++) if (steps[i].state !== "done") steps[i] = { ...steps[i], state: "done" };
+  if (failure) return { kind: "error", error: failure, partial: written.trim() || undefined, thoughts: thoughtsOut, thoughtAt: thoughtAtOut };
   // The route filled this in from inside the stream callback.
   const answer = turn as { text?: unknown; messages?: unknown; ai?: unknown; usage?: unknown } | null;
   const text = answer && typeof answer.text === "string" ? answer.text : "";
@@ -100,6 +177,8 @@ export async function liveTurn(history: LiveMessage[], onStep?: (s: Step) => voi
     kind: "live",
     text,
     steps,
+    thoughts: thoughtsOut,
+    thoughtAt: thoughtAtOut,
     ai: answer && typeof answer.ai === "string" ? answer.ai : "Kestrel AI",
     usage: counted,
     sig: last && typeof last.sig === "string" ? last.sig : undefined,

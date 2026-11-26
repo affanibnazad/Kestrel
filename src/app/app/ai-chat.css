@@ -134,17 +134,88 @@
   to { opacity: 1; transform: none; }
 }
 
-/* the visible thinking process */
+/* the visible thinking process: live while Kestrel works, then folded into one line
+   ("Thought for 6s · 3 steps") that opens again on a click */
+.kchat-think { margin-bottom: 12px; }
 .kchat-botHead {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
   color: var(--k-muted);
   font-size: 13px;
 }
+/* the folded line is a quiet text button: no fill, no border, just the line */
+.kchat-page .kchat-thinkToggle {
+  margin: 0 0 0 -8px;
+  padding: 4px 10px 4px 8px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+.kchat-page .kchat-thinkToggle:hover { background: var(--k-hover); }
+.kchat-thinkToggle:focus-visible { outline: 2px solid var(--k-accent); outline-offset: 1px; }
 .kchat-thinkLabel { font-weight: 500; color: var(--k-text); }
+.kchat-thinkToggle .kchat-thinkLabel { color: var(--k-muted); }
+.kchat-thinkToggle:hover .kchat-thinkLabel { color: var(--k-text); }
 .kchat-thinkMeta { color: var(--k-faint); font-variant-numeric: tabular-nums; }
+.kchat-thinkChevron {
+  flex: none;
+  color: var(--k-faint);
+  transform: rotate(-90deg);
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.kchat-thinkOpen .kchat-thinkChevron { transform: none; }
+/* "Thinking" while Kestrel works: a soft light passes across the word */
+.kchat-shimmer {
+  background: linear-gradient(90deg, var(--k-faint) 0%, var(--k-faint) 35%, var(--k-text) 50%, var(--k-faint) 65%, var(--k-faint) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.9s linear infinite;
+}
+@keyframes shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+/* the body opens and folds smoothly (grid rows 0fr ↔ 1fr), with a thin guide line on
+   the left that ties the steps to the mark */
+.kchat-thinkBody {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease;
+}
+.kchat-thinkOpen .kchat-thinkBody { grid-template-rows: 1fr; opacity: 1; }
+.kchat-thinkInner {
+  min-height: 0;
+  overflow: hidden;
+  margin-left: 10px;
+  padding-left: 18px;
+  border-left: 1px solid var(--k-border);
+}
+.kchat-thinkOpen .kchat-thinkInner { padding-top: 10px; padding-bottom: 4px; }
+/* the model's own thinking, between the steps it led to: small, quiet text; a long stretch
+   scrolls inside a short window, newest line in view */
+.kchat-thought { animation: thoughtIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.kchat-thoughtText {
+  margin: 0;
+  max-height: 7.8em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--k-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@keyframes thoughtIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 /* The Kestrel K, drawn as ink only — no tile around it. The three feathers are
    the wing: while Kestrel is thinking or searching, the wing beats a little,
@@ -204,7 +275,7 @@
   100% { opacity: 0; transform: translate(var(--mx), var(--my)) rotate(120deg) scale(1); }
 }
 .kchat-steps {
-  margin: 0 0 14px;
+  margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
@@ -213,13 +284,27 @@
 }
 .kchat-step {
   display: grid;
-  grid-template-columns: 8px minmax(0, auto) minmax(0, 1fr) auto;
-  align-items: baseline;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: start;
   gap: 10px;
   font-size: 13.5px;
+  line-height: 1.45;
   color: var(--k-muted);
+  animation: thoughtIn 0.3s ease both;
 }
-.kchat-stepLabel { color: var(--k-text); }
+.kchat-stepIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 1.45em;
+  color: var(--k-accent);
+}
+.kchat-stepText { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; min-width: 0; }
+.kchat-stepLabel { color: var(--k-muted); }
+.kchat-stepRun .kchat-stepLabel { color: var(--k-text); }
+.kchat-spin { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .kchat-stepDetail { color: var(--k-faint); font-size: 13px; }
 .kchat-stepMs { color: var(--k-faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 .kchat-dot {
@@ -231,12 +316,6 @@
   top: -2px;
 }
 .kchat-dotWait { background: var(--k-border); }
-.kchat-dotRun { background: var(--k-accent); animation: pulse 1.2s ease-in-out infinite; }
-.kchat-dotDone { background: var(--k-accent); }
-@keyframes pulse {
-  0%, 100% { opacity: 0.3; transform: scale(0.75); }
-  50% { opacity: 1; transform: scale(1.15); }
-}
 
 /* the search receipts: what it looked for, and what it found */
 .kchat-receipts {
@@ -282,32 +361,64 @@
    row and the page grows downwards as the answer is written. */
 .kchat-pLine { display: block; }
 .kchat-wordRow { display: inline; }
-/* Each word arrives the way Claude writes it: it fades up into place, softly,
-   with no bounce and no pop. The entrance is longer than the gap between
-   words, so the words overlap and the line reads as one smooth wave. */
-.kchat-revealWord {
+/* Each word settles into place: it comes in from a soft blur and a little low, with
+   no bounce and no pop. The entrance is longer than the gap between words, so the words
+   overlap and the text reads as one smooth flow. Words stay inline, so lines wrap
+   exactly as the finished answer will. */
+.kchat-flowWord {
+  animation: flowIn 460ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes flowIn {
+  from { opacity: 0.08; filter: blur(4px); }
+  45% { opacity: 0.85; }
+  to { opacity: 1; filter: blur(0); }
+}
+/* the writing point: a small round caret in the accent colour that breathes while the
+   answer flows, and is gone once it is complete */
+.kchat-caret {
   display: inline-block;
-  animation: revealIn 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 5px;
+  vertical-align: 0.05em;
+  border-radius: 50%;
+  background: var(--k-accent);
+  animation: caretPulse 1s ease-in-out infinite;
 }
-@keyframes revealIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
+@keyframes caretPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
 }
-/* the writing point: a thin soft cursor, like Claude's */
-.kchat-nib {
-  display: inline-block;
-  width: 3px;
-  height: 1.04em;
-  margin-left: 2px;
-  vertical-align: -2px;
-  border-radius: 1px;
-  background: var(--k-text);
-  animation: blink 1.05s ease-in-out infinite;
+
+/* The answer stopped partway (or could not start): what was written stays, and a quiet
+   line under it says so, with Try again. */
+.kchat-stopped {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 12px;
+  font-size: 13.5px;
+  color: var(--k-muted);
 }
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.12; }
+.kchat-stopped > svg { flex: none; color: var(--k-warning, var(--k-faint)); }
+.kchat-page .kchat-retryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--k-border);
+  background: var(--k-surface);
+  color: var(--k-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
 }
+.kchat-page .kchat-retryBtn:hover:not(:disabled) { background: var(--k-hover); border-color: var(--k-active); }
+.kchat-retryBtn:disabled { opacity: 0.5; cursor: default; }
+.kchat-retryBtn:focus-visible { outline: 2px solid var(--k-accent); outline-offset: 1px; }
 
 /* ---------- composer ---------- */
 .kchat-composerWrap {
@@ -630,7 +741,6 @@
   color: #FFFFFF;
 }
 :root[data-theme="gradient"] .kchat-sparkIcon { color: #6366F1; }
-:root[data-theme="gradient"] .kchat-nib { background: #4F46E5; }
 
 /* ---------- small screens: the rail becomes a sheet ---------- */
 @media (max-width: 980px) {
@@ -675,22 +785,17 @@
   .kchat-newChatBtn span { display: none; }
   .kchat-modelBtn { padding: 0 8px 0 10px; }
   .kchat-barLeft { gap: 2px; }
-  .kchat-step {
-    grid-template-columns: 8px minmax(0, 1fr) auto;
-    grid-template-areas: "dot label ms" "dot detail detail";
-    row-gap: 2px;
-  }
-  .kchat-stepLabel { grid-area: label; }
-  .kchat-stepDetail { grid-area: detail; padding-left: 18px; }
-  .kchat-stepMs { grid-area: ms; }
+  .kchat-stepText { flex-direction: column; }
 }
 
 /* ---------- calm, short motion only ---------- */
 @media (prefers-reduced-motion: reduce) {
   .kchat-msgUser, .kchat-msgBot, .kchat-scrim { animation: none; }
-  .kchat-dotRun { animation: none; }
-  .kchat-revealWord { animation: none; }
-  .kchat-nib { animation: none; }
+  .kchat-flowWord, .kchat-thought, .kchat-step { animation: none; }
+  .kchat-caret { animation: none; }
+  .kchat-spin { animation: none; }
+  .kchat-shimmer { animation: none; background: none; color: var(--k-text); }
+  .kchat-thinkBody, .kchat-thinkChevron { transition: none; }
   .kchat-mote { animation: none; opacity: 0; }
   .kchat-kBusy .kchat-feather { animation: none; }
   .kchat-kBusy .kchat-kmark { animation: none; }

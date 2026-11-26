@@ -3,6 +3,7 @@ import { runAiTask } from "./ai-router";
 import type { supabaseServer } from "./supabase/server";
 import type { ModelResolution } from "./ai-router/run";
 import type { AiSlot } from "./ai-router/tasks";
+import type { StreamSink } from "./ai-router/providers";
 
 type Sb = Awaited<ReturnType<typeof supabaseServer>>;
 
@@ -29,11 +30,13 @@ export type EngineInput = {
   userId?: string | null;
   /** Absolute time (ms) by which the answer must be ready, Nest fallback included. */
   deadlineAt?: number;
+  /** Stream the answer as it is written: reasoning, answer text, and "that text was a note before a tool call". */
+  onStream?: StreamSink;
 };
 
 export type EngineResult = { text: string; refused?: boolean; outOfRounds?: boolean };
 export class EngineError extends Error {
-  constructor(message: string, public kind: "key" | "rate" | "model" | "network" | "other") {
+  constructor(message: string, public kind: "key" | "rate" | "model" | "network" | "other" | "stream") {
     super(message);
   }
 }
@@ -69,9 +72,11 @@ export async function runAssistant(x: EngineInput): Promise<EngineResult> {
       effort: x.effort,
       resolution,
       deadlineMs: x.deadlineAt,
+      onStream: x.onStream,
     });
 
     if (!res.ok) {
+      if (res.streamedFailure) throw new EngineError(res.error, "stream");
       if (res.refused) return { text: "", refused: true };
       if (res.status === "skipped") throw new EngineError("Kestrel AI took too long. Try again.", "other");
       throw new EngineError(res.error, "other");
