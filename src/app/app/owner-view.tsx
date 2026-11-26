@@ -12,6 +12,7 @@ import CreatorsView from "./creators-view";
 import OwnerVerifier from "./owner-verifier";
 import OwnerOffers from "./owner-offers";
 import OwnerUsage from "./owner-usage";
+import OwnerHealth from "./owner-health";
 import { csvCell } from "@/lib/csv-cell";
 
 // The owner panel (Kestrel admins only): the business at a glance, everyone using Kestrel, access codes and messages.
@@ -29,6 +30,7 @@ type Data = { totals: Totals; people: Person[]; messages: Message[] };
 
 const TABS = [
   ["overview", "Overview"],
+  ["health", "Funnel & Health"],
   ["people", "People"],
   ["usage", "Usage"],
   ["access", "Access codes"],
@@ -183,6 +185,7 @@ export default function OwnerView({ toast, demo }: { toast: (t: string) => void;
       {tab === "verifier" ? <OwnerVerifier toast={toast} /> : null}
       {tab === "offers" ? <OwnerOffers toast={toast} /> : null}
       {tab === "usage" ? <OwnerUsage toast={toast} /> : null}
+      {tab === "health" ? <OwnerHealth demo={demo} /> : null}
 
       {tab === "overview" && errorMsg ? (
         <div className="join-card" style={{ margin: "20px 0", padding: "24px", textAlign: "center" }}>
