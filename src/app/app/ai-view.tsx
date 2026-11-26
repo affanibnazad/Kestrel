@@ -209,14 +209,18 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
         }),
       }).catch(() => null);
       const qOut = qRes ? await qRes.json().catch(() => null) : null;
-      if (qRes?.ok && qOut?.queued) {
+      if (qRes?.ok && typeof qOut?.queued === "number" && qOut.queued > 0) {
         const label = task === "score" ? "scoring" : "email writing";
         setMsg(`Queued ${qOut.queued} leads for background ${label}. Watch live progress in Lead Brain.`);
         toast(`Queued ${qOut.queued} leads in background.`);
         return;
       }
-      if (qRes && !qOut?.fallback && qOut?.error) {
-        setMsg(qOut.error);
+      if (!qRes) {
+        setMsg("Network problem. Check your connection.");
+        return;
+      }
+      if (!qOut?.fallback) {
+        setMsg(qOut?.error || "Could not queue leads.");
         return;
       }
     }

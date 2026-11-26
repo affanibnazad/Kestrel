@@ -56,5 +56,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status });
   }
 
-  return NextResponse.json({ queued: Number(data) || ids.length, kind });
+  const queued = typeof data === "number" ? data : Number(data);
+  if (!Number.isFinite(queued) || queued <= 0) {
+    return NextResponse.json({ error: "No leads were queued." }, { status: 400 });
+  }
+
+  return NextResponse.json({ queued, kind });
 }
