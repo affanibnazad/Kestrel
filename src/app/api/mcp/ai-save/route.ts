@@ -22,8 +22,8 @@ export async function POST(request: Request) {
   if (!task || !results.length || typeof body.offer_id !== "string") return NextResponse.json({ error: "Give task, offer_id and results: [{ lead_id, answer }] (up to 50)." }, { status: 400 });
   const plan = await agentPlan(sb, gate.team, task, body.offer_id, typeof body.sequence === "string" ? body.sequence : "default");
   if ("error" in plan) return NextResponse.json({ error: plan.error }, { status: 400 });
-  const { data: rows } = await sb.from("leads").select("id,email,data").in("id", results.map((r) => r.lead_id)).eq("team_id", gate.team);   // only the current team
-  const leads = new Map(((rows ?? []) as { id: string; email: string | null; data: LeadData | null }[]).map((l) => [l.id, l]));
+  const { data: rows } = await sb.from("leads").select("id,email,data,outreach_approved").in("id", results.map((r) => r.lead_id)).eq("team_id", gate.team);   // only the current team
+  const leads = new Map(((rows ?? []) as { id: string; email: string | null; data: LeadData | null; outreach_approved?: boolean }[]).map((l) => [l.id, l]));
   let dnc;
   try { dnc = await teamDnc(sb, gate.team, [...leads.values()].map((l) => ({ email: l.email, emails: (l.data as { emails?: string[] } | null)?.emails, website: (l.data as { website?: string } | null)?.website }))); }
   catch { return NextResponse.json({ error: "Could not check the Do-not-contact list just now. Nothing was saved. Try again in a minute." }, { status: 503 }); }

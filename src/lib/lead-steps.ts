@@ -67,7 +67,7 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
   };
 }
 
-export type LeadIn = { id: string; email: string | null; data: LeadData | null };
+export type LeadIn = { id: string; email: string | null; data: LeadData | null; outreach_approved?: boolean };
 export type AiResult =
   | { ok: true; patch: Record<string, unknown>; result: Record<string, unknown>; cost: number | null }
   | { ok: false; why: string; cost: number | null; fatal?: string; stop?: boolean };
@@ -241,12 +241,14 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
     }
 
     const ai = { ...cleanF, profile: p.hash, by, at: Date.now() };
+    // Keep outreach_approved when re-scored Good; revoke when verdict changes away from Good.
+    const keepApproval = f.verdict === "good" && l.outreach_approved === true;
     const patch: Record<string, unknown> = {
       verdict: VERDICT_COLUMN[f.verdict],
       reason: f.reason,
       score: f.fit,
-      outreach_approved: false,
-      data: { ...data, ai, outreach_approved: false },
+      outreach_approved: keepApproval,
+      data: { ...data, ai, outreach_approved: keepApproval },
       ...(matchedId ? { matched_service_id: matchedId } : { matched_service_id: null }),
       ...(matchedTrigger ? { buying_trigger: matchedTrigger } : { buying_trigger: null }),
     };
