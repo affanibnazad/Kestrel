@@ -107,6 +107,7 @@ set search_path = public
 as $$
 declare
   v_count integer := 0;
+  v_distinct_count integer := 0;
   v_valid_count integer := 0;
 begin
   if p_team_id is null or not public.can_edit(p_team_id) then
@@ -115,8 +116,23 @@ begin
   if p_kind not in ('find_emails', 'research', 'score', 'write', 'qc') then
     raise exception 'Invalid job kind';
   end if;
+  if p_offer_id is not null and not exists (
+    select 1 from public.offer_profiles where id = p_offer_id and team_id = p_team_id
+  ) then
+    raise exception 'Not allowed';
+  end if;
+  if p_sequence_id is not null and not exists (
+    select 1 from public.sequences where id = p_sequence_id and team_id = p_team_id
+  ) then
+    raise exception 'Not allowed';
+  end if;
   if p_lead_ids is null or array_length(p_lead_ids, 1) is null then
     return 0;
+  end if;
+
+  select count(distinct x) into v_distinct_count from unnest(p_lead_ids) as x;
+  if v_distinct_count > 1000 then
+    raise exception 'Too many leads';
   end if;
 
   -- Verify every lead_id belongs to p_team_id
@@ -124,7 +140,7 @@ begin
   from public.leads l
   where l.id = any(p_lead_ids) and l.team_id = p_team_id;
 
-  if v_valid_count <> (select count(distinct x) from unnest(p_lead_ids) as x) then
+  if v_valid_count <> v_distinct_count then
     raise exception 'Not allowed: lead does not belong to team';
   end if;
 
@@ -204,9 +220,12 @@ begin
   if not public.mail_server_ok(server_secret) then
     raise exception 'Not allowed';
   end if;
+  if p_status not in ('done', 'error', 'skipped', 'retry') then
+    raise exception 'Invalid status';
+  end if;
 
   select * into v_job from public.ai_jobs where id = p_job_id;
-  if v_job.id is null then return; end if;
+  if v_job.id is null or v_job.status <> 'running' then return; end if;
 
   if p_status = 'retry' and v_job.attempts < v_job.max_attempts then
     update public.ai_jobs
@@ -215,14 +234,16 @@ begin
         run_after = now() + make_interval(secs => greatest(30, p_retry_after_sec * v_job.attempts)),
         last_error = left(nullif(trim(p_error), ''), 300),
         updated_at = now()
-    where id = p_job_id;
+    where id = p_job_id
+      and status = 'running';
   else
     update public.ai_jobs
     set status = case when p_status = 'retry' then 'error' else p_status end,
         locked_until = null,
         last_error = left(nullif(trim(p_error), ''), 300),
         updated_at = now()
-    where id = p_job_id;
+    where id = p_job_id
+      and status = 'running';
   end if;
 end $$;
 
