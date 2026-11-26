@@ -4,10 +4,10 @@ import fs from "node:fs";
 import http from "node:http";
 
 // Import REAL source modules using tsx TypeScript & @/ alias support
-import { aiLeadError } from "@/lib/lead-steps";
+import { aiLeadError, aiOne, NEEDS_RESEARCH } from "@/lib/lead-steps";
 import { runAiTask, AI_TASKS } from "@/lib/ai-router";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
-import { readJson, assemble, emailSystem, emailPayload, qcSystem, cleanParts } from "@/lib/ai";
+import { readJson, assemble, emailSystem, emailPayload, qcSystem, cleanParts, cleanQc, hasObservations } from "@/lib/ai";
 
 // Ensure server secret is valid for standalone test runner
 process.env.MAIL_SERVER_SECRET = "1234567890123456789012345678901234";
@@ -736,5 +736,21 @@ describe("Email writer: facts only, no invented claims", () => {
     assert.equal(pay.fit_reason, undefined);
     assert.equal(pay.unverified_notes.likely_problem, "They are slow.");
     assert.equal(pay.unverified_notes.fit_reason, "Posts often.");
+  });
+
+  it("Write refuses a lead with no verified website quote, before any AI call", async () => {
+    assert.equal(hasObservations({ name: "Linear" }), false);
+    assert.equal(hasObservations({ research: { observations: [{ fact: "x", quote: "" }] } }), false);
+    assert.equal(hasObservations({ research: { observations: [{ fact: "x", quote: "Plan and build products" }] } }), true);
+    const r = await aiOne({ task: "emails" }, { id: "l1", email: "hello@linear.app", data: { name: "Linear", outreach_approved: true } }, { emails: new Set(), domains: new Set() });
+    assert.equal(r.ok, false);
+    assert.equal(r.why, NEEDS_RESEARCH);
+  });
+
+  it("QC no longer demands the sender's usual words", () => {
+    const vn = { greeting: "", sign_off: "", sentence_length: "", words_used: ["noticed", "honestly"], words_avoided: [] };
+    const q = cleanQc({ pass: true, issues: [] }, "Hi there,\n\nYour site says \"Plan and build products\".", vn);
+    assert.ok(!q.issues.some((x) => /sender's voice/.test(x)), JSON.stringify(q));
+    assert.ok(!/MUST include at least one/.test(emailSystem({ name: "", offer: "x", customer: "y", good: "", bad: "", criteria: "", strictness: "balanced", one_line: "z" }, { sender_name: "A", business: "", address: "", signature: "" }, undefined, vn)));
   });
 });

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { currentUser, supabaseServer } from "@/lib/supabase/server";
 import { teamDnc } from "@/lib/dnc-server";
 import { dncBlocks } from "@/lib/dnc";
-import { emailPayload, leadPayload, type LeadData } from "@/lib/ai";
+import { emailPayload, hasObservations, leadPayload, type LeadData } from "@/lib/ai";
+import { NEEDS_RESEARCH } from "@/lib/lead-steps";
 import { agentPlan, canWork, mcpGate } from "@/lib/mcp-server";
 
 // Kestrel MCP: the instructions and lead details for scoring or writing, so the person's own Claude Code or Codex plan can do
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
   for (const l of leads) {
     const d = l.data ?? {};
     if (task === "emails" && !l.email) { skipped.push({ id: l.id, why: "no email" }); continue; }
+    if (task === "emails" && !hasObservations(d)) { skipped.push({ id: l.id, why: NEEDS_RESEARCH }); continue; }
     if (task === "emails" && dncBlocks({ email: l.email, emails: (d as { emails?: string[] }).emails, website: (d as { website?: string }).website }, dnc)) { skipped.push({ id: l.id, why: "do not contact" }); continue; }
     out.push({ lead_id: l.id, name: l.name, details: task === "score" ? leadPayload(d) : emailPayload({ ...d, email: l.email ?? (d as { email?: string }).email }) });
   }
