@@ -204,7 +204,8 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
   const answer = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
   const by = p.by ?? p.provider;
   if (p.task === "research") {
-    const r = cleanResearch(answer, siteText, host);
+    const leadName = String((data as { name?: string }).name ?? "");
+    const r = cleanResearch(answer, siteText, host, leadName);
     if (!r) return { ok: false, why: "AI answer was broken. Try again.", cost };
     const research = { ...r, host: host.slice(0, 120), by, at: Date.now() };
     return { ok: true, patch: { data: { ...data, research } }, result: { id: l.id, research, dropped_observations: r.dropped_observations }, cost };
@@ -274,7 +275,8 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
   // Only a real person's name Kestrel has for this lead, never the company name (19 Nov 2026).
   parts.first_name = trustedFirstName(parts.first_name, {
     name: (data as { name?: string }).name, email: l.email ?? (data as { email?: string }).email,
-    contacts: (data as { contacts?: { name?: string }[] }).contacts
+    contacts: (data as { contacts?: { name?: string }[] }).contacts,
+    researchContacts: (data as LeadData).research?.contacts,
   });
   const outreach = { ...makeDraft(parts, p.offer, p.sender, p.provider, p.seq, fu, l.id, p.voiceNotes), ...(p.by ? { by: p.by } : {}) };
   // Never save a draft that would send a visible [FIELD] (e.g. no booking link set) or price / trial / money words.

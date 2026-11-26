@@ -74,18 +74,44 @@ export function nameFromEmail(raw: string | null | undefined, company?: string |
   return first[0].toUpperCase() + first.slice(1);
 }
 
+export function isGenericInbox(raw: string | null | undefined): boolean {
+  const email = String(raw || "").trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+$/.test(email)) return false;
+  const local = email.split("@")[0].replace(/\+.*$/, "");
+  const first = local.split(/[._-]/)[0];
+  return NOT_NAMES.has(local) || NOT_NAMES.has(first) || JOBS.test(local) || NOT_PEOPLE.test(local) || SOFT.test(local);
+}
+
 // The name after "Hi" (Affan, 19 Nov 2026): a person's first name, or "there" ("Hi there,") when no person is known.
 // Never a company ("Hey Social HQ,") or "… team". Used on every new email, whatever the AI or a job file returned.
 // The greeting name the email may use (19 Nov 2026: "Hi Social," for "Social HQ"). The AI's first_name is used only
-// when it is a real person's first name Kestrel has for this lead: from a contact person or from the email address
-// (e.g. sarah@…). Otherwise the email says "Hi there,". Never the company name.
-export function trustedFirstName(aiName: string | null | undefined, lead: { name?: string | null; email?: string | null; contacts?: { name?: string | null }[] | null }): string {
+// when it is a real person's first name Kestrel has for this lead AND the send-to email is that person's own address,
+// never team@/support@/hello@. Otherwise the email says "Hi there,".
+export function trustedFirstName(
+  aiName: string | null | undefined,
+  lead: { name?: string | null; email?: string | null; contacts?: { name?: string | null; email?: string | null }[] | null; researchContacts?: { name?: string | null }[] | null },
+): string {
   const want = String(aiName ?? "").trim().toLowerCase();
   if (!want || want === "there") return "there";
-  const firsts = [
-    ...(lead.contacts ?? []).map((c) => String(c?.name ?? "").trim().split(/\s+/)[0]),
-    nameFromEmail(lead.email ?? "", lead.name ?? ""),
-  ].filter(Boolean);
+  const email = String(lead.email ?? "").trim().toLowerCase();
+  if (!email || isGenericInbox(email)) return "there";
+  const fromEmail = nameFromEmail(email, lead.name ?? "");
+  const contactFirsts = (lead.contacts ?? [])
+    .filter((c) => {
+      const ce = String(c?.email ?? "").trim().toLowerCase();
+      if (ce && ce === email) return true;
+      const cf = String(c?.name ?? "").trim().split(/\s+/)[0]?.toLowerCase();
+      return Boolean(fromEmail && cf === fromEmail.toLowerCase());
+    })
+    .map((c) => String(c?.name ?? "").trim().split(/\s+/)[0])
+    .filter(Boolean);
+  const researchFirsts = fromEmail
+    ? (lead.researchContacts ?? [])
+        .filter((c) => String(c?.name ?? "").trim().split(/\s+/)[0]?.toLowerCase() === fromEmail.toLowerCase())
+        .map((c) => String(c?.name ?? "").trim().split(/\s+/)[0])
+        .filter(Boolean)
+    : [];
+  const firsts = [...contactFirsts, ...(fromEmail ? [fromEmail] : []), ...researchFirsts];
   const hit = firsts.find((f) => f.toLowerCase() === want);
   return hit ? greetName(hit, lead.name) : "there";
 }

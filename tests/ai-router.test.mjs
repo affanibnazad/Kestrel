@@ -8,6 +8,7 @@ import { aiLeadError, aiAnswer, aiOne, NEEDS_RESEARCH } from "@/lib/lead-steps";
 import { runAiTask, AI_TASKS } from "@/lib/ai-router";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
 import { readJson, EMPTY_SENDER, assemble, emailSystem, emailPayload, qcSystem, cleanParts, cleanQc, hasObservations, cleanResearch, numbersNotInQuote } from "@/lib/ai";
+import { trustedFirstName } from "@/lib/email-check";
 
 // Ensure server secret is valid for standalone test runner
 process.env.MAIL_SERVER_SECRET = "1234567890123456789012345678901234";
@@ -1142,5 +1143,101 @@ describe("Email writer: facts only, no invented claims", () => {
     assert.match(q, /We build fast, scalable Next\.js web applications\./);
     assert.match(q, /assumes nothing and is valid/);
     assert.match(emailSystem(offer, sender), /must assume NOTHING about the lead/);
+  });
+});
+
+
+// ── Research contact first names ────────────────────────────────────
+describe("Research: verified contact names", () => {
+  it("cleanResearch keeps contacts from an about/team/leadership page on the lead's own domain, and drops others", () => {
+    const site = "Home page.\n--- /about ---\nAbout Acme. Leadership: Jane Doe, Co-Founder & CEO leads product. Built for fast teams.";
+    const r = cleanResearch({
+      observations: [{ fact: "Built for fast teams", quote: "Built for fast teams." }],
+      contacts: [
+        { name: "Jane Doe", role: "Co-Founder & CEO", quote: "Jane Doe, Co-Founder & CEO leads product", url: "https://acme.com/about" },
+        { name: "Bob Smith", role: "CTO", quote: "Bob Smith, CTO runs infra", url: "https://acme.com/about" },
+        { name: "Support Team", role: "Support", quote: "Jane Doe, Co-Founder & CEO leads product", url: "https://acme.com/about" },
+      ],
+      hypotheses: [],
+      unknowns: [],
+      problem: "",
+      how: "",
+      detail: "",
+      sure: "high",
+    }, site, "acme.com", "Acme");
+    assert.ok(r);
+    assert.equal(r.contacts?.length, 1);
+    assert.equal(r.contacts?.[0].name, "Jane Doe");
+    assert.equal(r.contacts?.[0].role, "Co-Founder & CEO");
+  });
+
+  it("cleanResearch rejects a testimonial on the homepage (not on an about/team/leadership page)", () => {
+    const site = 'Home page. "Jane Doe, Founder & CEO loves this product!"\n--- /team ---\nLeadership: Alice Brown, CTO at Acme.';
+    const r = cleanResearch({
+      observations: [{ fact: "Trusted by teams", quote: "loves this product" }],
+      contacts: [
+        { name: "Jane Doe", role: "Founder & CEO", quote: "Jane Doe, Founder & CEO loves this product" },
+        { name: "Alice Brown", role: "CTO", quote: "Alice Brown, CTO at Acme", url: "https://acme.com/team" },
+      ],
+      hypotheses: [],
+      unknowns: [],
+      problem: "",
+      how: "",
+      detail: "",
+      sure: "high",
+    }, site, "acme.com", "Acme");
+    assert.ok(r);
+    assert.equal(r.contacts?.length, 1);
+    assert.equal(r.contacts?.[0].name, "Alice Brown");
+  });
+
+  it("cleanResearch rejects a quote that names another company ('of X' or 'at X'), even on /about", () => {
+    const site = "Home page.\n--- /about ---\nJohn Smith, CEO of OtherCorp says great work. Sarah Lee, VP at Rival Inc. Jane Doe, VP of Engineering at Acme.";
+    const r = cleanResearch({
+      observations: [{ fact: "Great work", quote: "says great work" }],
+      contacts: [
+        { name: "John Smith", role: "CEO", quote: "John Smith, CEO of OtherCorp", url: "https://acme.com/about" },
+        { name: "Sarah Lee", role: "VP", quote: "Sarah Lee, VP at Rival Inc", url: "https://acme.com/about" },
+        { name: "Jane Doe", role: "VP of Engineering", quote: "Jane Doe, VP of Engineering at Acme", url: "https://acme.com/about" },
+      ],
+      hypotheses: [],
+      unknowns: [],
+      problem: "",
+      how: "",
+      detail: "",
+      sure: "high",
+    }, site, "acme.com", "Acme");
+    assert.ok(r);
+    assert.equal(r.contacts?.length, 1);
+    assert.equal(r.contacts?.[0].name, "Jane Doe");
+  });
+
+  it("emailPayload and trustedFirstName greet by name ONLY when send-to email is that person's own address, never team@/support@/hello@", () => {
+    const researchContacts = [{ name: "Jane Doe", role: "CEO", quote: "Jane Doe, CEO" }];
+
+    // Generic inboxes (team@, support@, hello@) -> NEVER greet by name
+    for (const genericEmail of ["team@acme.com", "support@acme.com", "hello@acme.com"]) {
+      const genericLead = { name: "Acme", email: genericEmail, research: { observations: [{ fact: "x", quote: "y" }], contacts: researchContacts } };
+      const p = emailPayload(genericLead);
+      assert.equal(p.contact_name, "");
+      assert.equal(trustedFirstName("Jane", { name: "Acme", email: genericEmail, researchContacts }), "there");
+    }
+
+    // Personal email matching contact -> greets by name
+    const janeLead = { name: "Acme", email: "jane@acme.com", research: { observations: [{ fact: "x", quote: "y" }], contacts: researchContacts } };
+    const pj = emailPayload(janeLead);
+    assert.equal(pj.contact_name, "Jane Doe");
+    assert.equal(trustedFirstName("Jane", { name: "Acme", email: "jane@acme.com", researchContacts }), "Jane");
+
+    // Personal email alice@ -> keeps Alice, rejects Jane
+    const personalLead = { name: "Acme", email: "alice@acme.com", research: { observations: [{ fact: "x", quote: "y" }], contacts: researchContacts } };
+    const p2 = emailPayload(personalLead);
+    assert.equal(p2.contact_name, "");
+    assert.equal(p2.name_from_email, "Alice");
+    assert.equal(trustedFirstName("Jane", { name: "Acme", email: "alice@acme.com", researchContacts }), "there");
+    assert.equal(trustedFirstName("Alice", { name: "Acme", email: "alice@acme.com", researchContacts }), "Alice");
+
+    // No contacts anywhere -> "there"
+    assert.equal(trustedFirstName("Jane", { name: "Acme", email: "team@acme.com", researchContacts: [] }), "there");
   });
 });

@@ -80,9 +80,26 @@ export function pageText(html: string): string {
   return scrub(out).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ").slice(0, 3_500);
 }
 
-export async function readSite(raw: string): Promise<{ text: string; host: string } | { error: string }> {
-  let u = siteUrl(raw);
-  if (!u) return { error: "no usable website" };
+const TEAM_LINK_RE = /<a\b[^>]+href=["']([^"'#?]+)["'][^>]*>/gi;
+const TEAM_PATH_RE = /^\/?(about|about-us|team|our-team|company|leadership|founders?)(\/|$)/i;
+
+function findTeamUrl(html: string, base: URL): URL | null {
+  for (const m of html.matchAll(TEAM_LINK_RE)) {
+    const href = m[1]?.trim();
+    if (!href) continue;
+    try {
+      const candidate = new URL(href, base);
+      if (candidate.hostname !== base.hostname || candidate.pathname === base.pathname) continue;
+      if (TEAM_PATH_RE.test(candidate.pathname.replace(/^\//, ""))) {
+        return siteUrl(candidate.href);
+      }
+    } catch { /* ignore invalid href */ }
+  }
+  return null;
+}
+
+async function fetchHtml(start: URL): Promise<{ body: string; finalUrl: URL } | { error: string }> {
+  let u = start;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     let r: Awaited<ReturnType<typeof getOnce>>;
     try { r = await getOnce(u); } catch { return { error: "website could not be read" }; }
@@ -93,9 +110,30 @@ export async function readSite(raw: string): Promise<{ text: string; host: strin
       u = next; continue;
     }
     if (r.status >= 400 || !r.body) return { error: r.status >= 400 ? `website answered ${r.status}` : "website is not a web page" };
-    const text = pageText(r.body);
-    if (text.replace(/^(Title|Description|Headings|Text):/gm, "").trim().length < 80) return { error: "website has too little text" };
-    return { text, host: u.hostname.replace(/^www\./, "") };
+    return { body: r.body, finalUrl: u };
   }
   return { error: "website moved too many times" };
+}
+
+export async function readSite(raw: string): Promise<{ text: string; host: string } | { error: string }> {
+  const u = siteUrl(raw);
+  if (!u) return { error: "no usable website" };
+  const main = await fetchHtml(u);
+  if ("error" in main) return main;
+  const text = pageText(main.body);
+  if (text.replace(/^(Title|Description|Headings|Text):/gm, "").trim().length < 80) return { error: "website has too little text" };
+
+  // Fetch at most one about/team subpage on the same host when linked, so Research can find named team members.
+  const teamUrl = findTeamUrl(main.body, main.finalUrl);
+  let combined = text;
+  if (teamUrl) {
+    const sub = await fetchHtml(teamUrl).catch(() => null);
+    if (sub && !("error" in sub)) {
+      const subText = pageText(sub.body).slice(0, 2_000);
+      if (subText.replace(/^(Title|Description|Headings|Text):/gm, "").trim().length >= 80) {
+        combined = `${text}\n--- ${teamUrl.pathname} ---\n${subText}`.slice(0, 5_500);
+      }
+    }
+  }
+  return { text: combined, host: main.finalUrl.hostname.replace(/^www\./, "") };
 }
