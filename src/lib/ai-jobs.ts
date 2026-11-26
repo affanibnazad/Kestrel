@@ -1,7 +1,7 @@
 import { aiOne, aiPlan, writeChecked, type LeadIn } from "./lead-steps";
 import { cleanAbout, aboutForAi } from "./about";
 import { dncBlocks, dncIndex } from "./dnc";
-import type { Offer, LeadData } from "./ai";
+import type { Offer } from "./ai";
 
 export type AiJobKind = "find_emails" | "research" | "score" | "write" | "qc";
 
@@ -34,16 +34,18 @@ export type AiJobsSummary = {
 type RpcError = { message?: string } | null;
 type RpcLike = {
   rpc: (fn: string, args?: Record<string, unknown>) => PromiseLike<{ data?: unknown; error?: RpcError }>;
-  from: (table: string) => {
-    select: (cols: string) => {
-      eq: (col: string, val: unknown) => {
-        maybeSingle: () => PromiseLike<{ data?: unknown; error?: RpcError }>;
-      };
-    };
-    update: (patch: Record<string, unknown>) => {
-      eq: (col: string, val: unknown) => PromiseLike<{ error?: RpcError }>;
-    };
-  };
+};
+
+type JobContextPayload = {
+  lead: (LeadIn & { website?: string | null; team_id?: string }) | null;
+  offer: Offer | null;
+  sequence: unknown;
+  settings: Record<string, unknown> | null;
+  about: Record<string, unknown> | null;
+  team_plan: { plan?: string | null; paid_until?: string | null; access_until?: string | null; access_plan?: string | null } | null;
+  key: string | null;
+  dnc_too_long?: boolean;
+  dnc?: string[];
 };
 
 const NODE_MAP: Record<AiJobKind, { agent: string; from: string }> = {
@@ -88,7 +90,8 @@ async function logBrainEvent(
 
 /**
  * Default production executor for one claimed AI job.
- * Runs inside /api/mail/tick with a strict per-job deadline.
+ * Never uses anon `.from()` table queries — reads & saves strictly via security definer RPCs
+ * gated by `mail_server_ok(server_secret)` and scoped to `job.team_id`.
  */
 export async function executeClaimedJob(
   sb: RpcLike,
@@ -107,45 +110,73 @@ export async function executeClaimedJob(
   };
   const task = taskMap[job.kind];
 
-  const [{ data: leadRow }, { data: aiRow }, { data: aboutRow }, { data: offerRow }] = await Promise.all([
-    sb.from("leads").select("id,team_id,email,website,data,outreach_approved").eq("id", job.lead_id).maybeSingle(),
-    sb.from("team_ai").select("*").eq("team_id", job.team_id).maybeSingle(),
-    sb.from("team_about").select("*").eq("team_id", job.team_id).maybeSingle(),
-    job.offer_id
-      ? sb.from("offer_profiles").select("*").eq("id", job.offer_id).maybeSingle()
-      : sb.from("offer_profiles").select("*").eq("team_id", job.team_id).maybeSingle(),
-  ]);
+  const { data: ctxRaw, error: ctxErr } = await sb.rpc("ai_job_context", {
+    server_secret: secret,
+    p_team_id: job.team_id,
+    p_lead_id: job.lead_id,
+    p_offer_id: job.offer_id,
+    p_sequence_id: job.sequence_id,
+  });
+  if (ctxErr) return { status: "retry", error: ctxErr.message || "Could not load job context", retryAfterSec: 60 };
+  const ctx = (ctxRaw ?? null) as JobContextPayload | null;
+  if (!ctx) return { status: "skipped", error: "Team is not active" };
 
-  const lead = leadRow as (LeadIn & { website?: string | null; team_id?: string }) | null;
+  const lead = ctx.lead;
   if (!lead) return { status: "skipped", error: "Lead not found" };
-  if (!offerRow) return { status: "skipped", error: "No offer profile configured" };
+  if (!ctx.offer) return { status: "skipped", error: "No offer profile configured" };
+  if (ctx.dnc_too_long) return { status: "skipped", error: "Do-not-contact list too large" };
 
-  const cleanAb = aboutRow ? cleanAbout(aboutRow) : null;
-  const settings: Record<string, unknown> | null = aiRow ? { ...(aiRow as Record<string, unknown>), about: aboutForAi(cleanAb) } : null;
-  const key = typeof settings?.api_key === "string" ? settings.api_key : "";
-
-  const rawPlan = aiPlan(task, offerRow as Offer, settings, key, null, [], cleanAb?.voice_notes, cleanAb);
-  if ("error" in rawPlan) return { status: "skipped", error: rawPlan.error };
-
-  const plan = { ...rawPlan, sb: sb as never, teamId: job.team_id, userId: job.user_id, deadlineMs, ...(secret ? { serverSecret: secret } : {}) };
-  const preparedLead: LeadIn = task === "research" && lead.website && !(lead.data as { website?: string } | null)?.website
-    ? { ...lead, data: { ...(lead.data ?? {}), website: lead.website } }
-    : lead;
-
-  const dnc = task === "score"
-    ? dncIndex([])
-    : dncIndex([]);
+  const dnc = dncIndex((ctx.dnc ?? []).map((entry) => ({ entry })));
+  if (
+    task !== "score" &&
+    dncBlocks(
+      {
+        email: lead.email,
+        emails: (lead.data as { emails?: string[] } | null)?.emails,
+        website: lead.website ?? (lead.data as { website?: string } | null)?.website,
+      },
+      dnc
+    )
+  ) {
+    return { status: "skipped", error: "do not contact" };
+  }
 
   if (task === "emails" && !lead.outreach_approved && !(lead.data as Record<string, unknown> | null)?.outreach_approved) {
     return { status: "skipped", error: "Needs human review: approve opportunity report first" };
   }
-  if (task !== "score" && dncBlocks({ email: lead.email, website: lead.website ?? undefined }, dnc)) {
-    return { status: "skipped", error: "do not contact" };
-  }
 
-  const res = task === "emails"
-    ? await writeChecked(plan, null, preparedLead, dnc, 1, () => Date.now() < deadlineMs - 2_000)
-    : await aiOne(plan, preparedLead, dnc);
+  const cleanAb = ctx.about ? cleanAbout(ctx.about) : null;
+  const settings: Record<string, unknown> | null = ctx.settings ? { ...ctx.settings, about: aboutForAi(cleanAb) } : null;
+  const key = typeof ctx.key === "string" ? ctx.key : "";
+  const seq = Array.isArray(ctx.sequence) ? { steps: ctx.sequence, ...(job.sequence_id ? { id: job.sequence_id } : {}) } : null;
+
+  const rawPlan = aiPlan(task, ctx.offer, settings, key, seq, [], cleanAb?.voice_notes, cleanAb);
+  if ("error" in rawPlan) return { status: "skipped", error: rawPlan.error };
+
+  const serverTeamAi = {
+    provider: typeof settings?.provider === "string" ? settings.provider : null,
+    model: typeof settings?.model === "string" ? settings.model : null,
+    key: key || null,
+    plan: ctx.team_plan ?? null,
+  };
+  const plan = {
+    ...rawPlan,
+    sb: sb as never,
+    teamId: job.team_id,
+    userId: job.user_id,
+    deadlineMs,
+    ...(secret ? { serverSecret: secret, serverTeamAi } : {}),
+  };
+
+  const preparedLead: LeadIn =
+    task === "research" && lead.website && !(lead.data as { website?: string } | null)?.website
+      ? { ...lead, data: { ...(lead.data ?? {}), website: lead.website } }
+      : lead;
+
+  const res =
+    task === "emails"
+      ? await writeChecked(plan, null, preparedLead, dnc, 1, () => Date.now() < deadlineMs - 2_000)
+      : await aiOne(plan, preparedLead, dnc);
 
   if (!res.ok) {
     const why = res.why || "AI job failed";
@@ -154,7 +185,12 @@ export async function executeClaimedJob(
       : { status: "retry", error: why, retryAfterSec: 60 };
   }
 
-  const { error: updErr } = await sb.from("leads").update(res.patch).eq("id", lead.id);
+  const { error: updErr } = await sb.rpc("ai_job_save_lead", {
+    server_secret: secret,
+    p_team_id: job.team_id,
+    p_lead_id: lead.id,
+    p_patch: res.patch,
+  });
   if (updErr) return { status: "retry", error: updErr.message || "Could not save lead patch", retryAfterSec: 60 };
 
   return { status: "done", summary: `${job.kind} completed` };

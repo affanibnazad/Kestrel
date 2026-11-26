@@ -6,7 +6,7 @@ import http from "node:http";
 // Import REAL source modules using tsx TypeScript & @/ alias support
 import { aiLeadError, aiAnswer, aiOne, NEEDS_RESEARCH } from "@/lib/lead-steps";
 import { runAiTask, AI_TASKS, checkKestrelAllowance } from "@/lib/ai-router";
-import { runDueAiJobs } from "@/lib/ai-jobs";
+import { runDueAiJobs, executeClaimedJob } from "@/lib/ai-jobs";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
 import { readJson, EMPTY_SENDER, assemble, emailSystem, emailPayload, qcSystem, cleanParts, cleanQc, hasObservations, cleanResearch, numbersNotInQuote } from "@/lib/ai";
 
@@ -1221,5 +1221,75 @@ describe("AI-4b: runDueAiJobs & serverSecret allowance", () => {
     assert.equal(passedSecret, "srv-sec");
     assert.equal(lim.allowed, false);
     assert.equal(lim.code, "monthly_allowance_reached");
+  });
+
+  it("executeClaimedJob never queries tables with anon .from() and skips leads on team DNC list", async () => {
+    const rpcCalls = [];
+    const sb = {
+      from: (table) => {
+        throw new Error(`RLS blocked: worker must not query ${table} with anon client`);
+      },
+      rpc: async (fn, args) => {
+        rpcCalls.push({ fn, args });
+        if (fn === "ai_job_context") {
+          return {
+            data: {
+              lead: { id: "lead-dnc", team_id: "t1", email: "blocked@acme.com", website: "https://acme.com", data: { name: "Acme", outreach_approved: true }, outreach_approved: true },
+              offer: { id: "o1", name: "Offer", offer: "x", customer: "y", good: "g", bad: "b", one_line: "z" },
+              sequence: null,
+              settings: { sender_name: "Affan", business: "Norven", address: "123 St", signature: "Best" },
+              about: null,
+              team_plan: { plan: "pro" },
+              key: null,
+              dnc_too_long: false,
+              dnc: ["acme.com"],
+            },
+            error: null,
+          };
+        }
+        return { data: null, error: null };
+      },
+    };
+
+    const job = { id: "j-dnc", team_id: "t1", user_id: null, lead_id: "lead-dnc", offer_id: "o1", sequence_id: null, kind: "write", attempts: 1, max_attempts: 3, payload: {} };
+    const outcome = await executeClaimedJob(sb, job, Date.now() + 10_000, "srv-sec");
+    assert.deepEqual(outcome, { status: "skipped", error: "do not contact" });
+    assert.equal(rpcCalls[0]?.fn, "ai_job_context");
+    assert.equal(rpcCalls[0]?.args?.server_secret, "srv-sec");
+    assert.equal(rpcCalls[0]?.args?.p_team_id, "t1");
+  });
+
+  it("executeClaimedJob fails cleanly if anon .from() is ever touched (enforces RPC-only boundary)", async () => {
+    const sb = {
+      from: (table) => {
+        throw new Error(`Anon client blocked on ${table}`);
+      },
+      rpc: async (fn) => {
+        if (fn === "ai_job_context") {
+          return {
+            data: {
+              lead: { id: "lead-1", team_id: "t1", email: "ok@good.com", website: "https://good.com", data: { name: "GoodCo" }, outreach_approved: true },
+              offer: { id: "o1", name: "Offer", offer: "x", customer: "y", good: "g", bad: "b", one_line: "z" },
+              sequence: null,
+              settings: { sender_name: "Affan", business: "Norven", address: "123 St", signature: "Best" },
+              about: null,
+              team_plan: { plan: "pro" },
+              key: null,
+              dnc_too_long: false,
+              dnc: [],
+            },
+            error: null,
+          };
+        }
+        return { data: null, error: null };
+      },
+    };
+
+    // For write without research, aiOne returns NEEDS_RESEARCH before any provider call — proving
+    // ai_job_context loaded the lead without touching sb.from().
+    const job = { id: "j-ok", team_id: "t1", user_id: null, lead_id: "lead-1", offer_id: "o1", sequence_id: null, kind: "write", attempts: 1, max_attempts: 3, payload: {} };
+    const outcome = await executeClaimedJob(sb, job, Date.now() + 10_000, "srv-sec");
+    assert.equal(outcome.status, "retry");
+    assert.match(outcome.error, /Research this lead first/i);
   });
 });
