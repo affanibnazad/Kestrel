@@ -46,7 +46,9 @@ export async function POST() {
           LABEL_SCHEMA,
           300,
           20_000,
-          { sb, teamId, userId: user.id, task: "reply_label" }
+          // Automatic (runs when Replies loads), so it does not use the team's monthly Kestrel AI allowance.
+          // To make it count again, remove `uncounted`.
+          { sb, teamId, userId: user.id, task: "reply_label", uncounted: "reply_label_auto" }
         );
         if (json && isLabel(json.label)) out = { label: json.label, reason: String(json.reason ?? "").slice(0, 200), by: modelTag(ai) };
       } catch {
