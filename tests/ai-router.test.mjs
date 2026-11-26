@@ -1289,7 +1289,8 @@ describe("AI-4b: runDueAiJobs & serverSecret allowance", () => {
     // ai_job_context loaded the lead without touching sb.from().
     const job = { id: "j-ok", team_id: "t1", user_id: null, lead_id: "lead-1", offer_id: "o1", sequence_id: null, kind: "write", attempts: 1, max_attempts: 3, payload: {} };
     const outcome = await executeClaimedJob(sb, job, Date.now() + 10_000, "srv-sec");
-    assert.equal(outcome.status, "retry");
+    // Not researched yet is permanent for this job: skip it instead of retrying it 3 times.
+    assert.equal(outcome.status, "skipped");
     assert.match(outcome.error, /Research this lead first/i);
   });
 });

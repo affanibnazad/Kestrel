@@ -56,7 +56,7 @@ const NODE_MAP: Record<AiJobKind, { agent: string; from: string }> = {
   qc: { agent: "qc", from: "write" },
 };
 
-const PERMANENT_RE = /PLAN_NEEDED|monthly_allowance_reached|allowance_check_failed|used up|401|403|rejected|do not contact|no email|no usable website|Needs human review|No offer/i;
+const PERMANENT_RE = /PLAN_NEEDED|monthly_allowance_reached|allowance_check_failed|used up|401|403|rejected|do not contact|no email|no usable website|Needs human review|No offer|Research this lead first/i;
 
 export function isPermanentJobError(msg: string): boolean {
   return PERMANENT_RE.test(msg);
