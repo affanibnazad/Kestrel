@@ -21220,9 +21220,15 @@ a.btn:focus-visible {
 
 .about-proof {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 2.4fr) minmax(0, 1.1fr) auto;
+  gap: 10px;
   align-items: center;
+}
+
+@media (max-width: 760px) {
+  .about-proof {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .about-proof input {
@@ -21247,14 +21253,15 @@ a.btn:focus-visible {
 .ksc-fields {
   display: flex !important;
   flex-direction: column !important;
-  gap: 12px !important;
+  gap: 16px !important;
 }
 
 .ksc-section-title {
-  font-size: 14px !important;
-  font-weight: 600 !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
   color: var(--label) !important;
-  margin: 8px 0 2px 0 !important;
+  margin: 12px 0 4px 0 !important;
 }
 
 .about-sub {
