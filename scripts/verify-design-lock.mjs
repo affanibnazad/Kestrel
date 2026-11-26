@@ -219,6 +219,12 @@ async function main() {
     img {
       visibility: hidden !important;
     }
+    /* Mask dynamic sidebar account / "Free access until" block and relative reply timestamps */
+    .u-user,
+    .kinbox-item-time,
+    .kinbox-pane-date {
+      visibility: hidden !important;
+    }
     /* Hide Next.js dev indicator */
     nextjs-portal,
     [data-nextjs-toast],

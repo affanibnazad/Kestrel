@@ -129,6 +129,19 @@ const fixedLeads = [
     buying_trigger: "High volume transactional email growth",
     created_at: FIXED_ISO,
     dedupe_key: "fixed-resend-designlock",
+    data: {
+      outreach: {
+        firstName: "Alex",
+        subject: "Quick question about Resend",
+        icebreaker: "Saw your recent changelog.",
+        question: "Worth a quick chat?",
+        body: "Hi Alex,\n\nSaw your recent changelog.\n\nWorth a quick chat?\n\nNo worries if not — reply unsubscribe and I won't follow up.",
+        by: "test",
+        at: 1795435200000,
+        flags: [],
+        qc: { status: "passed", issues: [], rounds: 1, at: 1795435200000 },
+      },
+    },
   },
   {
     id: "22222222-2222-2222-2222-222222222222",
