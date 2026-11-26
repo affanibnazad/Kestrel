@@ -239,6 +239,9 @@ export async function runProposedAction(a: ProposedAction): Promise<{ ok: boolea
   if (a.kind === "pause_campaign" || a.kind === "resume_campaign") {
     if (!a.campaign_id) return { ok: false, msg: "Missing campaign id." };
     const paused = a.kind === "pause_campaign";
+    const { data: camp } = await sb.from("campaigns").select("status").eq("id", a.campaign_id).maybeSingle();
+    if (paused && camp && camp.status !== "running") return { ok: false, msg: "Campaign isn't running." };
+    if (!paused && camp && camp.status !== "paused") return { ok: false, msg: "Campaign isn't paused." };
     const { error } = await sb.rpc("pause_campaign", { campaign: a.campaign_id, paused });
     return error ? { ok: false, msg: error.message } : { ok: true, msg: paused ? "Campaign paused." : "Campaign resumed." };
   }
@@ -260,8 +263,10 @@ export async function runProposedAction(a: ProposedAction): Promise<{ ok: boolea
   }
 
   if (a.kind === "mark_reply_done" && a.conversation_id) {
-    const { error } = await sb.from("mail_replies").update({ handled: true }).eq("campaign_lead_id", a.conversation_id);
-    return error ? { ok: false, msg: error.message } : { ok: true, msg: "Marked as done." };
+    const { data, error } = await sb.from("mail_replies").update({ handled: true }).eq("campaign_lead_id", a.conversation_id).select("id");
+    if (error) return { ok: false, msg: error.message };
+    if (!data?.length) return { ok: false, msg: "Nothing to mark." };
+    return { ok: true, msg: "Marked as done." };
   }
 
   if (a.kind === "set_lead_status" && a.conversation_id) {
