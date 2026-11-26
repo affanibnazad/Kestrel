@@ -30,19 +30,9 @@ export async function GET() {
   const { data: admin } = await sb.rpc("is_admin");
   if (!admin) return NextResponse.json({ error: "Not allowed." }, { status: 403 });
 
-  const now = Date.now();
-  const since30d = new Date(now - 30 * 86_400_000).toISOString();
-  const since24h = new Date(now - 86_400_000).toISOString();
-
-  const [usageRes, runsRes, jobsRes] = await Promise.all([
+  const [usageRes, healthRes] = await Promise.all([
     sb.rpc("admin_usage", { days: 30 }),
-    sb
-      .from("ai_runs")
-      .select("id,task,slot,source,status,cost_usd,error,created_at")
-      .gte("created_at", since30d)
-      .order("created_at", { ascending: false })
-      .limit(1000),
-    sb.from("ai_jobs").select("status").limit(1000),
+    sb.rpc("admin_health_ai", { days: 30 }),
   ]);
 
   const teams = (Array.isArray(usageRes.data) ? usageRes.data : []) as UsageTeam[];
@@ -55,42 +45,33 @@ export async function GET() {
     paying: teams.filter((t) => t.state === "paid").length,
   };
 
-  const runs = (Array.isArray(runsRes.data) ? runsRes.data : []) as AiRunRow[];
-  const runs24h = runs.filter((r) => r.created_at >= since24h);
-  const sumCost = (arr: AiRunRow[]) =>
-    Math.round(arr.reduce((s, r) => s + (Number(r.cost_usd) || 0), 0) * 10000) / 10000;
+  if (healthRes.error) {
+    return NextResponse.json({ error: healthRes.error.message }, { status: 500 });
+  }
 
-  const ai = {
-    runs24h: runs24h.length,
-    ok24h: runs24h.filter((r) => r.status === "ok" || r.status === "fallback").length,
-    errors24h: runs24h.filter((r) => r.status === "error" || r.status === "timeout").length,
-    cost24h: sumCost(runs24h),
-    runs30d: runs.length,
-    cost30d: sumCost(runs),
-    recentErrors: runs
-      .filter((r) => r.status === "error" || r.status === "timeout")
-      .slice(0, 15)
-      .map((r) => ({
-        id: r.id,
-        task: r.task,
-        slot: r.slot,
-        source: r.source,
-        status: r.status,
-        error: r.error ? r.error.slice(0, 140) : null,
-        created_at: r.created_at,
-      })),
+  const health = (healthRes.data ?? {}) as {
+    ai?: {
+      runs24h: number;
+      ok24h: number;
+      errors24h: number;
+      cost24h: number;
+      runs30d: number;
+      cost30d: number;
+      recentErrors: Omit<AiRunRow, "cost_usd">[];
+    };
+    jobs?: Record<"queued" | "running" | "done" | "error" | "skipped", number> | null;
   };
 
-  let jobs: Record<"queued" | "running" | "done" | "error" | "skipped", number> | null = null;
-  if (!jobsRes.error && Array.isArray(jobsRes.data)) {
-    const counts = { queued: 0, running: 0, done: 0, error: 0, skipped: 0 };
-    for (const j of jobsRes.data as { status?: string }[]) {
-      if (j.status && j.status in counts) {
-        counts[j.status as keyof typeof counts]++;
-      }
-    }
-    jobs = counts;
-  }
+  const ai = health.ai ?? {
+    runs24h: 0,
+    ok24h: 0,
+    errors24h: 0,
+    cost24h: 0,
+    runs30d: 0,
+    cost30d: 0,
+    recentErrors: [],
+  };
+  const jobs = health.jobs ?? null;
 
   return NextResponse.json({ funnel, ai, jobs });
 }
