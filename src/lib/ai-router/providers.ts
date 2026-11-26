@@ -61,6 +61,10 @@ export type ProviderCallParams = {
   maxTokens: number;
   effort?: "low" | "medium" | "high";
   timeoutMs: number;
+  /** Absolute time (ms) by which the whole call, including every tool round, must end. */
+  deadlineAt?: number;
+  /** Absolute time (ms) by which the FIRST model call must answer (so a dead slot fails over fast). */
+  firstCallDeadlineAt?: number;
   // Optional assistant / chat parameters
   history?: { role: "user" | "assistant"; content: string }[];
   tools?: { name: string; description: string; schema: Record<string, unknown> }[];
@@ -93,6 +97,18 @@ export function costOf(usage: ProviderUsage, provider: string, model: string): n
   return m && m.input !== null && m.output !== null
     ? (usage.input_tokens * m.input + usage.output_tokens * m.output) / 1e6
     : null;
+}
+
+// Timeout for one model call: the per-call limit, cut down to what is left before the deadline.
+// round 0 is the first call of a tool loop (or the only call).
+export function callTimeout(params: ProviderCallParams, round: number): number {
+  let t = params.timeoutMs;
+  const dl = [params.deadlineAt, round === 0 ? params.firstCallDeadlineAt : undefined].filter(
+    (x): x is number => typeof x === "number"
+  );
+  if (dl.length) t = Math.min(t, Math.min(...dl) - Date.now());
+  if (t < 500) throw new ProviderCallError(`${params.provider} timeout: no time left for another call`, undefined, true);
+  return Math.round(t);
 }
 
 export async function callProvider(params: ProviderCallParams): Promise<ProviderAnswer> {
@@ -147,6 +163,7 @@ async function callAnthropic(params: ProviderCallParams): Promise<ProviderAnswer
     try {
       let totalIn = 0, totalOut = 0;
       for (let round = 0; round < 6; round++) {
+        const roundTimeout = callTimeout(params, round);
         const res = await client.beta.messages.create({
           model,
           max_tokens: maxTokens || 16000,
@@ -156,7 +173,7 @@ async function callAnthropic(params: ProviderCallParams): Promise<ProviderAnswer
           output_config: { effort: effort ?? "low" },
           cache_control: { type: "ephemeral" },
           ...(hasFallback(model) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
-        });
+        }, { timeout: roundTimeout });
         totalIn += res.usage?.input_tokens || 0;
         totalOut += res.usage?.output_tokens || 0;
         messages.push({ role: "assistant", content: res.content });
@@ -216,7 +233,7 @@ async function callAnthropic(params: ProviderCallParams): Promise<ProviderAnswer
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(callTimeout(params, 0)),
     });
   } catch (err: unknown) {
     if (isAbortError(err)) {
@@ -289,7 +306,7 @@ async function callGemini(params: ProviderCallParams): Promise<ProviderAnswer> {
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(callTimeout(params, 0)),
     });
   } catch (err: unknown) {
     if (isAbortError(err)) {
@@ -379,9 +396,11 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
             messages,
             tools: formattedTools,
             tool_choice: "auto",
+            // Without a cap, a model can keep writing (or thinking) far past what a chat answer needs.
+            ...(maxTokens ? { [provider === "openai" ? "max_completion_tokens" : "max_tokens"]: maxTokens } : {}),
             ...(provider === "nvidia" ? { reasoning_effort: "low" } : {}),
           }),
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: AbortSignal.timeout(callTimeout(params, round)),
         });
       } catch (err: unknown) {
         if (isAbortError(err)) throw new ProviderCallError(`${provider} timed out`, undefined, true);
@@ -391,7 +410,8 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
       if (!res.ok) {
         const detail = await res.json().catch(() => ({}));
         const msg = String((detail?.error && (detail.error.message || detail.error)) || res.statusText || "");
-        throw new ProviderCallError(`${provider} error (${res.status}): ${msg}`.slice(0, 300), res.status);
+        const retryAfterMs = parseResetHeader(res.headers.get("retry-after") || res.headers.get("x-ratelimit-reset-tokens")) ?? undefined;
+        throw new ProviderCallError(`${provider} error (${res.status}): ${msg}`.slice(0, 300), res.status, false, false, retryAfterMs);
       }
 
       /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -404,7 +424,11 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
       if (msg.refusal) return { text: "", usage: { input_tokens: totalIn, output_tokens: totalOut }, skip: "declined" };
       const calls = (msg.tool_calls ?? []).filter((c: any) => c?.type === "function" && c.function?.name);
       if (!calls.length) {
-        return { text: String(msg.content ?? "").trim(), usage: { input_tokens: totalIn, output_tokens: totalOut } };
+        const text = String(msg.content ?? "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+        // An empty answer (often: the model used all its room on thinking) is a failure, not "Done.".
+        // Throwing lets the router hand the question to Nest instead.
+        if (!text) throw new ProviderCallError(`${provider} returned an empty answer (${d?.choices?.[0]?.finish_reason ?? "unknown"})`);
+        return { text, usage: { input_tokens: totalIn, output_tokens: totalOut } };
       }
       messages.push({ role: "assistant", content: msg.content ?? null, tool_calls: calls });
       for (const c of calls) {
@@ -432,7 +456,8 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
     body.response_format = { type: "json_object" };
   }
   if (maxTokens) {
-    body.max_tokens = maxTokens;
+    // OpenAI's newer models refuse max_tokens; max_completion_tokens works on all of them.
+    body[provider === "openai" ? "max_completion_tokens" : "max_tokens"] = maxTokens;
   }
   if (provider === "nvidia") {
     body.reasoning_effort = "none";
@@ -444,7 +469,7 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(callTimeout(params, 0)),
     });
   } catch (err: unknown) {
     if (isAbortError(err)) {
@@ -481,7 +506,7 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
       method: "POST",
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(callTimeout(params, 1)),
     }).catch(() => null);
     if (retryRes && retryRes.ok) {
       /* eslint-disable @typescript-eslint/no-explicit-any */

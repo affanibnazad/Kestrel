@@ -27,6 +27,8 @@ export type EngineInput = {
   sb?: Sb;
   teamId?: string;
   userId?: string | null;
+  /** Absolute time (ms) by which the answer must be ready, Nest fallback included. */
+  deadlineAt?: number;
 };
 
 export type EngineResult = { text: string; refused?: boolean; outOfRounds?: boolean };
@@ -66,6 +68,7 @@ export async function runAssistant(x: EngineInput): Promise<EngineResult> {
       maxTokens: 4000,
       effort: x.effort,
       resolution,
+      deadlineMs: x.deadlineAt,
     });
 
     if (!res.ok) {

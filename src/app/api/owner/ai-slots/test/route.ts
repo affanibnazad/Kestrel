@@ -66,8 +66,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Admin has no team_id for logging." }, { status: 400 });
   }
 
-  // One tiny real call through the router using the slot's resolution
-  const task = slot === "talon" ? "chat" : slot === "swift" ? "reply_label" : "reply_label";
+  // One tiny real call through the router using the slot's resolution.
+  // noFallback + no retry: test exactly this slot. Before, a failing Swift or Talon test quietly fell back to
+  // Nest and showed "ok" with Nest's model, which looked like the slots were swapped.
+  const task = slot === "talon" ? "chat" : "reply_label";
   const res = await runAiTask({
     sb,
     teamId,
@@ -78,6 +80,8 @@ export async function POST(req: Request) {
     maxTokens: 120,
     timeoutMs: 15_000,
     deadlineMs: 20_000,
+    noFallback: true,
+    retries: 0,
     resolution: {
       provider,
       baseUrl,
@@ -94,12 +98,16 @@ export async function POST(req: Request) {
       ok: false,
       error: res.lastError || res.error,
       statusCode: res.statusCode,
+      slot,
+      provider,
+      model,
     });
   }
 
   return NextResponse.json({
     ok: true,
     ms: res.ms,
+    slot: res.slot ?? slot,
     model: res.model,
     provider: res.provider,
   });

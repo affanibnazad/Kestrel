@@ -450,9 +450,10 @@ export default function AiChat({ question, onAsked }: {
     const idle = () => { busyRef.current = false; setBusy(false); };
 
     void (async () => {
+      // Never leave the answer on "Thinking": any unexpected failure becomes a visible error.
       const live = await liveTurn(history, (s) => {
         patch(botId, (m) => ({ ...m, turn: { ...m.turn!, steps: [...m.turn!.steps, s] } }));
-      });
+      }).catch((): Awaited<ReturnType<typeof liveTurn>> => ({ kind: "error", error: "Kestrel AI could not answer just now. Try again." }));
 
       if (live.kind === "live") {
         const rows = live.usage ? [{ label: "Messages today", value: `${live.usage.used} of ${live.usage.limit}` }] : [];
