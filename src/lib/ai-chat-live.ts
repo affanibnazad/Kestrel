@@ -212,10 +212,10 @@ export async function runProposedAction(a: ProposedAction): Promise<{ ok: boolea
         body: JSON.stringify({ task, ids, offerId: a.offer_id, ...(a.sequence ? { sequence: a.sequence } : {}) }),
       }).catch(() => null);
       const qOut = qRes ? await qRes.json().catch(() => null) : null;
-      if (qRes?.ok && qOut?.queued) {
+      if (qRes?.ok && typeof qOut?.queued === "number" && qOut.queued > 0) {
         return { ok: true, msg: `Queued ${qOut.queued} leads in background — watch live progress in Lead Brain.` };
       }
-      if (qRes && !qOut?.fallback) {
+      if (qRes && qRes.status !== 404 && qRes.status !== 501 && !qOut?.fallback) {
         return { ok: false, msg: qOut?.error || "Could not queue leads." };
       }
       if (task === "find_emails") {
@@ -236,11 +236,17 @@ export async function runProposedAction(a: ProposedAction): Promise<{ ok: boolea
     return { ok: true, msg: `Done for ${done} lead${done === 1 ? "" : "s"}.` };
   }
 
-  if (a.kind === "pause_campaign" || a.kind === "resume_campaign" || a.kind === "stop_campaign") {
+  if (a.kind === "pause_campaign" || a.kind === "resume_campaign") {
     if (!a.campaign_id) return { ok: false, msg: "Missing campaign id." };
-    const status = a.kind === "pause_campaign" ? "paused" : a.kind === "resume_campaign" ? "running" : "stopped";
-    const { error } = await sb.from("campaigns").update({ status }).eq("id", a.campaign_id);
-    return error ? { ok: false, msg: error.message } : { ok: true, msg: `Campaign ${status}.` };
+    const paused = a.kind === "pause_campaign";
+    const { error } = await sb.rpc("pause_campaign", { campaign: a.campaign_id, paused });
+    return error ? { ok: false, msg: error.message } : { ok: true, msg: paused ? "Campaign paused." : "Campaign resumed." };
+  }
+
+  if (a.kind === "stop_campaign") {
+    if (!a.campaign_id) return { ok: false, msg: "Missing campaign id." };
+    const { error } = await sb.rpc("stop_campaign", { campaign: a.campaign_id });
+    return error ? { ok: false, msg: error.message } : { ok: true, msg: "Campaign stopped." };
   }
 
   if (a.kind === "set_lead_fit" && a.lead_ids?.length && a.verdict) {
@@ -254,12 +260,12 @@ export async function runProposedAction(a: ProposedAction): Promise<{ ok: boolea
   }
 
   if (a.kind === "mark_reply_done" && a.conversation_id) {
-    const { error } = await sb.from("conversations").update({ done: true }).eq("id", a.conversation_id);
+    const { error } = await sb.from("mail_replies").update({ handled: true }).eq("campaign_lead_id", a.conversation_id);
     return error ? { ok: false, msg: error.message } : { ok: true, msg: "Marked as done." };
   }
 
   if (a.kind === "set_lead_status" && a.conversation_id) {
-    const { error } = await sb.from("conversations").update({ stage: a.stage ?? null }).eq("id", a.conversation_id);
+    const { error } = await sb.rpc("set_lead_stage", { cl: a.conversation_id, stage: a.stage ?? null });
     return error ? { ok: false, msg: error.message } : { ok: true, msg: "Updated reply status." };
   }
 

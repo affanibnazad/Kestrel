@@ -5,11 +5,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Tip } from "@/components/ui";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { LeadRow } from "@/lib/leads";
-import { EMPTY_OFFER, EMPTY_SENDER, PROVIDERS, VERDICT_COLUMN, emailJob, emailMissing, estimate, fitJob, makeDraft, offerReady, profileHash, readResults,
-  type LeadData, type Offer, type Provider, type Sender } from "@/lib/ai";
+import {
+  EMPTY_OFFER, EMPTY_SENDER, PROVIDERS, VERDICT_COLUMN, emailJob, emailMissing, estimate, fitJob, makeDraft, offerReady, profileHash, readResults,
+  type LeadData, type Offer, type Provider, type Sender
+} from "@/lib/ai";
 import { AUTO } from "@/lib/ai-models";
 import AiKit from "./ai-kit";
-import { DEFAULT_STEPS, cleanSteps, followUpCount, stepsForFollowUps, type Step } from "@/lib/sequence";import { logAiActivity } from "@/lib/ai-activity";
+import { DEFAULT_STEPS, cleanSteps, followUpCount, stepsForFollowUps, type Step } from "@/lib/sequence"; import { logAiActivity } from "@/lib/ai-activity";
 
 
 // AI in the App, like the extension's AI drawer: your offer, which AI to use, judging leads and writing first emails.
@@ -162,8 +164,10 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
     if (!name) { setMsg("Give this offer a name first."); return; }
     if (asNew && offers.some((x) => x.name === name)) { setMsg("Change the offer name first: an offer with that name already exists."); return; }
     setMsg("");
-    const row = { team_id: account.team_id, name, offer: offer.offer, customer: offer.customer, good: offer.good, bad: offer.bad, criteria: offer.criteria,
-      strictness: offer.strictness, one_line: offer.one_line, updated_at: new Date().toISOString() };
+    const row = {
+      team_id: account.team_id, name, offer: offer.offer, customer: offer.customer, good: offer.good, bad: offer.bad, criteria: offer.criteria,
+      strictness: offer.strictness, one_line: offer.one_line, updated_at: new Date().toISOString()
+    };
     if (demo) { const o = { ...offer, ...row, id: offer.id && !asNew ? offer.id : `demo-${name}` }; setOffers([...offers.filter((x) => x.id !== o.id), o]); setOffer(o); toast(`Saved "${name}".`); return; }
     const q = offer.id && !asNew ? sb().from("offer_profiles").update(row).eq("id", offer.id).select().single() : sb().from("offer_profiles").insert(row).select().single();
     const { data, error } = await q;
@@ -196,6 +200,34 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
     if (rewrites && !(await askConfirm(`${rewrites} ${rewrites === 1 ? "lead already has" : "leads already have"} a first email.\nWriting the follow-ups rewrites their first email too, including any changes you made by hand. Continue?`, { ok: "Rewrite them" }))) return;
     if (settings.booking_link && !/^https:\/\/[^\s<>"]+$/.test(settings.booking_link.trim())) { setMsg("The booking link must start with https:// (for example https://cal.com/you/15min)."); return; }
     stop.current = false; setMsg("");
+    // Bulk runs (5+ leads) queue into ai_jobs (AI-4b) so the browser never hits Vercel's 60s limit.
+    if (list.length >= 5) {
+      const qRes = await fetch("/api/ai/enqueue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          task,
+          ids: list.slice(0, 1000).map((l) => l.id),
+          offerId: offer.id,
+          ...(task === "emails" && choice !== "none" ? { sequence: choice } : {}),
+        }),
+      }).catch(() => null);
+      const qOut = qRes ? await qRes.json().catch(() => null) : null;
+      if (qRes?.ok && typeof qOut?.queued === "number" && qOut.queued > 0) {
+        const label = task === "score" ? "scoring" : "email writing";
+        setMsg(`Queued ${qOut.queued} leads for background ${label}. Watch live progress in Lead Brain.`);
+        toast(`Queued ${qOut.queued} leads in background.`);
+        return;
+      }
+      if (!qRes) {
+        setMsg("Network problem. Check your connection.");
+        return;
+      }
+      if (!qOut?.fallback) {
+        setMsg(qOut?.error || "Could not queue leads.");
+        return;
+      }
+    }
     let done = 0, skipped = 0, cost: number | null = 0;
     setRun({ task, done, total: list.length, skipped, cost });
     // Writing now includes the QC bot's check and one fix (Phase 4C), so 4 leads per call keep each call well inside 60 s.
@@ -220,9 +252,11 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
       if (out.error) { setMsg(out.error); break; }
     }
     setRun((r) => (r ? { ...r, total: r.done + r.skipped } : r));
-    void logAiActivity(account?.team_id, { kind: task === "score" ? "score_leads" : "write_emails", ok: done > 0 || !skipped,
+    void logAiActivity(account?.team_id, {
+      kind: task === "score" ? "score_leads" : "write_emails", ok: done > 0 || !skipped,
       summary: task === "score" ? `Score and write: judged ${done} lead${done === 1 ? "" : "s"} for the offer “${offer.name}”` : `Score and write: wrote emails for ${done} lead${done === 1 ? "" : "s"} (offer “${offer.name}”)`,
-      detail: skipped ? `${skipped} skipped` : null });
+      detail: skipped ? `${skipped} skipped` : null
+    });
     toast(task === "score" ? `Judged ${done} leads.` : followUps ? `Wrote emails and ${followUps} follow-ups for ${done} leads.` : `Wrote ${done} email drafts.`);
   }
 
@@ -343,8 +377,8 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
                     {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                   </select>
                 ) : <input value={settings.model} disabled={!editable || Boolean(loadError)} placeholder={settings.provider === "gemini" ? "gemini model name" : "model name, for example gpt-…"}
-                      onChange={(e) => setSettings({ ...settings, model: e.target.value })}
-                      onBlur={(e) => { void saveSettings({ model: e.target.value }); }} />}
+                  onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+                  onBlur={(e) => { void saveSettings({ model: e.target.value }); }} />}
               </label>
             </div>
             <p className="ai-key">{key ? <>Team key for {PROVIDERS[settings.provider].label} ends in <b>{key.last4}</b>.</> : <>Using Kestrel AI included with your plan. Optional: <button type="button" className="link-btn" onClick={() => go("connections")}>use your own key in Integrations → Services</button>.</>}</p>
