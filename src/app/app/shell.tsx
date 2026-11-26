@@ -52,7 +52,8 @@ import SequencesView from "./sequences-view";
 import CampaignsView from "./campaigns-view";
 import InboxView from "./inbox-view";
 import ViewErrorBoundary from "@/components/view-error-boundary";
-import { Globe } from "lucide-react";
+import { BrainCircuit, Globe } from "lucide-react";
+import LeadBrainView from "./lead-brain/LeadBrainView";
 import { BizAvatar, PersonAvatar, Socials, siteOfEmail } from "./biz";
 import { ACCENTS, applyLayout, applyLook, openPhoto, readLook, saveLook, type Look } from "@/lib/look";
 import { noteRecent, readRecent, type RecentItem } from "@/lib/recent";
@@ -158,7 +159,7 @@ const VALID_VIEWS = new Set([
   ...SMART.map(([id]) => id),
   ...SOURCES.map(([id]) => id),
   ...Object.keys(PAGES),
-  "owner", "creator", "placement", "assistant", "settings",
+  "owner", "creator", "placement", "assistant", "settings", "lead-brain",
 ]);
 
 export function isValidView(v: string | null | undefined): boolean {
@@ -962,6 +963,14 @@ export default function AppShell({ email, loading = false, preview = false, acco
             title: "Tools",
             items: [
               {
+                id: "lead-brain",
+                label: "Lead Brain",
+                icon: <BrainCircuit size={18} strokeWidth={1.6} aria-hidden="true" />,
+                count: leads.filter((l) => l.status !== "removed" && l.verdict === "Good" && !l.outreach_approved).length || undefined,
+                onClick: () => pick("lead-brain"),
+                ariaCurrent: view === "lead-brain",
+              },
+              {
                 id: "find",
                 label: "Find leads",
                 icon: <FindLeadsIcon />,
@@ -1182,7 +1191,34 @@ export default function AppShell({ email, loading = false, preview = false, acco
         ) : null}
         <ViewErrorBoundary key={`${account?.team_id ?? (demo ? "demo" : "anon")}-${view}`} viewName={view} onReset={reload} onNavigateHome={() => pick("home")}>
         {view === "home" ? <HomeView account={account} leads={leads} loaded={loaded || (!account && !loading)} email={email} go={pick} demo={Boolean(demo) || !account} onSpam={() => setSpam({ subject: "", body: "" })} onLead={setOpenLead} />
-          : (view === "ai" || view === "assistant") ? <AssistantView account={account} demo={Boolean(demo)} editable={editable} toast={setToast} go={pick} addDnc={addDnc} onChanged={reload} dnc={dnc}
+          : view === "lead-brain" ? (
+            <LeadBrainView
+              teamId={account?.team_id ?? null}
+              isAdmin={isAdmin}
+              leads={leads}
+              demo={Boolean(demo)}
+              onApproveLead={async (leadId) => {
+                if (demo) {
+                  setLeads((ls) => ls.map((l) => (l.id === leadId ? { ...l, outreach_approved: true } : l)));
+                  return true;
+                }
+                const sb = supabaseBrowser();
+                const { data: u } = await sb.auth.getUser();
+                const now = new Date().toISOString();
+                const { error } = await sb
+                  .from("leads")
+                  .update({ outreach_approved: true, outreach_approved_at: now, outreach_approved_by: u.user?.id ?? null })
+                  .eq("id", leadId);
+                if (error) {
+                  setToast(error.message);
+                  return false;
+                }
+                setLeads((ls) => ls.map((l) => (l.id === leadId ? { ...l, outreach_approved: true } : l)));
+                setToast("Approved for outreach.");
+                return true;
+              }}
+            />
+          ) : (view === "ai" || view === "assistant") ? <AssistantView account={account} demo={Boolean(demo)} editable={editable} toast={setToast} go={pick} addDnc={addDnc} onChanged={reload} dnc={dnc}
             question={chatAsk} onAsked={() => setChatAsk(null)} onChatFrame={setChatFrame}
             tools={<AiView account={account} leads={leads} demo={Boolean(demo)} editable={editable} toast={setToast} go={pick} blocked={blocked}
               onLeads={(p) => setLeads((ls) => ls.map((l) => (p[l.id] ? { ...l, ...p[l.id] } : l)))} />} />
