@@ -3,7 +3,7 @@
 // Pure functions only: used by the App's server (with the team key) and by the browser (job files, no key).
 // Mail phase 2: with a sequence, the same call also writes one personal text per follow-up (follow_up_1..3).
 import { AUTO, modelForTask } from "./ai-models";
-import { greetName, nameFromEmail } from "./email-check";
+import { greetName, isGenericInbox, nameFromEmail } from "./email-check";
 import { variantCount, variantFor, followUpCount, followUpPurposes, followUpSteps, renderAll, type Step } from "./sequence";
 import type { VoiceNotes } from "./about";
 import type { ChosenAngle } from "./angles";
@@ -235,7 +235,71 @@ export function numbersNotInQuote(fact: string, quote: string): string[] {
 const RESEARCH_BAD = /https?:|www\.|@|<|>|\{\{|\[[A-Z_]{3,}\]/i;
 const NOT_PERSON_WORDS = /\b(team|support|admin|sales|info|contact|press|office|studio|agency|media|group|company|ltd|limited|llc|inc|gmbh)\b/i;
 
-function cleanResearchContacts(raw: unknown, normalizedSiteText: string, host: string): ResearchContact[] {
+const ABOUT_TEAM_PATH_RE = /^\/?(about|about-us|team|our-team|company|leadership|founders?)(\/|$)/i;
+const DEPT_OF_WORDS = new Set([
+  "engineering", "product", "products", "sales", "marketing", "design", "operations", "ops",
+  "growth", "finance", "hr", "people", "talent", "strategy", "research", "content", "media",
+  "creative", "technology", "tech", "data", "security", "legal", "customer", "customers",
+  "client", "clients", "business", "development", "revenue", "brand", "communications", "comms",
+  "community", "support", "success", "the", "a", "an", "our", "this",
+]);
+
+function aboutTeamText(siteText: string): string {
+  const parts = siteText.split(/\n--- ([^\n]+) ---\n/);
+  // parts[0] is the homepage; only sections whose marker path is an about/team/leadership page qualify.
+  const chunks: string[] = [];
+  for (let i = 1; i < parts.length; i += 2) {
+    const markerPath = (parts[i] ?? "").trim();
+    const body = parts[i + 1] ?? "";
+    if (ABOUT_TEAM_PATH_RE.test(markerPath)) chunks.push(body);
+  }
+  return chunks.join("\n");
+}
+
+function isLeadAboutUrl(rawUrl: string, host: string): boolean {
+  const u = rawUrl.trim();
+  if (!u || u === host) return true;
+  if (u.startsWith("/")) return ABOUT_TEAM_PATH_RE.test(u);
+  if (/^https?:\/\//i.test(u)) {
+    try {
+      const parsed = new URL(u);
+      const cleanHost = host.replace(/^www\./, "").toLowerCase();
+      const parsedHost = parsed.hostname.replace(/^www\./, "").toLowerCase();
+      if (cleanHost && parsedHost !== cleanHost && !parsedHost.endsWith(`.${cleanHost}`)) return false;
+      return ABOUT_TEAM_PATH_RE.test(parsed.pathname);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function matchesLeadCompany(candidate: string, host: string, leadName: string): boolean {
+  const stripSuffix = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\b(inc|llc|ltd|limited|corp|corporation|co|company|gmbh|plc|group)\b/g, " ").replace(/\s+/g, " ").trim();
+  const cand = stripSuffix(candidate);
+  if (!cand) return false;
+  const hostRoot = host.replace(/^www\./, "").split(".")[0]?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";
+  const leadNorm = stripSuffix(leadName);
+  const candCompact = cand.replace(/\s+/g, "");
+  if (hostRoot && (candCompact === hostRoot || candCompact.includes(hostRoot) || hostRoot.includes(candCompact))) return true;
+  if (leadNorm && (cand === leadNorm || cand.includes(leadNorm) || leadNorm.includes(cand))) return true;
+  return false;
+}
+
+function namesOtherCompany(text: string, host: string, leadName: string): boolean {
+  const re = /\b(at|of)\s+([A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){0,3})/g;
+  for (const m of text.matchAll(re)) {
+    const prep = m[1].toLowerCase();
+    const company = m[2].trim();
+    const firstWord = company.split(/\s+/)[0]?.toLowerCase() ?? "";
+    if (prep === "of" && DEPT_OF_WORDS.has(firstWord)) continue;
+    if (!matchesLeadCompany(company, host, leadName)) return true;
+  }
+  return false;
+}
+
+function cleanResearchContacts(raw: unknown, normalizedAboutText: string, host: string, leadName: string): ResearchContact[] {
   if (!Array.isArray(raw)) return [];
   const out: ResearchContact[] = [];
   const seen = new Set<string>();
@@ -248,10 +312,12 @@ function cleanResearchContacts(raw: unknown, normalizedSiteText: string, host: s
     const quote = String(rec.quote ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
     const url = String(rec.url ?? host).slice(0, 200);
     if (!name || !quote || RESEARCH_BAD.test(name) || RESEARCH_BAD.test(role) || NOT_PERSON_WORDS.test(name)) continue;
+    if (!isLeadAboutUrl(url, host)) continue;
+    if (namesOtherCompany(quote, host, leadName) || namesOtherCompany(role, host, leadName)) continue;
     const words = name.split(/\s+/);
     if (words.length < 2 || words.length > 4 || words.some((w) => !/^[A-Za-z][A-Za-z'.-]{0,24}$/.test(w))) continue;
     const nq = norm(quote);
-    if (normalizedSiteText && (nq.length < 4 || !normalizedSiteText.includes(nq))) continue;
+    if (nq.length < 4 || !normalizedAboutText || !normalizedAboutText.includes(nq)) continue;
     if (!nq.includes(norm(name))) continue;
     if (role && !nq.includes(norm(role))) continue;
     const key = norm(name);
@@ -262,7 +328,7 @@ function cleanResearchContacts(raw: unknown, normalizedSiteText: string, host: s
   }
   return out;
 }
-export function cleanResearch(d: Record<string, unknown> | null, siteText?: string, host = ""): Omit<Research, "host" | "by" | "at"> & { dropped_observations?: Observation[] } | null {
+export function cleanResearch(d: Record<string, unknown> | null, siteText?: string, host = "", leadName = ""): Omit<Research, "host" | "by" | "at"> & { dropped_observations?: Observation[] } | null {
   if (!d) return null;
   const f = (k: string, n: number) => String(d[k] ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
   const problem = f("problem", 220), how = f("how", 220), detail = f("detail", 180);
@@ -310,7 +376,9 @@ export function cleanResearch(d: Record<string, unknown> | null, siteText?: stri
     .map((u) => String(u ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200))
     .filter((u) => u.length > 3);
 
-  const contacts = cleanResearchContacts(d.contacts, normalizedSiteText, host);
+  const rawAbout = siteText ? aboutTeamText(siteText) : "";
+  const normalizedAboutText = rawAbout ? rawAbout.replace(/["'“”‘’]/g, "").replace(/\s+/g, " ").toLowerCase() : "";
+  const contacts = cleanResearchContacts(d.contacts, normalizedAboutText, host, leadName);
 
   return {
     observations: validObs,
@@ -732,16 +800,21 @@ export function leadPayload(l: LeadData) {
 export const hasObservations = (l: LeadData | null | undefined) =>
   (l?.research?.observations ?? []).some((o) => String(o?.quote || "").trim().length > 0);
 export function emailPayload(l: LeadData) {
-  const email = typeof l.email === "string" ? l.email : "";
-  const direct = (l.contacts || []).find((c) => c && c.name);
-  const fromEmail = direct?.name ? "" : nameFromEmail(email, l.name);
-  const r = l.research;
-  // Use a Research-verified contact only when no direct contact exists and the email isn't for a different person.
-  const researched = !direct?.name ? (r?.contacts || []).find((c) => {
+  const email = typeof l.email === "string" ? l.email.trim().toLowerCase() : "";
+  const generic = !email || isGenericInbox(email);
+  const fromEmail = generic ? "" : nameFromEmail(email, l.name);
+  const direct = generic ? undefined : (l.contacts || []).find((c) => {
     if (!c?.name) return false;
-    if (!fromEmail) return true;
-    return c.name.trim().split(/\s+/)[0]?.toLowerCase() === fromEmail.toLowerCase();
-  }) : undefined;
+    const ce = String((c as { email?: string }).email ?? "").trim().toLowerCase();
+    if (ce && ce === email) return true;
+    const cf = c.name.trim().split(/\s+/)[0]?.toLowerCase();
+    return Boolean(fromEmail && cf === fromEmail.toLowerCase());
+  });
+  const r = l.research;
+  // Greet by name ONLY when the send-to email is that person's own address, never team@/support@/hello@.
+  const researched = !generic && !direct?.name && fromEmail
+    ? (r?.contacts || []).find((c) => c?.name && c.name.trim().split(/\s+/)[0]?.toLowerCase() === fromEmail.toLowerCase())
+    : undefined;
   const personName = direct?.name || researched?.name || "";
   const personRole = direct ? direct.position || direct.role || "" : researched?.role || "";
   return {

@@ -204,7 +204,8 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
   const answer = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
   const by = p.by ?? p.provider;
   if (p.task === "research") {
-    const r = cleanResearch(answer, siteText, host);
+    const leadName = String((data as { name?: string }).name ?? "");
+    const r = cleanResearch(answer, siteText, host, leadName);
     if (!r) return { ok: false, why: "AI answer was broken. Try again.", cost };
     const research = { ...r, host: host.slice(0, 120), by, at: Date.now() };
     return { ok: true, patch: { data: { ...data, research } }, result: { id: l.id, research, dropped_observations: r.dropped_observations }, cost };
