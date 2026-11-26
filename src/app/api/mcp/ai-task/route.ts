@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { currentUser, supabaseServer } from "@/lib/supabase/server";
 import { teamDnc } from "@/lib/dnc-server";
 import { dncBlocks } from "@/lib/dnc";
-import { emailPayload, leadPayload, type LeadData } from "@/lib/ai";
+import { emailPayload, hasObservations, leadPayload, type LeadData } from "@/lib/ai";
+import { NEEDS_RESEARCH } from "@/lib/lead-steps";
 import { agentPlan, canWork, mcpGate } from "@/lib/mcp-server";
 
 // Kestrel MCP: the instructions and lead details for scoring or writing, so the person's own Claude Code or Codex plan can do
@@ -20,8 +21,10 @@ export async function POST(request: Request) {
   if (!task || !ids.length || typeof body.offer_id !== "string") return NextResponse.json({ error: "Give task (score or emails), lead_ids (up to 50) and offer_id." }, { status: 400 });
   const plan = await agentPlan(sb, gate.team, task, body.offer_id, typeof body.sequence === "string" ? body.sequence : "default");
   if ("error" in plan) return NextResponse.json({ error: plan.error }, { status: 400 });
-  const { data: rows } = await sb.from("leads").select("id,team_id,name,email,data").in("id", ids).eq("team_id", gate.team);   // only the current team
-  const leads = (rows ?? []) as { id: string; team_id: string; name: string | null; email: string | null; data: LeadData | null }[];
+  const { data: rows } = await sb.from("leads").select("id,team_id,name,email,website,data").in("id", ids).eq("team_id", gate.team);   // only the current team
+  // The website column is the lead's main site, used when the scraped details have none (same as /api/ai).
+  const leads = ((rows ?? []) as { id: string; team_id: string; name: string | null; email: string | null; website: string | null; data: LeadData | null }[])
+    .map(({ website, ...l }) => (website && !l.data?.website ? { ...l, data: { ...(l.data ?? {}), website } } : l));
   let dnc;
   try { dnc = await teamDnc(sb, gate.team, leads.map((l) => ({ email: l.email, emails: (l.data as { emails?: string[] } | null)?.emails, website: (l.data as { website?: string } | null)?.website }))); }
   catch { return NextResponse.json({ error: "Could not check the Do-not-contact list just now. Try again in a minute." }, { status: 503 }); }
@@ -29,6 +32,7 @@ export async function POST(request: Request) {
   for (const l of leads) {
     const d = l.data ?? {};
     if (task === "emails" && !l.email) { skipped.push({ id: l.id, why: "no email" }); continue; }
+    if (task === "emails" && !hasObservations(d)) { skipped.push({ id: l.id, why: NEEDS_RESEARCH }); continue; }
     if (task === "emails" && dncBlocks({ email: l.email, emails: (d as { emails?: string[] }).emails, website: (d as { website?: string }).website }, dnc)) { skipped.push({ id: l.id, why: "do not contact" }); continue; }
     out.push({ lead_id: l.id, name: l.name, details: task === "score" ? leadPayload(d) : emailPayload({ ...d, email: l.email ?? (d as { email?: string }).email }) });
   }

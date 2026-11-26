@@ -3,6 +3,7 @@ import { checkDomain } from "@/lib/blacklist";
 import { deliver, type OutboxItem } from "@/lib/integrations";
 import type { ImapFlow } from "imapflow";
 import { imapClient, smtpTransport } from "@/lib/mail-connect";
+import { plainMailError, scanMailboxes, withImapClient, type ImapLike, type ScanBox } from "@/lib/mail-scan";
 import { createClient } from "@supabase/supabase-js";
 import { answerMessage, readAnswer, type Answer } from "@/lib/answer-mail";
 import { SUPABASE_KEY, SUPABASE_URL } from "@/lib/supabase/config";
@@ -18,14 +19,6 @@ const PER_CALL = 10;
 
 const same = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
 
-function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
-  let timer: NodeJS.Timeout;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(msg)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
 // Reporting back must not be lost after a real send: try three times.
 type Rpc = { rpc: (fn: "mail_result", args: Record<string, unknown>) => PromiseLike<{ error: unknown }> };
 async function report(sb: Rpc, args: Record<string, unknown>) {
@@ -37,18 +30,18 @@ async function report(sb: Rpc, args: Record<string, unknown>) {
   console.error("mail_result failed for", args.cl_id, "(the claim stays for 6 hours, so it is not sent again soon)");
   return false;
 }
-const plain = (e: unknown) => String((e as { response?: string; message?: string })?.response || (e as Error)?.message || e || "").replace(/\s+/g, " ").slice(0, 300);
+const plain = plainMailError;
 
 type ScheduledAnswer = { id: string; reply_id: string; to: string; subject: string | null; message_id: string | null; payload: Answer;
   box: { email: string; from_name: string; smtp_host: string; smtp_port: number; username: string; password: string; signature: string } };
 type Login = { email: string; imap_host: string | null; imap_port: number | null; username: string; password: string };
-const imapFor = (b: Login) => imapClient(b);
+const imapFor = (b: Login, socketTimeout = 15_000) => imapClient(b, socketTimeout);
 
 // Reads the given messages and decides what each one is (reply, remove me, bounce, out of office).
-async function readMessages(client: ImapFlow, uids: number[], mailbox: string): Promise<InboxItem[]> {
+async function readMessages(client: ImapLike, uids: number[], mailbox: string): Promise<InboxItem[]> {
   if (!uids.length) return [];
   const out: InboxItem[] = [];
-  const list = await client.fetchAll(uids.join(","), { uid: true, envelope: true, headers: true, source: { maxLength: 20000 } }, { uid: true });
+  const list = await (client as ImapFlow).fetchAll(uids.join(","), { uid: true, envelope: true, headers: true, source: { maxLength: 20000 } }, { uid: true });
   for (const m of list) {
     const from = String(m.envelope?.from?.[0]?.address || "").toLowerCase(), subject = String(m.envelope?.subject || "");
     const raw = m.source ? m.source.toString("utf8") : "", text = readableText(raw);
@@ -65,38 +58,19 @@ async function replied(e: DueEmail) {
   if (!e.box.imap_host) throw new Error("This mailbox has no IMAP (reading) settings, so replies cannot be checked. Add them in Mailboxes.");
   if (!e.first_sent_at) return false;
   const sentAt = e.first_sent_at;
-  return await withTimeout((async () => {
-    const client = await imapFor(e.box);
-    try {
+  return await withImapClient(
+    () => imapFor(e.box, 9_000),
+    async (client) => {
       await client.connect();
       await client.mailboxOpen("INBOX", { readOnly: true });
       const found = await client.search({ from: e.to, since: new Date(sentAt) }, { uid: true });
       if (!Array.isArray(found) || !found.length) return false;
       const items = await readMessages(client, found.slice(-10), e.box.email);
       return items.some((i) => i.kind !== "auto");
-    } finally { try { await client.logout(); } catch { /* already closed */ } }
-  })(), 10_000, "IMAP check timed out (10s)");
-}
-
-// Phase 4: read new messages in one mailbox since the last read (or since its first campaign email) and report them.
-type ScanBox = Login & { id: string; scan_uid: number | null; scan_validity: string | null; since: string | null };
-async function scanBox(b: ScanBox) {
-  return await withTimeout((async () => {
-    const client = await imapFor(b);
-    try {
-      await client.connect();
-      const box = await client.mailboxOpen("INBOX", { readOnly: true });
-      const validity = String(box.uidValidity ?? "");
-      const fresh = !b.scan_uid || b.scan_validity !== validity;
-      const found = fresh
-        ? await client.search({ since: new Date(b.since || Date.now() - 86400000) }, { uid: true })
-        : await client.search({ uid: `${Number(b.scan_uid) + 1}:*` }, { uid: true });
-      const uids = (Array.isArray(found) ? found : []).filter((u) => fresh || u > Number(b.scan_uid)).sort((x, y) => x - y).slice(-100);
-      const items = await readMessages(client, uids, b.email);
-      const last = uids.length ? uids[uids.length - 1] : Math.max(Number(b.scan_uid || 0), Number(box.uidNext || 1) - 1);
-      return { validity, last, items };
-    } finally { try { await client.logout(); } catch { /* already closed */ } }
-  })(), 15_000, "IMAP scan timed out (15s)");
+    },
+    10_000,
+    "IMAP check timed out (10s)"
+  );
 }
 
 async function sendOne(e: DueEmail, origin: string) {
@@ -175,27 +149,15 @@ export async function POST(request: Request) {
   }));
 
   // Phase 4: read up to five mailboxes for replies, remove-me answers and bounces (each mailbox about every minute).
-  let scanned = 0;
-  const { data: boxes } = left() > 25_000 ? await sb.rpc("mail_scan_due", { server_secret: secret, max_n: 5 }) : { data: [] };
-  await Promise.all(((boxes ?? []) as ScanBox[]).map(async (b) => {
-    const domain = b.email.split("@")[1] || "unknown";
-    try {
-      const r = await scanBox(b);
-      const rep = await sb.rpc("mail_inbox_report", { server_secret: secret, box_id: b.id, validity: r.validity, last_uid: r.last, items: r.items });
-      if (!rep.error) {
-        await sb.rpc("mail_scan_ok", { server_secret: secret, box_id: b.id });
-      }
-      scanned++;
-    } catch (err) {
-      const msg = plain(err);
-      console.error(`inbox read failed for mailbox ${b.id} (${domain}):`, msg);
-      try {
-        await sb.rpc("mail_scan_failure", { server_secret: secret, box_id: b.id, err: msg });
-      } catch (e) {
-        console.error("mail_scan_failure rpc error:", plain(e));
-      }
-    }
-  }));
+  const scanWait = Math.min(20_000, Math.max(8_000, left() - 8_000));
+  const { data: boxes } = left() > 20_000 ? await sb.rpc("mail_scan_due", { server_secret: secret, max_n: 5 }) : { data: [] };
+  const { scanned } = await scanMailboxes((boxes ?? []) as ScanBox[], {
+    sb,
+    secret,
+    timeoutMs: scanWait,
+    createClient: (b, sockMs) => imapFor(b, sockMs),
+    readMessages,
+  });
   // Spam Guard B: check one sending domain against public blacklists when its last check is a day old.
   let monitored = 0;
   const { data: doms } = left() > 15_000 ? await sb.rpc("domain_monitor_due", { server_secret: secret, max_n: 1 }) : { data: [] };

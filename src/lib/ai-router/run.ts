@@ -361,6 +361,12 @@ export async function logRun(
   errorText: string | null,
   slot?: AiSlot | null
 ) {
+  // One line in the server logs for each AI call that did not succeed, so a failed answer can be traced
+  // from Vercel's logs: which slot and model, how long, and why. No keys, no prompt, no answer text.
+  if (status !== "ok") {
+    console.warn(`[ai-router] ${task} slot=${slot ?? "-"} provider=${provider} model=${model} attempt=${attempt} status=${status} ms=${ms}${
+      errorText ? ` error=${errorText.replace(/\s+/g, " ").replace(/(key|token|bearer)[^ ]*/gi, "$1…").slice(0, 200)}` : ""}`);
+  }
   const secret = serverSecret();
   const baseArgs = {
     server_secret: secret,
@@ -401,14 +407,17 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   const logRunImpl: typeof logRun = (lsb, lteam, luser, ltask, ...rest) =>
     baseLog(lsb, lteam, luser, params.uncounted ?? ltask, ...rest);
 
-  // Streamed chat: note when the first piece reaches the person. From then on a failure is final.
+  // Streamed chat: note when part of the ANSWER is on the person's screen. From then on a failure is final,
+  // because starting again would show a second answer under the first. Thinking and steps alone don't count:
+  // a failure after them (say, on the call after a lookup) still retries or goes to Nest, and the new
+  // thinking and steps simply follow the old ones. A note that was moved into the thinking doesn't count either.
   let streamed = false;
   const outer = params.onStream;
   const sink: StreamSink | undefined = outer
     ? {
-        thinking: (t) => { streamed = true; outer.thinking(t); },
+        thinking: (t) => outer.thinking(t),
         text: (t) => { streamed = true; outer.text(t); },
-        textReset: () => outer.textReset(),
+        textReset: () => { streamed = false; outer.textReset(); },
       }
     : undefined;
 

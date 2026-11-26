@@ -54,7 +54,7 @@ import InboxView from "./inbox-view";
 import ViewErrorBoundary from "@/components/view-error-boundary";
 import { Globe } from "lucide-react";
 import { BizAvatar, PersonAvatar, Socials, siteOfEmail } from "./biz";
-import { ACCENTS, applyLayout, applyLook, openPhoto, readLook, saveLook, type Look } from "@/lib/look";
+import { ACCENTS, applyLayout, applyLook, followOsTheme, openPhoto, readLook, saveLook, type Look } from "@/lib/look";
 import { noteRecent, readRecent, type RecentItem } from "@/lib/recent";
 import PhotoCrop from "./photo-crop";
 import AnalyticsView from "./analytics-view";
@@ -280,7 +280,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
   const [collapsed, setCollapsed] = useState(false); // computer: the left bar folds to a slim row of icons
   const [kitFilters, setKitFilters] = useState(false);   // v2 Leads: the filter row under the search box   // the new design (?look=v2): the Figma kit's layouts
   const [look, setLook] = useState<Look>(readLook);   // read once from localStorage
-  useEffect(() => { applyLook(look); applyLayout(); }, [look]);   // Profile → Appearance (theme, accent, reduce motion)
+  useEffect(() => { applyLook(look); applyLayout(); return followOsTheme(look); }, [look]);   // Profile → Appearance (theme, accent, reduce motion); "auto" follows OS switches live
   const [leads, setLeads] = useState<LeadRow[]>(demo ?? []);
   const [query, setQuery] = useState("");
   const [searchQ, setSearchQ] = useState("");

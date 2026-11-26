@@ -217,9 +217,10 @@ export async function POST(request: Request) {
     rowsRes = (await sb.from("leads").select("id,team_id,email,website,data").in("id", ids)) as typeof rowsRes;
   }
   const rows = rowsRes.data;
-  // The website column is the lead's main site; research reads it when the scraped details have none.
+  // The website column is the lead's main site; every task uses it when the scraped details have none. (It was research
+  // only, so the writer saw no website and wrote "you do not have a public website" for leads that have one.)
   const leads = ((rows ?? []) as { id: string; team_id: string; email: string | null; website: string | null; data: Record<string, unknown> | null; outreach_approved?: boolean }[])
-    .map(({ website, ...l }) => (task === "research" && website && !(l.data as { website?: string } | null)?.website ? { ...l, data: { ...(l.data ?? {}), website } } : l));
+    .map(({ website, ...l }) => (website && !(l.data as { website?: string } | null)?.website ? { ...l, data: { ...(l.data ?? {}), website } } : l));
   // One team per batch, and its own Do-not-contact list: never write to anyone on it. If the check fails, nothing is written.
   if (leads.some((l) => l.team_id !== leads[0].team_id)) return NextResponse.json({ error: "These leads belong to different teams. Run one team at a time." }, { status: 400 });
   const batchTeamId = leads[0]?.team_id || (offer as { team_id?: string })?.team_id || "";

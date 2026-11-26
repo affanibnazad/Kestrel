@@ -4,10 +4,10 @@ import fs from "node:fs";
 import http from "node:http";
 
 // Import REAL source modules using tsx TypeScript & @/ alias support
-import { aiLeadError } from "@/lib/lead-steps";
+import { aiLeadError, aiOne, NEEDS_RESEARCH } from "@/lib/lead-steps";
 import { runAiTask, AI_TASKS } from "@/lib/ai-router";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
-import { readJson } from "@/lib/ai";
+import { readJson, assemble, emailSystem, emailPayload, qcSystem, cleanParts, cleanQc, hasObservations, cleanResearch, numbersNotInQuote } from "@/lib/ai";
 
 // Ensure server secret is valid for standalone test runner
 process.env.MAIL_SERVER_SECRET = "1234567890123456789012345678901234";
@@ -1007,5 +1007,78 @@ describe("AI-4a review fixes: gate, fail closed, uncounted runs, batch stop", ()
     assert.notEqual(aiLeadError({ error: "x", status: "error", statusCode: 500 }).stop, true);
     assert.notEqual(aiLeadError({ error: "something odd", status: "error" }).stop, true);
     assert.notEqual(aiLeadError({ error: "x", status: "timeout" }).stop, true);
+  });
+});
+
+describe("Email writer: facts only, no invented claims", () => {
+  const offer = { name: "Edit", offer: "Video editing for YouTube channels", customer: "YouTube creators", good: "", bad: "", criteria: "", strictness: "balanced", one_line: "We edit long YouTube videos so creators can post every week." };
+  const sender = { sender_name: "Affan", business: "Norven Studio", address: "London, UK", signature: "" };
+  const parts = { first_name: "Sam", subject: "your weekly uploads", icebreaker: "I saw your channel says \"new video every Friday\".", question: "Honestly, who edits the Friday videos now?", one_line: "" };
+
+  it("fills every form of the greeting name slot, never leaving braces", () => {
+    for (const g of ["Hey {name},", "Hey {{name}},", "Hey {first_name},", "Hey {{FIRST_NAME}},"]) {
+      const body = assemble(parts, offer, sender, { greeting: g, sign_off: "Best,", sentence_length: "", words_used: [], words_avoided: [] });
+      assert.ok(body.startsWith("Hey Sam,"), `${g} -> ${body.split("\n")[0]}`);
+      assert.ok(!/[{}]/.test(body), `braces left for ${g}`);
+    }
+    const odd = assemble(parts, offer, sender, { greeting: "Hey {nickname},", sign_off: "", sentence_length: "", words_used: [], words_avoided: [] });
+    assert.equal(odd.split("\n")[0], "Hi Sam,");
+  });
+
+  it("an avoided word sends the one line back to the sender's own words, not a new claim", () => {
+    const body = assemble({ ...parts, one_line: "We craft scalable edits for your channel every week." }, offer, sender, { greeting: "", sign_off: "", sentence_length: "", words_used: [], words_avoided: ["scalable"] });
+    assert.ok(body.includes(offer.one_line));
+    assert.ok(!/high-performance|scalable/i.test(body));
+    assert.equal(cleanParts({ ...parts, one_line: "A seamless way to post every week." }).one_line, undefined);
+  });
+
+  it("the prompt has no hard-coded web-app / Next.js claims and marks guesses as unverified", () => {
+    const sys = emailSystem({ ...offer, offer: "" }, sender) + qcSystem(offer);
+    assert.ok(!/Next\.js|web application speed|frontend dashboard|test review/i.test(sys));
+    assert.match(sys, /unverified_notes are AI guesses/);
+    assert.match(sys, /Never write about what the lead does NOT have/);
+    const pay = emailPayload({ name: "Sam TV", research: { observations: [{ fact: "posts weekly", quote: "new video every Friday" }], problem: "They are slow.", how: "Solo.", detail: "Has 2 editors." }, ai: { reason: "Posts often." } });
+    assert.equal(pay.likely_problem, undefined);
+    assert.equal(pay.website_detail, undefined);
+    assert.equal(pay.fit_reason, undefined);
+    assert.equal(pay.unverified_notes.likely_problem, "They are slow.");
+    assert.equal(pay.unverified_notes.fit_reason, "Posts often.");
+  });
+
+  it("Write refuses a lead with no verified website quote, before any AI call", async () => {
+    assert.equal(hasObservations({ name: "Linear" }), false);
+    assert.equal(hasObservations({ research: { observations: [{ fact: "x", quote: "" }] } }), false);
+    assert.equal(hasObservations({ research: { observations: [{ fact: "x", quote: "Plan and build products" }] } }), true);
+    const r = await aiOne({ task: "emails" }, { id: "l1", email: "hello@linear.app", data: { name: "Linear", outreach_approved: true } }, { emails: new Set(), domains: new Set() });
+    assert.equal(r.ok, false);
+    assert.equal(r.why, NEEDS_RESEARCH);
+  });
+
+  it("QC no longer demands the sender's usual words", () => {
+    const vn = { greeting: "", sign_off: "", sentence_length: "", words_used: ["noticed", "honestly"], words_avoided: [] };
+    const q = cleanQc({ pass: true, issues: [] }, "Hi there,\n\nYour site says \"Plan and build products\".", vn);
+    assert.ok(!q.issues.some((x) => /sender's voice/.test(x)), JSON.stringify(q));
+    assert.ok(!/MUST include at least one/.test(emailSystem({ name: "", offer: "x", customer: "y", good: "", bad: "", criteria: "", strictness: "balanced", one_line: "z" }, { sender_name: "A", business: "", address: "", signature: "" }, undefined, vn)));
+  });
+
+  it("Research drops an observation whose fact adds a number, and the writer sees quotes only", () => {
+    assert.deepEqual(numbersNotInQuote("Trusted by over 22 million people across 400,000 companies", "Millions of people across 400,000 companies choose Loom"), ["22"]);
+    assert.deepEqual(numbersNotInQuote("Captions in 50+ languages", "transcripts and captions in 50+ languages"), []);
+    const site = "Millions of people across 400,000 companies choose Loom. We offer SSO, SCIM as well as custom data retention policies.";
+    const r = cleanResearch({ observations: [
+      { fact: "Trusted by over 22 million people.", quote: "Millions of people across 400,000 companies choose Loom" },
+      { fact: "Offers SSO and SCIM.", quote: "We offer SSO, SCIM as well as custom data retention policies" },
+    ], hypotheses: [], unknowns: [], problem: "", how: "", detail: "", sure: "high" }, site, "loom.com");
+    assert.equal(r.observations.length, 1);
+    assert.match(r.observations[0].quote, /SSO, SCIM/);
+    const pay = emailPayload({ name: "Loom", research: { observations: [{ fact: "Trusted by 22 million", quote: "Millions of people" }] } });
+    assert.deepEqual(pay.evidence.observations, [{ quote: "Millions of people" }]);
+  });
+
+  it("QC sees the sender's own one line, and both sides use a neutral question", () => {
+    const q = qcSystem({ ...offer, one_line: "We build fast, scalable Next.js web applications." });
+    assert.match(q, /We build fast, scalable Next\.js web applications\./);
+    assert.match(q, /assumes nothing and is valid/);
+    assert.match(emailSystem(offer, sender), /must assume NOTHING about the lead/);
   });
 });

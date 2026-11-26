@@ -117,6 +117,13 @@ export async function liveTurn(history: LiveMessage[], listener: LiveListener | 
           steps.push({ id: `live-${steps.length + 1}`, label: ev.text, state: "running" });
           newThought = true;
           listen.onSteps?.([...steps]);
+        } else if (ev.t === "step_done") {
+          // The step's lookup came back: it is done, with what it found.
+          const last = steps.length - 1;
+          if (last >= 0 && typeof ev.detail === "string" && ev.detail) steps[last] = { ...steps[last], detail: ev.detail.slice(0, 120) };
+          close(at);
+          newThought = true;
+          listen.onSteps?.([...steps]);
         } else if (ev.t === "think" && typeof ev.text === "string") {
           think(ev.text);
         } else if (ev.t === "text" && typeof ev.text === "string") {

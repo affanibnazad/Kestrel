@@ -472,6 +472,8 @@ async function oaRound(url: string, headers: Record<string, string>, body: Recor
 
 // One tool-loop round, streamed (server-sent events). Reasoning (`reasoning_content`, `reasoning`, or <think> in
 // the text) and answer text are passed on the moment they arrive; tool calls are put together from their pieces.
+const isJson = (t: string) => { try { JSON.parse(t); return true; } catch { return false; } };
+
 async function oaStreamRound(url: string, headers: Record<string, string>, body: Record<string, unknown>, params: ProviderCallParams, round: number, sink: StreamSink): Promise<OaRound> {
   const { provider } = params;
   const timer = streamTimer(params, round);
@@ -524,11 +526,22 @@ async function oaStreamRound(url: string, headers: Record<string, string>, body:
       if (delta.refusal) out.refusal = true;
       for (const tc of Array.isArray(delta.tool_calls) ? delta.tool_calls : []) {
         timer.firstPiece();
-        const i = typeof tc.index === "number" ? tc.index : calls.length;
+        // Without an index, a piece with a new id starts a new call; any other piece belongs to the last one.
+        const i = typeof tc.index === "number" ? tc.index : tc.id || !calls.length ? calls.length : calls.length - 1;
         const c = (calls[i] ??= { id: "", type: "function", function: { name: "", arguments: "" } });
         if (tc.id) c.id = tc.id;
-        if (tc.function?.name) c.function.name += tc.function.name;
-        if (tc.function?.arguments) c.function.arguments += tc.function.arguments;
+        const n = tc.function?.name;
+        // Some providers repeat the whole name in every chunk; glued together it would name no tool.
+        if (typeof n === "string" && n) c.function.name = c.function.name && n.startsWith(c.function.name) ? n : c.function.name + n;
+        // Arguments arrive as pieces of a JSON string. Some providers send an object instead, or repeat the
+        // whole string so far in every chunk; both are taken as they are rather than glued on.
+        const a = tc.function?.arguments;
+        if (a && typeof a === "object") c.function.arguments = JSON.stringify(a);
+        else if (typeof a === "string" && a) {
+          const so = c.function.arguments;
+          // Already a whole JSON value, and the new piece repeats it with more: the provider sends the full string.
+          c.function.arguments = so && a.length > so.length && a.startsWith(so) && isJson(so) ? a : so + a;
+        }
       }
       if (choice.finish_reason) out.finish = choice.finish_reason;
     };
@@ -552,7 +565,10 @@ async function oaStreamRound(url: string, headers: Record<string, string>, body:
   } finally {
     timer.stop();
   }
-  out.toolCalls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${round}_${i}` }));
+  // A tool with no inputs often streams no arguments at all. Sent back like that ("") on the next call,
+  // providers reject the whole request, so the answer died right after its first lookup. Always send valid JSON.
+  const json = (a: string) => { const t = a.trim(); return t && isJson(t) ? t : "{}"; };
+  out.toolCalls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${round}_${i}`, function: { ...c.function, arguments: json(c.function.arguments) } }));
   out.wroteText = wroteText;
   // Providers that send no usage in a stream: a rough count, so the run log is not empty.
   if (!out.usageOut) out.usageOut = Math.ceil(out.content.length / 4);
@@ -618,7 +634,9 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
         tool_choice: "auto",
         // Without a cap, a model can keep writing (or thinking) far past what a chat answer needs.
         ...(maxTokens ? { [provider === "openai" ? "max_completion_tokens" : "max_tokens"]: maxTokens } : {}),
-        ...(provider === "nvidia" ? { reasoning_effort: "low" } : {}),
+        // In the live chat the thinking is shown to the person, so the model thinks properly ("medium");
+        // elsewhere nobody sees it, so it stays short and fast.
+        ...(provider === "nvidia" ? { reasoning_effort: params.onStream ? "medium" : "low" } : {}),
       };
       /* eslint-disable @typescript-eslint/no-explicit-any */
       const r = params.onStream

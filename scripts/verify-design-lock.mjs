@@ -219,10 +219,11 @@ async function main() {
     img {
       visibility: hidden !important;
     }
-    /* Mask dynamic sidebar account / "Free access until" block and relative reply timestamps */
+    /* Mask dynamic sidebar account / "Free access until" block and relative reply timestamps.
+       .kinbox-pane-date is no longer masked: it shows a fixed date from the seed data and no
+       longer overlaps the avatar, so the baseline should catch it if it moves again. */
     .u-user,
-    .kinbox-item-time,
-    .kinbox-pane-date {
+    .kinbox-item-time {
       visibility: hidden !important;
     }
     /* Hide Next.js dev indicator */
