@@ -35,5 +35,7 @@ export const AI_TASKS: Record<AiTaskName, TaskConfig> = {
   reply_suggest: { slot: "talon", timeoutMs: 20_000, retries: 1, fallback: "nest", maxTokens: 900, maxConcurrent: 3 },
   reply_label: { slot: "swift", timeoutMs: 20_000, retries: 1, fallback: "nest", maxTokens: 300, maxConcurrent: 3 },
   spam_fix: { slot: "swift", timeoutMs: 20_000, retries: 1, fallback: "nest", maxTokens: 1000, maxConcurrent: 3 },
-  chat: { slot: "talon", timeoutMs: 40_000, retries: 0, fallback: "nest", maxTokens: 4000, maxConcurrent: 3 },
+  // chat: timeoutMs is per model call (each tool round). The whole answer is bounded by the route's deadline.
+  // 20s (was 40s): a healthy Talon answers one call in a few seconds; a 40s wait left Nest no time to help.
+  chat: { slot: "talon", timeoutMs: 20_000, retries: 0, fallback: "nest", maxTokens: 4000, maxConcurrent: 3 },
 };

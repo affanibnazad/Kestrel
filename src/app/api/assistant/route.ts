@@ -526,7 +526,32 @@ async function runTool(sb: Sb, name: string, input: Record<string, unknown>, tur
   }
 }
 
+// The whole answer (Talon, plus Nest if Talon fails) must be ready this long after the request arrives.
+// Vercel stops this route at 60s (maxDuration); if that happens mid-answer the chat gets no final line and
+// used to stay on "Thinking" forever. 45s leaves room for the work before and after the model call.
+const ANSWER_DEADLINE_MS = 45_000;
+// Only the newest part of the chat is sent to the model. Each turn re-sends this history (plus ~4,500 tokens of
+// instructions and tool descriptions), so a long chat made every reply slower and hit free-tier token limits
+// (Groq's tokens-per-minute), which then forced the slow Nest fallback.
+const HISTORY_MAX_MESSAGES = 12;
+const HISTORY_MAX_CHARS = 16_000;
+
+function recentHistory(all: ChatMsg[]): ChatMsg[] {
+  const out: ChatMsg[] = [];
+  let chars = 0;
+  for (let i = all.length - 1; i >= 0 && out.length < HISTORY_MAX_MESSAGES; i--) {
+    const m = all[i];
+    const room = HISTORY_MAX_CHARS - chars;
+    if (out.length && m.content.length > room) break;   // the newest question is always kept
+    out.unshift(m);
+    chars += m.content.length;
+  }
+  while (out.length > 1 && out[0].role !== "user") out.shift();   // models expect the chat to start with a question
+  return out;
+}
+
 export async function POST(req: Request) {
+  const startedAt = Date.now();
   const user = await currentUser();
   if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   if (!serverSecret() && !process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: "Kestrel AI is not switched on yet." }, { status: 503 });
@@ -562,16 +587,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Nothing to answer." }, { status: 400 });
 
   const sb = await supabaseServer();
-  const { data: member } = await sb.from("members").select("team_id").eq("user_id", user.id).maybeSingle();
-  const teamId = (member as { team_id?: string } | null)?.team_id || "";
-  if (!teamId) return NextResponse.json({ error: "Team not found." }, { status: 403 });
-
-  // This person's choices (027): which AI, about me, style, and what Kestrel AI remembers. Before 027: defaults.
-  const [{ data: pr }, { data: mem }, { data: teamAbout }] = await Promise.all([
+  // This person's team, and their choices (027): which AI, about me, style, and what Kestrel AI remembers.
+  // Before 027: defaults. Read together (one wait instead of two).
+  const [{ data: member }, { data: pr }, { data: mem }, { data: teamAbout }] = await Promise.all([
+    sb.from("members").select("team_id").eq("user_id", user.id).maybeSingle(),
     sb.from("assistant_prefs").select("source,provider,model,about,style").eq("user_id", user.id).maybeSingle(),
     sb.from("assistant_memory").select("id,fact").eq("user_id", user.id).order("created_at").limit(60),
     sb.from("team_about").select("*").maybeSingle(),   // Your business page (database 059)
   ]);
+  const teamId = (member as { team_id?: string } | null)?.team_id || "";
+  if (!teamId) return NextResponse.json({ error: "Team not found." }, { status: 403 });
   const prefs = (pr as Prefs | null) ?? null;
   const ai = await resolveAssistant(sb, prefs, history[history.length - 1].content, history.length);
   if ("error" in ai) return NextResponse.json({ error: ai.error }, { status: 503 });
@@ -618,22 +643,25 @@ export async function POST(req: Request) {
     try {
       const assistantPromise = runAssistant({
         provider: ai.provider, baseUrl: ai.baseUrl, key: ai.key, model: ai.model, effort: ai.effort, included: ai.included, slot: ai.slot,
-        system: `${SYSTEM}${ai.included ? `\n\n## Your name\nYou are ${ai.label}, Kestrel's own assistant. If someone asks what you are, say you are ${ai.label}, built into Kestrel. Do not bring up other AI companies or model names yourself.` : ""}${whereNow}\n\n## This person\n${personal}`, history,
+        system: `${SYSTEM}${ai.included ? `\n\n## Your name\nYou are ${ai.label}, Kestrel's own assistant. If someone asks what you are, say you are ${ai.label}, built into Kestrel. Do not bring up other AI companies or model names yourself.` : ""}${whereNow}\n\n## This person\n${personal}`, history: recentHistory(history),
         tools: TOOLS.map((t): NeutralTool => ({ name: t.name, description: t.description, schema: t.input_schema })),
         runTool: (name, input) => runTool(sb, name, input, turn), maxRounds: MAX_ROUNDS, images,
-        sb, teamId, userId: user.id,
+        sb, teamId, userId: user.id, deadlineAt: startedAt + ANSWER_DEADLINE_MS,
       });
+      // Safety net only: the router itself stops by the deadline. This makes sure the chat always gets an
+      // answer or an error before Vercel's 60s limit, even if a provider call ignores its timeout.
       let timer: NodeJS.Timeout;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("TIMEOUT_50S")), 50_000);
+        timer = setTimeout(() => reject(new Error("TIMEOUT_DEADLINE")), Math.max(1_000, startedAt + ANSWER_DEADLINE_MS + 3_000 - Date.now()));
       });
       const out = await Promise.race([assistantPromise, timeoutPromise]).finally(() => clearTimeout(timer));
       text = out.refused ? "I can't help with that one. Ask me anything about Kestrel or your outreach."
         : out.outOfRounds ? "That took more steps than I can do at once. Ask me again with one thing at a time." : out.text;
     } catch (e) {
-      if ((e as Error)?.message === "TIMEOUT_50S" || (e instanceof EngineError && e.kind === "rate") || /timeout|abort/i.test((e as Error)?.message ?? "")) {
-        return { error: "Kestrel AI is busy, try again" };
+      if ((e as Error)?.message === "TIMEOUT_DEADLINE" || /timeout|abort/i.test((e as Error)?.message ?? "")) {
+        return { error: "Kestrel AI took too long. Try again." };
       }
+      if (e instanceof EngineError && e.kind === "rate") return { error: "Kestrel AI is busy, try again in a minute." };
       const msg = e instanceof EngineError ? (e.kind === "key" && ai.included ? "Kestrel AI's key is not working. The Kestrel owner can fix it in the Owner panel."
         : e.kind === "key" ? `${e.message} Change it in Connections, or switch to Kestrel's AI in Kestrel AI → Personalize.` : e.message) : "Kestrel AI could not answer just now. Try again.";
       return { error: msg };
@@ -650,13 +678,14 @@ export async function POST(req: Request) {
   const enc = new TextEncoder();
   const stream = new ReadableStream({
     async start(ctl) {
-      const send = (o: unknown) => ctl.enqueue(enc.encode(`${JSON.stringify(o)}\n`));
+      // The person may close the chat mid-answer; writing to a closed stream must not crash the route.
+      const send = (o: unknown) => { try { ctl.enqueue(enc.encode(`${JSON.stringify(o)}\n`)); } catch { /* reader gone */ } };
       send({ t: "step", text: `Thinking with ${ai.label}` });
       try {
         const r = await work((text) => send({ t: "step", text }));
         send("error" in r ? { t: "error", error: r.error } : { t: "done", turn: r });
       } catch { send({ t: "error", error: "Kestrel AI could not answer just now. Try again." }); }
-      ctl.close();
+      try { ctl.close(); } catch { /* already closed */ }
     },
   });
   return new Response(stream, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store", "x-accel-buffering": "no" } });

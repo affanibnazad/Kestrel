@@ -34,6 +34,10 @@ export type RunAiTaskParams = {
   // Optional pre-resolved provider/key/model — skips resolveModelForSlot for attempt 1.
   // Passed by assistant-engine (for chat) and Owner -> AI slot tester.
   resolution?: ModelResolution;
+  // Owner -> AI "Test": test exactly this slot. No Nest fallback and no retry, so the result
+  // can never show another slot's model.
+  noFallback?: boolean;
+  retries?: number;
 };
 
 export type RunAiTaskResult<T = unknown> =
@@ -49,6 +53,8 @@ export type RunAiTaskResult<T = unknown> =
       tokens_out: number;
       cost_usd: number | null;
       ms: number;
+      /** True when the first slot failed and Nest answered instead. */
+      fellBack?: boolean;
     }
   | {
       ok: false;
@@ -331,16 +337,41 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
     currentSlot = resolution.slot ?? cfg.slot;
   }
 
-  const maxAttempts = 1 + cfg.retries;
+  const maxAttempts = 1 + (params.retries ?? cfg.retries);
+
+  // Nest can only help if it still has time when the first slot gives up. So the first slot must stop
+  // NEST_RESERVE_MS before the deadline. Before this, a Talon timeout (40s) used all 50s and Nest was
+  // always skipped with "no time left": the person waited ~50s for an error.
+  const nestPossible =
+    !params.noFallback &&
+    cfg.fallback === "nest" &&
+    currentResolution.source === "kestrel" &&
+    currentSlot !== "nest";
+  const reserve = nestPossible ? Math.min(NEST_RESERVE_MS, Math.max(0, (absoluteDeadline - now) / 2)) : 0;
+  const primaryDeadline = absoluteDeadline - reserve;
+  // Look up Nest at the same time as the first call, so a fallback does not wait for another
+  // database round trip. Errors here are ignored; Nest is simply not used.
+  const nestLookup: Promise<ModelResolution | null> | null = nestPossible
+    ? (async () => {
+        try {
+          return (await resolveSlot(sb, "nest")) ?? (await resolveLegacyBackup(sb));
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+
   let lastErrorMsg = "";
   let lastStatus: "timeout" | "error" | "skipped" = "error";
   let lastStatusCode: number | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const timeLeft = absoluteDeadline - Date.now();
+    const timeLeft = primaryDeadline - Date.now();
     const neededForStep = baseTaskTimeout + 2000;
 
-    // Before every retry: if time left is less than step's timeout + 2s, do NOT start it
+    // Before every retry: if time left is less than step's timeout + 2s, do NOT start it.
+    // When Nest can take over, go to Nest instead of giving up.
+    if (attempt > 1 && timeLeft < neededForStep && nestPossible) break;
     if (attempt > 1 && timeLeft < neededForStep) {
       await logRunImpl(
         sb,
@@ -385,6 +416,11 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         maxTokens,
         effort: params.effort ?? currentResolution.effort,
         timeoutMs: effectiveTimeout,
+        // The first model call must answer before Nest's reserved time starts, so a dead or
+        // rate-limited slot hands over fast. Once it has answered once, the tool loop may use
+        // the whole deadline (but never more: before, each round got a fresh 40s).
+        firstCallDeadlineAt: primaryDeadline - 1000,
+        deadlineAt: absoluteDeadline - 1000,
         history: params.history,
         tools: params.tools,
         runTool: params.runTool,
@@ -499,7 +535,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         if (attempt < maxAttempts) {
           const retryAfterMs = err instanceof ProviderCallError ? err.retryAfterMs : undefined;
           if (retryAfterMs !== undefined && retryAfterMs > 0) {
-            const timeLeftAfterWait = absoluteDeadline - (Date.now() + retryAfterMs);
+            const timeLeftAfterWait = primaryDeadline - (Date.now() + retryAfterMs);
             if (timeLeftAfterWait >= neededForStep) {
               await wait(retryAfterMs);
               continue;
@@ -517,6 +553,20 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   }
 
   // Retries exhausted (or 429 broke early): handle fallback
+  if (params.noFallback) {
+    return {
+      ok: false,
+      error: CUSTOMER_ERROR_MESSAGE,
+      status: lastStatus,
+      provider: currentResolution.provider,
+      model: currentResolution.model,
+      source: currentResolution.source,
+      slot: currentSlot,
+      lastError: lastErrorMsg,
+      statusCode: lastStatusCode,
+    };
+  }
+
   if (cfg.fallback === "skip") {
     return {
       ok: false,
@@ -565,12 +615,8 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
 
   // Nest fallback: Swift fails -> Nest. Talon fails -> Nest. Nest fails -> honest error. Never loop.
   // Team-key tasks NEVER fall back to Kestrel's Nest slot.
-  if (
-    cfg.fallback === "nest" &&
-    currentResolution.source === "kestrel" &&
-    currentSlot !== "nest"
-  ) {
-    const nestRes = (await resolveSlot(sb, "nest")) ?? (await resolveLegacyBackup(sb));
+  if (nestPossible && nestLookup) {
+    const nestRes = await nestLookup;
     const isSameModel =
       nestRes &&
       nestRes.provider === currentResolution.provider &&
@@ -580,7 +626,8 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
     if (nestRes && !isSameModel) {
       const timeLeft = absoluteDeadline - Date.now();
       const fallbackTimeout = Math.min(baseTaskTimeout, 20_000);
-      if (timeLeft < fallbackTimeout + 2000) {
+      // Nest gets whatever time is left (at least NEST_MIN_MS), instead of needing a full 22s.
+      if (timeLeft < Math.min(NEST_MIN_MS, reserve)) {
         await logRunImpl(
           sb,
           teamId,
@@ -609,7 +656,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         };
       }
 
-      const effectiveFallbackTimeout = Math.max(1, Math.min(fallbackTimeout, timeLeft - 2000));
+      const effectiveFallbackTimeout = Math.max(1, Math.min(fallbackTimeout, timeLeft - 1000));
       const startMs = Date.now();
       try {
         const answer: ProviderAnswer = await callProviderImpl({
@@ -620,9 +667,11 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
           system,
           user,
           schema,
-          maxTokens: Math.min(maxTokens, 1500),
+          // Chat answers need the same room as Talon, or long answers come back cut off / empty.
+          maxTokens: task === "chat" ? maxTokens : Math.min(maxTokens, 1500),
           effort: "low",
           timeoutMs: effectiveFallbackTimeout,
+          deadlineAt: absoluteDeadline - 1000,
           history: params.history,
           tools: params.tools,
           runTool: params.runTool,
@@ -669,6 +718,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
           tokens_out: tokensOut,
           cost_usd: cost,
           ms: elapsedMs,
+          fellBack: true,
         };
       } catch (fallbackErr: unknown) {
         const elapsedMs = Date.now() - startMs;
@@ -743,3 +793,8 @@ export function parseJsonObject<T = unknown>(text: string): T | null {
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Time kept back for Nest when the first slot (Swift / Talon) can fall back to it.
+const NEST_RESERVE_MS = 15_000;
+// Nest is not started with less than this left: it could not finish anyway.
+const NEST_MIN_MS = 6_000;

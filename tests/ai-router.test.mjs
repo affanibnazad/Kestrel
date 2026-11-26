@@ -635,4 +635,70 @@ describe("AI Lead Error Honest Classification (Real runAiTask -> aiLeadError)", 
     assert.equal(assistantIncludedCalled, false, "assistant_included must NOT be called when resolution is provided");
     console.log("  [resolution override] model:", capturedModel, "| key ends:", capturedKey.slice(-4), "| assistant_included called:", assistantIncludedCalled);
   });
+
+  it("chat: Talon hangs -> Nest still gets time and answers before the deadline", async () => {
+    const started = Date.now();
+    const calls = [];
+    const providerFn = async (params) => {
+      calls.push({ model: params.model, timeoutMs: params.timeoutMs, firstLeft: params.firstCallDeadlineAt - Date.now() });
+      if (params.model === "talon-model") {
+        // Simulate a hung provider that respects its first-call deadline.
+        const t = Math.min(params.timeoutMs, params.firstCallDeadlineAt - Date.now());
+        await new Promise((r) => setTimeout(r, t));
+        throw new ProviderCallError("talon timed out", undefined, true);
+      }
+      return { text: "nest answer", usage: { input_tokens: 1, output_tokens: 1 } };
+    };
+    const sb = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async (fn, args) => {
+        if (fn === "ai_slot_for_server" && args.p_slot === "nest") {
+          return { data: { slot: "nest", provider: "nvidia", model: "nest-model", key: "nest-key", enabled: true }, error: null };
+        }
+        return { data: null, error: null };
+      },
+    };
+    const res = await runAiTask({
+      sb, teamId: "t", task: "chat", system: "s", user: "u",
+      deadlineMs: 6000, // scaled-down deadline: Talon may use at most half, Nest keeps the rest
+      resolution: { provider: "groq", model: "talon-model", key: "k", source: "kestrel", slot: "talon" },
+      providerFn, logRunFn: async () => {},
+    });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.equal(res.slot, "nest");
+    assert.equal(res.fellBack, true);
+    assert.equal(calls.length, 2);
+    assert.ok(Date.now() - started < 6000, "answered inside the deadline");
+  });
+
+  it("slot test (noFallback): a failing slot reports its own error, never Nest's model", async () => {
+    const models = [];
+    const sb = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async (fn) => {
+        if (fn === "ai_slot_for_server") return { data: { slot: "nest", provider: "groq", model: "nest-model", key: "k", enabled: true }, error: null };
+        return { data: null, error: null };
+      },
+    };
+    const res = await runAiTask({
+      sb, teamId: "t", task: "reply_label", system: "s", user: "u",
+      noFallback: true, retries: 0,
+      resolution: { provider: "groq", model: "swift-model", key: "k", source: "kestrel", slot: "swift" },
+      providerFn: async (p) => { models.push(p.model); throw new ProviderCallError("rate limited", 429); },
+      logRunFn: async () => {},
+    });
+    assert.equal(res.ok, false);
+    assert.equal(res.slot, "swift");
+    assert.equal(res.model, "swift-model");
+    assert.deepEqual(models, ["swift-model"], "only the tested slot was called, once");
+  });
+
+  it("callTimeout: per-call timeout is cut to the deadline, first call to its own deadline", async () => {
+    const { callTimeout } = await import("@/lib/ai-router/providers");
+    const now = Date.now();
+    const base = { provider: "groq", timeoutMs: 20_000, deadlineAt: now + 10_000, firstCallDeadlineAt: now + 4_000 };
+    assert.ok(callTimeout(base, 0) <= 4_000);
+    assert.ok(callTimeout(base, 1) <= 10_000 && callTimeout(base, 1) > 4_000);
+    assert.throws(() => callTimeout({ ...base, deadlineAt: now + 100 }, 1), /timeout/);
+  });
 });

@@ -280,12 +280,13 @@ export default function OwnerAi({
         ok?: boolean;
         ms?: number;
         model?: string;
+        provider?: string;
         error?: string;
       };
       if (json.ok) {
         patchSlot(id, {
           testing: false,
-          testResult: { ok: true, text: `ok · ${json.ms} ms · ${json.model}` },
+          testResult: { ok: true, text: `ok · ${json.ms} ms · ${json.provider ? `${json.provider} · ` : ""}${json.model}` },
         });
       } else {
         patchSlot(id, {

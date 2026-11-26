@@ -60,17 +60,25 @@ export async function liveTurn(history: LiveMessage[], onStep?: (s: Step) => voi
   let failure = "";
   const contentType = res.headers.get("content-type") ?? "";
   if (/ndjson/.test(contentType) && res.body) {
-    await readNdjson(res.body, (ev) => {
-      if (ev.t === "step" && typeof ev.text === "string") {
-        const s = step(steps.length + 1, ev.text);
-        steps.push(s);
-        onStep?.(s);
-      } else if (ev.t === "done") {
-        turn = ev.turn as typeof turn;
-      } else if (ev.t === "error" && typeof ev.error === "string") {
-        failure = ev.error;
-      }
-    });
+    // If the stream breaks (the server was stopped, the network dropped, or the 60s limit above hit while
+    // reading), this used to throw past the chat, which then stayed on "Thinking" forever.
+    try {
+      await readNdjson(res.body, (ev) => {
+        if (ev.t === "step" && typeof ev.text === "string") {
+          const s = step(steps.length + 1, ev.text);
+          steps.push(s);
+          onStep?.(s);
+        } else if (ev.t === "done") {
+          turn = ev.turn as typeof turn;
+        } else if (ev.t === "error" && typeof ev.error === "string") {
+          failure = ev.error;
+        }
+      });
+    } catch {
+      // handled just below: no answer and no error means the stream was cut
+    }
+    // The stream ended (or broke) without an answer or an error line.
+    if (!(turn as typeof turn) && !failure) failure = "Kestrel AI stopped before it could answer. Try again.";
   } else {
     const body = await res.json().catch(() => null) as typeof turn;
     if (body && typeof body === "object") turn = body;
