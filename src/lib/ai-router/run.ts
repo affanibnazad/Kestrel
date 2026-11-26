@@ -277,6 +277,12 @@ export async function logRun(
   errorText: string | null,
   slot?: AiSlot | null
 ) {
+  // One line in the server logs for each AI call that did not succeed, so a failed answer can be traced
+  // from Vercel's logs: which slot and model, how long, and why. No keys, no prompt, no answer text.
+  if (status !== "ok") {
+    console.warn(`[ai-router] ${task} slot=${slot ?? "-"} provider=${provider} model=${model} attempt=${attempt} status=${status} ms=${ms}${
+      errorText ? ` error=${errorText.replace(/\s+/g, " ").replace(/(key|token|bearer)[^ ]*/gi, "$1…").slice(0, 200)}` : ""}`);
+  }
   const secret = serverSecret();
   const baseArgs = {
     server_secret: secret,

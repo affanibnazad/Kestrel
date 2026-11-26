@@ -618,7 +618,9 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
         tool_choice: "auto",
         // Without a cap, a model can keep writing (or thinking) far past what a chat answer needs.
         ...(maxTokens ? { [provider === "openai" ? "max_completion_tokens" : "max_tokens"]: maxTokens } : {}),
-        ...(provider === "nvidia" ? { reasoning_effort: "low" } : {}),
+        // In the live chat the thinking is shown to the person, so the model thinks properly ("medium");
+        // elsewhere nobody sees it, so it stays short and fast.
+        ...(provider === "nvidia" ? { reasoning_effort: params.onStream ? "medium" : "low" } : {}),
       };
       /* eslint-disable @typescript-eslint/no-explicit-any */
       const r = params.onStream
