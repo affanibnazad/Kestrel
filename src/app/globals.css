@@ -19914,10 +19914,10 @@ a.btn:focus-visible {
   box-sizing: border-box !important;
   padding: 0 24px 0 10px !important;
   margin: 0 !important;
-  border: 1px solid #E2E6EE !important;
+  border: 1px solid var(--k-border) !important;
   border-radius: 8px !important;
-  background: #FFFFFF !important;
-  color: #0F172A !important;
+  background: var(--k-surface) !important;
+  color: var(--k-text) !important;
   font: inherit !important;
   font-size: 12.5px !important;
   font-weight: 500 !important;
@@ -19950,13 +19950,13 @@ a.btn:focus-visible {
 
 :root[data-theme="dark"] .kc-size select {
   border-color: rgba(255, 255, 255, 0.12) !important;
-  background: #181C26 !important;
-  color: #F3F4F6 !important;
+  background-color: var(--k-surface) !important;
+  color: var(--k-text) !important;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5' fill='none'%3E%3Cpath d='M1 1L4 4L7 1' stroke='%239CA3AF' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
 }
 
 :root[data-theme="dark"] .kc-size select:hover {
-  background-color: #242938 !important;
+  background-color: var(--k-hover) !important;
   border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
@@ -24894,9 +24894,9 @@ a:hover .line-ic,
   margin: 0 !important;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid var(--k-border) !important;
   border-radius: 14px !important;
-  background: #ffffff !important;
+  background: var(--k-surface) !important;
 }
 
 .kinbox-direct-input {
@@ -25108,6 +25108,28 @@ body:has(.kinbox-page) .ask-fab {
   border-color: rgba(0, 0, 0, 0.04);
 }
 
+/* Dark: selected/hover reply card uses the theme's own surface tokens,
+   so the sender name and subject (var(--k-text)) stay readable. */
+:root[data-theme="dark"] .kinbox-item:hover {
+  background: var(--k-hover);
+}
+
+:root[data-theme="dark"] .kinbox-item.on {
+  background: var(--k-active);
+  border-color: var(--k-border);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="gradient"]) .kinbox-item:hover {
+    background: var(--k-hover);
+  }
+
+  :root:not([data-theme="light"]):not([data-theme="gradient"]) .kinbox-item.on {
+    background: var(--k-active);
+    border-color: var(--k-border);
+  }
+}
+
 .kinbox-item-head {
   display: flex;
   align-items: center;
@@ -25279,19 +25301,23 @@ body:has(.kinbox-page) .ask-fab {
 
 .kinbox-pane-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px 14px;
   padding: 16px 28px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--k-border);
   background: var(--k-surface, #ffffff);
   flex: none;
 }
 
+/* Sender grows to fill the row; when the pane is narrow the action pills
+   wrap onto their own line instead of sliding under the avatar. */
 .kinbox-pane-sender {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1 1 160px;
   min-width: 0;
 }
 
@@ -25325,14 +25351,8 @@ body:has(.kinbox-page) .ask-fab {
   text-decoration: underline;
 }
 
-.kinbox-pane-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex: none;
-}
-
 .kinbox-pane-date {
+  flex: none;
   font-size: 13px;
   color: var(--k-muted, #9ca3af);
   white-space: nowrap;
@@ -25340,8 +25360,12 @@ body:has(.kinbox-page) .ask-fab {
 
 .kinbox-action-pills {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+  margin-left: auto;
+  max-width: 100%;
 }
 
 .kinbox-pill-btn {
@@ -25577,9 +25601,9 @@ body:has(.kinbox-page) .ask-fab {
 
 .kc-modern-card {
   margin-top: 14px !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid var(--k-border) !important;
   border-radius: 14px !important;
-  background: #ffffff !important;
+  background: var(--k-surface) !important;
   box-shadow: none !important;
   overflow: visible !important;
 }
@@ -25590,7 +25614,7 @@ body:has(.kinbox-page) .ask-fab {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid var(--k-border);
 }
 
 .kc-to-left {
@@ -25615,7 +25639,7 @@ body:has(.kinbox-page) .ask-fab {
   height: 28px;
   padding: 2px 10px 2px 4px;
   background: var(--k-bg, #f4f4f6);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--k-border);
   border-radius: 9999px;
   font-size: 13px;
   color: var(--k-text, #111827);
@@ -25668,7 +25692,7 @@ body:has(.kinbox-page) .ask-fab {
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid var(--k-border);
 }
 
 .kc-subj-text {
@@ -25692,7 +25716,7 @@ body:has(.kinbox-page) .ask-fab {
 }
 
 .kc-trash-btn:hover:not(:disabled) {
-  color: #111827 !important;
+  color: var(--k-text) !important;
 }
 
 /* Calm Mono Pill Send Button [ Send Message | 🕒 ] */
@@ -25700,7 +25724,7 @@ body:has(.kinbox-page) .ask-fab {
   display: inline-flex !important;
   align-items: center !important;
   border-radius: 9999px !important;
-  background: #111827 !important;
+  background: var(--k-text) !important;
   box-shadow: none !important;
   transition: background .15s !important;
   overflow: visible !important;
@@ -25708,7 +25732,7 @@ body:has(.kinbox-page) .ask-fab {
 }
 
 .kc-send-pill-group:hover {
-  background: #1f2937 !important;
+  background: color-mix(in srgb, var(--k-text) 88%, var(--k-surface)) !important;
 }
 
 .kc-send-pill-main {
@@ -25717,7 +25741,7 @@ body:has(.kinbox-page) .ask-fab {
   border: 0 !important;
   border-radius: 9999px 0 0 9999px !important;
   background: transparent !important;
-  color: #ffffff !important;
+  color: var(--k-surface) !important;
   font: inherit !important;
   font-size: 13.5px !important;
   font-weight: 600 !important;
@@ -25735,9 +25759,9 @@ body:has(.kinbox-page) .ask-fab {
   place-items: center !important;
   width: 36px !important;
   height: 36px !important;
-  border-left: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-left: 1px solid color-mix(in srgb, var(--k-surface) 20%, transparent) !important;
   border-radius: 0 9999px 9999px 0 !important;
-  color: #ffffff !important;
+  color: var(--k-surface) !important;
   cursor: pointer !important;
   list-style: none !important;
 }
@@ -25758,10 +25782,10 @@ body:has(.kinbox-page) .ask-fab {
   gap: 6px !important;
   height: 32px !important;
   padding: 0 10px !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid var(--k-border) !important;
   border-radius: 8px !important;
   background: transparent !important;
-  color: #374151 !important;
+  color: var(--k-text) !important;
   font: inherit !important;
   font-size: 12.5px !important;
   font-weight: 500 !important;
@@ -25773,9 +25797,9 @@ body:has(.kinbox-page) .ask-fab {
 }
 
 .kc-foot-btn:hover:not(:disabled) {
-  background: #f4f4f6 !important;
-  border-color: rgba(0, 0, 0, 0.15) !important;
-  color: #111827 !important;
+  background: var(--k-hover) !important;
+  border-color: var(--k-border) !important;
+  color: var(--k-text) !important;
 }
 
 .kc-foot-btn:disabled {
@@ -25793,7 +25817,7 @@ body:has(.kinbox-page) .ask-fab {
 .kc-foot-link {
   border: 0 !important;
   background: transparent !important;
-  color: #6b7280 !important;
+  color: var(--k-muted) !important;
   font: inherit !important;
   font-size: 13px !important;
   font-weight: 500 !important;
@@ -27617,6 +27641,9 @@ select:not(.kinbox-snooze-select):not(.search select) {
 
 /* Dark Theme Toggle System */
 :root[data-theme="dark"] .seg,
+:root[data-theme="dark"] .seg:not([role="tablist"]),
+:root[data-theme="dark"] .seg[role="tablist"],
+:root[data-theme="dark"] .acct-bar .seg:not([role="tablist"]),
 :root[data-theme="dark"] .owner-tabs,
 :root[data-theme="dark"] .owner-tabs.seg,
 :root[data-theme="dark"] .acct-bar .seg,

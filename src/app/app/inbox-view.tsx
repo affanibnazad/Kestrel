@@ -515,31 +515,29 @@ export default function InboxView({ account, demo, editable, toast }: { account:
                     </div>
                   </div>
 
-                  <div className="kinbox-pane-actions">
-                    <span className="kinbox-pane-date">{when(open.last)}</span>
-                    <div className="kinbox-action-pills">
-                      <button
-                        type="button"
-                        className="kinbox-pill-btn"
-                        disabled={!answerable}
-                        onClick={() => kitBox.current?.focus()}
-                        title="Reply"
-                      >
-                        <Line name="arrow" /> <span>Reply</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={`kinbox-pill-btn${open.waiting ? " active" : ""}`}
-                        disabled={!editable || !answerable}
-                        onClick={() => markDone(open.waiting)}
-                        title={open.waiting ? "Mark as done" : "Mark as to answer"}
-                      >
-                        <Line name="bookmark" /> <span>{open.waiting ? "Mark done" : "To answer"}</span>
-                      </button>
-                      <div className="kinbox-snooze-pill">
-                        <Line name="clock" />
-                        {snoozeUi}
-                      </div>
+                  <span className="kinbox-pane-date">{when(open.last)}</span>
+                  <div className="kinbox-action-pills">
+                    <button
+                      type="button"
+                      className="kinbox-pill-btn"
+                      disabled={!answerable}
+                      onClick={() => kitBox.current?.focus()}
+                      title="Reply"
+                    >
+                      <Line name="arrow" /> <span>Reply</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`kinbox-pill-btn${open.waiting ? " active" : ""}`}
+                      disabled={!editable || !answerable}
+                      onClick={() => markDone(open.waiting)}
+                      title={open.waiting ? "Mark as done" : "Mark as to answer"}
+                    >
+                      <Line name="bookmark" /> <span>{open.waiting ? "Mark done" : "To answer"}</span>
+                    </button>
+                    <div className="kinbox-snooze-pill">
+                      <Line name="clock" />
+                      {snoozeUi}
                     </div>
                   </div>
                 </div>
