@@ -10,4 +10,5 @@ select
   (select count(*) from information_schema.routines where routine_schema = 'public' and routine_name = 'claim_ai_jobs') as claim_ai_jobs_fn,
   (select count(*) from information_schema.routines where routine_schema = 'public' and routine_name = 'finish_ai_job') as finish_ai_job_fn,
   (select count(*) from information_schema.routines where routine_schema = 'public' and routine_name = 'log_lead_brain_event') as log_lead_brain_event_fn,
-  (select count(*) from information_schema.routines where routine_schema = 'public' and routine_name = 'cleanup_ai_jobs_and_events') as cleanup_ai_jobs_and_events_fn;
+  (select count(*) from information_schema.routines where routine_schema = 'public' and routine_name = 'cleanup_ai_jobs_and_events') as cleanup_ai_jobs_and_events_fn,
+  (case when to_regprocedure('public.ai_usage_this_month(text,uuid)') is not null then 1 else 0 end) as ai_usage_this_month_server_fn;

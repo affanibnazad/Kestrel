@@ -1,9 +1,5 @@
 -- 079_lead_brain.sql
 -- AI-4b: Background job queue (ai_jobs) + Lead Brain Realtime event stream (lead_brain_events).
---
--- TODO (depends on 078_ai_allowance.sql):
--- Once 078_ai_allowance.sql is applied, add a server_secret overload for ai_usage_this_month(server_secret text, p_team_id uuid)
--- gated by mail_server_ok(server_secret) so /api/mail/tick (which has no auth.uid()) can check AI-4a allowance.
 
 begin;
 
@@ -299,16 +295,44 @@ begin
     and updated_at < now() - interval '7 days';
 end $$;
 
+-- Server-secret overload of 078's ai_usage_this_month so /api/mail/tick (no auth.uid()) can check AI-4a allowance.
+create or replace function public.ai_usage_this_month(server_secret text, p_team_id uuid)
+returns int
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_count int;
+begin
+  if not public.mail_server_ok(server_secret) or p_team_id is null then
+    raise exception 'Not allowed';
+  end if;
+
+  select count(*)::int into v_count
+  from public.ai_runs
+  where team_id = p_team_id
+    and source = 'kestrel'
+    and status in ('ok', 'fallback')
+    and task not in ('chat', 'slot_test', 'reply_label_auto')
+    and created_at >= (date_trunc('month', now() at time zone 'utc') at time zone 'utc');
+
+  return coalesce(v_count, 0);
+end $$;
+
 revoke all on function public.claim_ai_jobs(text, integer),
   public.finish_ai_job(text, uuid, text, text, integer),
   public.log_lead_brain_event(text, uuid, uuid, uuid, text, text, text, integer, bigint, text),
-  public.cleanup_ai_jobs_and_events(text)
+  public.cleanup_ai_jobs_and_events(text),
+  public.ai_usage_this_month(text, uuid)
   from public, anon, authenticated;
 
 grant execute on function public.claim_ai_jobs(text, integer),
   public.finish_ai_job(text, uuid, text, text, integer),
   public.log_lead_brain_event(text, uuid, uuid, uuid, text, text, text, integer, bigint, text),
-  public.cleanup_ai_jobs_and_events(text)
+  public.cleanup_ai_jobs_and_events(text),
+  public.ai_usage_this_month(text, uuid)
   to anon, authenticated;
 
 notify pgrst, 'reload schema';
