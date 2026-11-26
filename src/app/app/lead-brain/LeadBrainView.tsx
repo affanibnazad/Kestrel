@@ -315,6 +315,11 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
     [layoutKey]
   );
 
+  const leadsRef = useRef(leads);
+  useEffect(() => {
+    leadsRef.current = leads;
+  }, [leads]);
+
   // Load real lead_brain_events if the table exists (AI-4b); otherwise gracefully remain empty.
   useEffect(() => {
     if (!teamId || demo) return;
@@ -328,7 +333,7 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
       .limit(200)
       .then(({ data, error }) => {
         if (!alive || error || !Array.isArray(data)) return;
-        const leadNameById = new Map(leads.map((l) => [l.id, l.name || "Unnamed lead"]));
+        const leadNameById = new Map(leadsRef.current.map((l) => [l.id, l.name || "Unnamed lead"]));
         const mapped: BrainEvent[] = data.map((row: Record<string, unknown>) => ({
           id: String(row.id ?? ""),
           lead_id: row.lead_id ? String(row.lead_id) : null,
@@ -353,7 +358,7 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
         (payload) => {
           const row = payload.new as Record<string, unknown>;
           const lid = row.lead_id ? String(row.lead_id) : null;
-          const leadName = (lid && leads.find((l) => l.id === lid)?.name) || "Lead";
+          const leadName = (lid && leadsRef.current.find((l) => l.id === lid)?.name) || "Lead";
           const ev: BrainEvent = {
             id: String(row.id ?? `${Date.now()}`),
             lead_id: lid,
@@ -406,54 +411,55 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
       alive = false;
       void sb.removeChannel(channel);
     };
-  }, [teamId, demo, leads]);
+  }, [teamId, demo]);
 
-  // Compute current lead positions from events, plus read-only waiting-for-approval leads from existing leads table.
+  // Compute current lead positions from events, and keep leads without events visible in their zone.
   const brainLeads = useMemo<BrainLead[]>(() => {
-    if (events.length > 0) {
-      const latestByLead = new Map<string, BrainEvent>();
-      for (const ev of events) {
-        const key = ev.lead_id || ev.lead_name;
-        if (!latestByLead.has(key)) latestByLead.set(key, ev);
-      }
-      return Array.from(latestByLead.entries()).map(([key, ev]) => ({
+    const latestByLead = new Map<string, BrainEvent>();
+    for (const ev of events) {
+      const key = ev.lead_id || ev.lead_name;
+      if (!latestByLead.has(key)) latestByLead.set(key, ev);
+    }
+    const leadById = new Map(leads.map((l) => [l.id, l]));
+    const out: BrainLead[] = Array.from(latestByLead.entries()).map(([key, ev]) => {
+      const lead = ev.lead_id ? leadById.get(ev.lead_id) : undefined;
+      return {
         id: key,
-        name: ev.lead_name,
+        name: lead?.name || lead?.email || ev.lead_name,
         at: ev.agent,
         phase: ev.status === "started" ? "work" : "idle",
         summary: ev.summary,
-      }));
-    }
+        outreach_approved: Boolean(lead?.outreach_approved),
+      };
+    });
 
-    // Read-only fallback from existing leads across brain stages when lead_brain_events is not populated yet
-    return leads
-      .filter((l) => l.status !== "removed")
-      .slice(0, 100)
-      .map((l) => {
-        let at = "new";
-        let summary = "Collected lead";
-        if (l.outreach_approved) {
-          at = "ready";
-          summary = "Approved for outreach";
-        } else if (l.verdict === "Good") {
-          at = "approve";
-          summary = l.reason || "Waiting for your approval";
-        } else if (l.verdict === "Maybe" || l.verdict === "No") {
-          at = "score";
-          summary = l.reason || `Scored: ${l.verdict}`;
-        } else if (l.website) {
-          at = "read";
-          summary = "Website ready to read";
-        }
-        return {
-          id: l.id,
-          name: l.name || l.email || "Lead",
-          at,
-          phase: "idle" as const,
-          summary,
-          outreach_approved: Boolean(l.outreach_approved),
-        };
+    for (const l of leads.filter((x) => x.status !== "removed").slice(0, 100)) {
+      if (latestByLead.has(l.id)) continue;
+      let at = "new";
+      let summary = "Collected lead";
+      if (l.outreach_approved) {
+        at = "ready";
+        summary = "Approved for outreach";
+      } else if (l.verdict === "Good") {
+        at = "approve";
+        summary = l.reason || "Waiting for your approval";
+      } else if (l.verdict === "Maybe" || l.verdict === "No") {
+        at = "score";
+        summary = l.reason || `Scored: ${l.verdict}`;
+      } else if (l.website) {
+        at = "read";
+        summary = "Website ready to read";
+      }
+      out.push({
+        id: l.id,
+        name: l.name || l.email || "Lead",
+        at,
+        phase: "idle" as const,
+        summary,
+        outreach_approved: Boolean(l.outreach_approved),
       });
+    }
+    return out;
   }, [events, leads]);
 
   const traceNodeIds = useMemo(() => {
