@@ -44,7 +44,8 @@ begin
       from public.offer_profiles o
       where o.team_id = p_team_id
         and (p_offer_id is null or o.id = p_offer_id)
-      order by o.name
+      -- No offer given: the team's current offer (team_ai.offer_id) first, then by name.
+      order by (o.id = ai.offer_id) desc nulls last, o.name
       limit 1
     ),
     'sequence', (
@@ -52,7 +53,8 @@ begin
       from public.sequences s
       where s.team_id = p_team_id and s.id = p_sequence_id
     ),
-    'settings', row_to_json(ai),
+    -- No team_ai row: null, not an object of nulls (the app treats a missing row as no settings).
+    'settings', case when ai.team_id is null then null else row_to_json(ai) end,
     'about', (
       select row_to_json(ab)
       from public.team_about ab
@@ -62,8 +64,9 @@ begin
       select json_build_object(
         'plan', t.plan,
         'paid_until', t.paid_until,
-        'access_until', t.access_until,
-        'access_plan', t.access_plan
+        -- teams has no access_until / access_plan columns: they come from team_access() (009_access.sql), as in my_account.
+        'access_until', (public.team_access(t.id)).ends_at,
+        'access_plan', (public.team_access(t.id)).plan
       )
       from public.teams t
       where t.id = p_team_id
@@ -113,7 +116,11 @@ begin
     reason = case when p_patch ? 'reason' then left(p_patch ->> 'reason', 500) else reason end,
     score = case when p_patch ? 'score' and jsonb_typeof(p_patch -> 'score') = 'number' then (p_patch ->> 'score')::numeric else score end,
     outreach_approved = case when p_patch ? 'outreach_approved' then coalesce((p_patch ->> 'outreach_approved')::boolean, outreach_approved) else outreach_approved end,
-    matched_service_id = case when p_patch ? 'matched_service_id' then nullif(p_patch ->> 'matched_service_id', '')::uuid else matched_service_id end,
+    -- Only a service from this team's own catalog; anything else clears it.
+    matched_service_id = case when p_patch ? 'matched_service_id' then (
+        select o.id from public.offer_profiles o
+        where o.id = nullif(p_patch ->> 'matched_service_id', '')::uuid and o.team_id = p_team_id
+      ) else matched_service_id end,
     buying_trigger = case when p_patch ? 'buying_trigger' then left(nullif(p_patch ->> 'buying_trigger', ''), 200) else buying_trigger end,
     email = case when p_patch ? 'email' then nullif(p_patch ->> 'email', '') else email end,
     website = case when p_patch ? 'website' then nullif(p_patch ->> 'website', '') else website end,
@@ -130,6 +137,14 @@ revoke all on function public.ai_job_context(text, uuid, uuid, uuid, uuid),
 grant execute on function public.ai_job_context(text, uuid, uuid, uuid, uuid),
   public.ai_job_save_lead(text, uuid, uuid, jsonb)
   to anon, authenticated;
+
+-- The worker runs in /api/mail/tick with the public key and no signed-in user (role anon). Kestrel-paid AI is resolved
+-- through these three server-secret functions, which 023/057/077 granted to authenticated only, so in the worker they
+-- failed and Kestrel-paid jobs fell through to ANTHROPIC_API_KEY or errored. Each still requires the server secret.
+grant execute on function public.ai_slot_for_server(text, text),
+  public.assistant_included(text),
+  public.assistant_config(text)
+  to anon;
 
 notify pgrst, 'reload schema';
 commit;
