@@ -5,7 +5,7 @@ import { DEFAULT_STEPS, checkSequence, cleanSteps, emailStepsProblem, followUpCo
 import { readSite } from "./site-read";
 import { trustedFirstName } from "./email-check";
 import {
-  EMPTY_SENDER, FIT_SCHEMA, PROVIDERS, QC_SCHEMA, RESEARCH_SCHEMA, VERDICT_COLUMN, cleanFit, cleanQc, cleanResearch, qcPayload, qcSystem, researchSystem, type Draft, type Qc, cleanFollowUps, cleanParts, emailMissing, emailPayload, emailSystem, fitSystem, leadPayload,
+  EMPTY_SENDER, FIT_SCHEMA, PROVIDERS, QC_SCHEMA, RESEARCH_SCHEMA, VERDICT_COLUMN, cleanFit, cleanQc, cleanResearch, qcPayload, qcSystem, researchSystem, type Draft, type Qc, cleanFollowUps, cleanParts, emailMissing, hasObservations, emailPayload, emailSystem, fitSystem, leadPayload,
   makeDraft, offerReady, profileHash, readJson, sequenceSchema, type LeadData, type Offer, type Provider, type Sender
 } from "./ai";
 import type { About, VoiceNotes } from "./about";
@@ -24,6 +24,7 @@ type Sb = Awaited<ReturnType<typeof supabaseServer>>;
 // A money amount anywhere in an email ($49, £20, 30 EUR): the class rule is no prices in cold email.
 const MONEY = /[$€£¥]\s?\d|\b\d+(?:[.,]\d+)?\s?(?:usd|eur|gbp|dollars?|euros?|pounds?)\b/i;
 
+export const NEEDS_RESEARCH = "Research this lead first: there are no facts from its website to write from";
 // ---------- AI: score or write
 export type AiPlan = {
   task: "score" | "emails" | "research" | "qc"; provider: Provider; key: string; model: string; effort?: "low" | "medium" | "high";
@@ -74,6 +75,7 @@ export type AiResult =
 export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] = []): Promise<AiResult> {
   const data = l.data ?? {};
   if (p.task === "emails" && !l.email) return { ok: false, why: "no email", cost: 0 };
+  if (p.task === "emails" && !hasObservations(data)) return { ok: false, why: NEEDS_RESEARCH, cost: 0 };
   // Stage C (Opportunity Intelligence): human must approve before lead can be used for outreach
   if (p.task === "emails") {
     const isApproved = (l as { outreach_approved?: boolean }).outreach_approved === true ||
