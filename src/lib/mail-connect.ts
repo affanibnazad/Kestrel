@@ -33,7 +33,20 @@ export async function imapClient(b: ImapLogin, socketTimeout = 20000) {
   const login = await loginFor(b.imap_host, b.username, b.password);
   const v = await vetHost(b.imap_host);
   const port = b.imap_port || 993;
-  return new ImapFlow({ host: v.address, servername: v.servername, port, secure: port === 993, doSTARTTLS: port === 993 ? undefined : true,
+  const connectTimeout = Math.min(12000, socketTimeout);
+  const client = new ImapFlow({
+    host: v.address,
+    servername: v.servername,
+    port,
+    secure: port === 993,
+    doSTARTTLS: port === 993 ? undefined : true,
     auth: login.kind === "google" ? { user: login.user, accessToken: login.token } : { user: login.user, pass: login.pass },
-    logger: false, connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout });
+    logger: false,
+    connectionTimeout: connectTimeout,
+    greetingTimeout: connectTimeout,
+    socketTimeout,
+  });
+  // ImapFlow emits 'error' on async socket timeouts/resets; without a listener Node throws an uncaught exception.
+  client.on("error", () => {});
+  return client;
 }
