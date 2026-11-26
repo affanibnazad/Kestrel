@@ -652,7 +652,7 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
   }
 
   return (
-    <div className={styles.stagewrap}>
+    <div className={`${styles.stagewrap} ds-root`}>
       <div className={styles.hud}>
         <div className={styles.title}>
           Lead Brain
