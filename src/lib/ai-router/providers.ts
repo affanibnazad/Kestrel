@@ -70,7 +70,26 @@ export type ProviderCallParams = {
   tools?: { name: string; description: string; schema: Record<string, unknown> }[];
   runTool?: (name: string, input: Record<string, unknown>) => Promise<string>;
   images?: { type: string; data: string }[];
+  /** Chat only: hears the model's own reasoning (or the short note it writes before a tool call) as each round
+   *  returns, so the chat can show real thinking while it works. Never part of the answer. */
+  onThought?: (text: string) => void;
 };
+
+// The model's reasoning in one OpenAI-style message, when the provider returns it: a separate field (Groq and
+// OpenRouter: `reasoning`; NVIDIA and DeepSeek-style: `reasoning_content`) or <think> blocks inside the text.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function oaReasoning(msg: any): string {
+  const field = typeof msg?.reasoning === "string" ? msg.reasoning : typeof msg?.reasoning_content === "string" ? msg.reasoning_content : "";
+  const inline = [...String(msg?.content ?? "").matchAll(/<think>([\s\S]*?)<\/think>/gi)].map((m) => m[1]).join("\n");
+  return [field, inline].map((x) => x.trim()).filter(Boolean).join("\n\n");
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+function tellThought(params: ProviderCallParams, text: string) {
+  const t = text.trim();
+  if (!t || !params.onThought) return;
+  try { params.onThought(t); } catch { /* the listener must never break the answer */ }
+}
 
 export const geminiSchema = (s: unknown): unknown => {
   if (Array.isArray(s)) return s.map(geminiSchema);
@@ -182,9 +201,13 @@ async function callAnthropic(params: ProviderCallParams): Promise<ProviderAnswer
         }
         const calls = res.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
         if (res.stop_reason !== "tool_use" || !calls.length) {
+          tellThought(params, res.content.map((b) => (b.type === "thinking" ? b.thinking : "")).filter(Boolean).join("\n\n"));
           const text = res.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text").map((b) => b.text).join("\n\n").trim();
           return { text, usage: { input_tokens: totalIn, output_tokens: totalOut } };
         }
+        // The short note Claude writes before it looks something up ("Let me check your campaigns") is its
+        // thinking for this round, not the answer.
+        tellThought(params, res.content.map((b) => (b.type === "thinking" ? b.thinking : b.type === "text" ? b.text : "")).filter(Boolean).join("\n\n"));
         const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
         for (const c of calls) {
           let toolRes: string;
@@ -423,6 +446,9 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
       if (!msg) return { text: "", usage: { input_tokens: totalIn, output_tokens: totalOut } };
       if (msg.refusal) return { text: "", usage: { input_tokens: totalIn, output_tokens: totalOut }, skip: "declined" };
       const calls = (msg.tool_calls ?? []).filter((c: any) => c?.type === "function" && c.function?.name);
+      // What the model thought this round: its reasoning, plus any note it wrote next to a tool call.
+      const note = calls.length ? String(msg.content ?? "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim() : "";
+      tellThought(params, [oaReasoning(msg), note].filter(Boolean).join("\n\n"));
       if (!calls.length) {
         const text = String(msg.content ?? "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
         // An empty answer (often: the model used all its room on thinking) is a failure, not "Done.".

@@ -26,6 +26,8 @@ export type RunAiTaskParams = {
   tools?: { name: string; description: string; schema: Record<string, unknown> }[];
   runTool?: (name: string, input: Record<string, unknown>) => Promise<string>;
   images?: { type: string; data: string }[];
+  // Chat only: the model's reasoning as each round returns (see ProviderCallParams.onThought).
+  onThought?: (text: string) => void;
   // Fallback handler for qc or custom
   onCodeChecksOnly?: () => Record<string, unknown>;
   // For unit tests / dependency injection
@@ -425,6 +427,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         tools: params.tools,
         runTool: params.runTool,
         images: params.images,
+        onThought: params.onThought,
       });
 
       const elapsedMs = Date.now() - startMs;
@@ -676,6 +679,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
           tools: params.tools,
           runTool: params.runTool,
           images: params.images,
+          onThought: params.onThought,
         });
 
         const elapsedMs = Date.now() - startMs;

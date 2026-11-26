@@ -29,6 +29,8 @@ export type EngineInput = {
   userId?: string | null;
   /** Absolute time (ms) by which the answer must be ready, Nest fallback included. */
   deadlineAt?: number;
+  /** The model's reasoning as each round returns, for the chat's live Thinking section. */
+  onThought?: (text: string) => void;
 };
 
 export type EngineResult = { text: string; refused?: boolean; outOfRounds?: boolean };
@@ -69,6 +71,7 @@ export async function runAssistant(x: EngineInput): Promise<EngineResult> {
       effort: x.effort,
       resolution,
       deadlineMs: x.deadlineAt,
+      onThought: x.onThought,
     });
 
     if (!res.ok) {

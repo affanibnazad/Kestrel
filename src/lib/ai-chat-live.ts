@@ -15,15 +15,25 @@ import type { Step } from "@/lib/ai-chat-script";
 export type LiveMessage = { role: "user" | "assistant"; content: string; sig?: string };
 
 export type LiveResult =
-  | { kind: "live"; text: string; steps: Step[]; ai: string; usage: { used: number; limit: number } | null; sig?: string }
+  | { kind: "live"; text: string; steps: Step[]; thoughts: string[]; ai: string; usage: { used: number; limit: number } | null; sig?: string }
   | { kind: "fallback" }
   | { kind: "error"; error: string };
 
-const step = (i: number, label: string): Step => ({ id: `live-${i}`, label, state: "done" });
+// What the page hears while the answer is being worked out.
+export type LiveListener = {
+  // The steps so far. The newest one is still running; the ones before it are done, with how long each took.
+  onSteps?: (steps: Step[]) => void;
+  // One piece of the model's own thinking, as it arrives.
+  onThought?: (text: string) => void;
+};
 
-// Ask the route. onStep is called as each step arrives, so the page can show the
-// work while it happens.
-export async function liveTurn(history: LiveMessage[], onStep?: (s: Step) => void): Promise<LiveResult> {
+// Ask the route. The listener hears each step and each piece of thinking as it arrives, so the page can show
+// the work while it happens.
+// (A bare function still works: it hears each new step, as the parked first chat expects.)
+export async function liveTurn(history: LiveMessage[], listener: LiveListener | ((s: Step) => void) = {}): Promise<LiveResult> {
+  const listen: LiveListener = typeof listener === "function"
+    ? { onSteps: (all) => listener(all[all.length - 1]) }
+    : listener;
   // No Supabase in this build, or nobody is logged in: keep the scripted answer.
   if (!supabaseReady) return { kind: "fallback" };
   try {
@@ -56,6 +66,14 @@ export async function liveTurn(history: LiveMessage[], onStep?: (s: Step) => voi
 
   // The route sends its steps as they happen, then the finished answer.
   const steps: Step[] = [];
+  const thoughts: string[] = [];
+  // When each step started (ms since the question reached the route), so each step can show how long it took.
+  const startedAt: number[] = [];
+  const close = (until: number) => {
+    const last = steps.length - 1;
+    if (last < 0 || steps[last].state === "done") return;
+    steps[last] = { ...steps[last], state: "done", ms: Math.max(0, until - startedAt[last]) || undefined };
+  };
   let turn: { text?: unknown; messages?: unknown; ai?: unknown; usage?: unknown } | null = null;
   let failure = "";
   const contentType = res.headers.get("content-type") ?? "";
@@ -64,11 +82,17 @@ export async function liveTurn(history: LiveMessage[], onStep?: (s: Step) => voi
     // reading), this used to throw past the chat, which then stayed on "Thinking" forever.
     try {
       await readNdjson(res.body, (ev) => {
+        const at = typeof ev.at === "number" && Number.isFinite(ev.at) ? ev.at : NaN;
         if (ev.t === "step" && typeof ev.text === "string") {
-          const s = step(steps.length + 1, ev.text);
-          steps.push(s);
-          onStep?.(s);
+          close(at);
+          startedAt.push(at);
+          steps.push({ id: `live-${steps.length + 1}`, label: ev.text, state: "running" });
+          listen.onSteps?.([...steps]);
+        } else if (ev.t === "thought" && typeof ev.text === "string" && ev.text.trim()) {
+          thoughts.push(ev.text.trim());
+          listen.onThought?.(ev.text.trim());
         } else if (ev.t === "done") {
+          close(at);
           turn = ev.turn as typeof turn;
         } else if (ev.t === "error" && typeof ev.error === "string") {
           failure = ev.error;
@@ -84,6 +108,8 @@ export async function liveTurn(history: LiveMessage[], onStep?: (s: Step) => voi
     if (body && typeof body === "object") turn = body;
   }
 
+  // A step with no time (an older route) still finishes.
+  for (let i = 0; i < steps.length; i++) if (steps[i].state !== "done") steps[i] = { ...steps[i], state: "done" };
   if (failure) return { kind: "error", error: failure };
   // The route filled this in from inside the stream callback.
   const answer = turn as { text?: unknown; messages?: unknown; ai?: unknown; usage?: unknown } | null;
@@ -100,6 +126,7 @@ export async function liveTurn(history: LiveMessage[], onStep?: (s: Step) => voi
     kind: "live",
     text,
     steps,
+    thoughts,
     ai: answer && typeof answer.ai === "string" ? answer.ai : "Kestrel AI",
     usage: counted,
     sig: last && typeof last.sig === "string" ? last.sig : undefined,
