@@ -5,7 +5,7 @@ import { HAIKU, SONNET, modelForTask } from "../ai-models";
 import { assistantConfig, serverSecret } from "../assistant-server";
 import { aiAllowance, allowanceExhaustedMessage } from "../plans";
 import { AI_TASKS, type AiSlot, type AiTaskName } from "./tasks";
-import { callProvider, costOf, ProviderCallError, type ProviderAnswer } from "./providers";
+import { callProvider, costOf, ProviderCallError, type ProviderAnswer, type StreamSink } from "./providers";
 
 type Sb = Awaited<ReturnType<typeof supabaseServer>>;
 
@@ -27,6 +27,10 @@ export type RunAiTaskParams = {
   tools?: { name: string; description: string; schema: Record<string, unknown> }[];
   runTool?: (name: string, input: Record<string, unknown>) => Promise<string>;
   images?: { type: string; data: string }[];
+  // Chat only: stream the answer as it is written (see ProviderCallParams.onStream). Once any piece has reached
+  // the listener, a failure is final: no retry and no Nest, because the person has already seen part of an answer
+  // (the result then has streamedFailure: true and the chat offers Try again).
+  onStream?: StreamSink;
   // Fallback handler for qc or custom
   onCodeChecksOnly?: () => Record<string, unknown>;
   // For unit tests / dependency injection
@@ -75,6 +79,8 @@ export type RunAiTaskResult<T = unknown> =
       cost_usd?: number | null;
       lastError?: string;
       statusCode?: number;
+      /** Chat only: the answer failed after part of it had been streamed, so it was not retried or handed to Nest. */
+      streamedFailure?: boolean;
     };
 
 // lastError codes that mean "no Kestrel AI for this team right now". A bulk run stops on these instead of trying
@@ -100,6 +106,7 @@ export function kestrelGateError(message: string): ResolveError {
   return { error: message || "Could not check AI access.", isDbError: true };
 }
 
+export const STREAM_BROKE_MESSAGE = "Kestrel AI stopped partway through this answer. Try again.";
 export const CUSTOMER_ERROR_MESSAGE = "Kestrel AI can't answer right now. Try again in a minute.";
 
 // Tasks that must ALWAYS use Kestrel's AI (ai_slots / assistant_included)
@@ -394,6 +401,17 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   const logRunImpl: typeof logRun = (lsb, lteam, luser, ltask, ...rest) =>
     baseLog(lsb, lteam, luser, params.uncounted ?? ltask, ...rest);
 
+  // Streamed chat: note when the first piece reaches the person. From then on a failure is final.
+  let streamed = false;
+  const outer = params.onStream;
+  const sink: StreamSink | undefined = outer
+    ? {
+        thinking: (t) => { streamed = true; outer.thinking(t); },
+        text: (t) => { streamed = true; outer.text(t); },
+        textReset: () => outer.textReset(),
+      }
+    : undefined;
+
   // Deadline calculation: default 50s from start of request unless specified
   const now = Date.now();
   const absoluteDeadline =
@@ -548,6 +566,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         tools: params.tools,
         runTool: params.runTool,
         images: params.images,
+        onStream: sink,
       });
 
       const elapsedMs = Date.now() - startMs;
@@ -652,6 +671,22 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         lastErrorMsg,
         currentSlot
       );
+
+      // Part of the answer already reached the person: never start it again with this slot or with Nest.
+      if (streamed) {
+        return {
+          ok: false,
+          error: STREAM_BROKE_MESSAGE,
+          status,
+          provider: currentResolution.provider,
+          model: currentResolution.model,
+          source: currentResolution.source,
+          slot: currentSlot,
+          lastError: lastErrorMsg,
+          statusCode: lastStatusCode,
+          streamedFailure: true,
+        };
+      }
 
       // On 429: read Retry-After / reset header; if wait fits in deadline, wait that long, else break to Nest fallback / exit
       if (is429) {
@@ -799,6 +834,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
           tools: params.tools,
           runTool: params.runTool,
           images: params.images,
+          onStream: sink,
         });
 
         const elapsedMs = Date.now() - startMs;
@@ -871,6 +907,9 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
           bMsg,
           "nest"
         );
+        if (streamed) {
+          return { ok: false, error: STREAM_BROKE_MESSAGE, status: bStatus, provider: nestRes.provider, model: nestRes.model, source: nestRes.source, slot: "nest", lastError: bMsg, statusCode: lastStatusCode, streamedFailure: true };
+        }
       }
     }
   }
