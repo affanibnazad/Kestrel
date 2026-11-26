@@ -11,8 +11,9 @@ export const metadata: Metadata = { title: "App", robots: { index: false, follow
 
 // The App needs a signed-in team member. The sign-in check streams in behind Suspense.
 // The App's one design is styled under :root[data-look="v2"]: set it while the page is still loading, before anything
-// paints, so the App never flashes unstyled. A fixed string, no user data.
-const LOOK = 'document.documentElement.dataset.look="v2";try{var p=new URLSearchParams(window.location.search);var qt=p.get("theme");if(qt&&["light","dark","gradient"].indexOf(qt)!==-1){document.documentElement.dataset.theme=qt;}else{var l=JSON.parse(localStorage.getItem("kestrel-look")||"{}");if(l&&l.theme&&l.theme!=="auto"){document.documentElement.dataset.theme=l.theme;}}}catch(e){}';
+// paints, so the App never flashes unstyled. The theme is set here too: "auto" (or nothing saved) on a dark OS
+// becomes data-theme="dark", as in lib/look.ts, so the light theme never flashes. A fixed string, no user data.
+const LOOK = 'document.documentElement.dataset.look="v2";try{var p=new URLSearchParams(window.location.search);var qt=p.get("theme");var t=qt;if(!t||["auto","light","dark","gradient"].indexOf(t)===-1){var l=JSON.parse(localStorage.getItem("kestrel-look")||"{}");t=l&&l.theme;}if(t==="light"||t==="dark"||t==="gradient"){document.documentElement.dataset.theme=t;}else if(window.matchMedia("(prefers-color-scheme: dark)").matches){document.documentElement.dataset.theme="dark";}}catch(e){}';
 
 export default function AppPage({ searchParams }: PageProps<"/app">) {
   return (

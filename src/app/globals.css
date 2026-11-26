@@ -24776,10 +24776,10 @@ a:hover .line-ic,
   justify-content: center;
   width: 36px;
   height: 36px;
-  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  border: 1px solid color-mix(in srgb, var(--k-text) 12%, transparent) !important;
   border-radius: 9999px;
-  background: #ffffff !important;
-  color: #111827 !important;
+  background: var(--k-surface) !important;
+  color: var(--k-text) !important;
   cursor: pointer;
   position: relative;
   list-style: none;
@@ -24791,15 +24791,15 @@ a:hover .line-ic,
 }
 
 .kinbox-filter-btn:hover {
-  background: #f4f4f6 !important;
-  border-color: rgba(0, 0, 0, 0.2) !important;
-  color: #111827 !important;
+  background: color-mix(in srgb, var(--k-text) 5%, var(--k-surface)) !important;
+  border-color: color-mix(in srgb, var(--k-text) 20%, transparent) !important;
+  color: var(--k-text) !important;
 }
 
 .kinbox-filter-btn.on {
-  background: #111827 !important;
-  border-color: #111827 !important;
-  color: #ffffff !important;
+  background: var(--k-text) !important;
+  border-color: var(--k-text) !important;
+  color: var(--k-surface) !important;
 }
 
 .kinbox-filter-btn::-webkit-details-marker {
@@ -27708,7 +27708,11 @@ select:not(.kinbox-snooze-select):not(.search select) {
 :root[data-theme="dark"] .br-filters button.on,
 :root[data-theme="dark"] .br-filters button[aria-selected="true"],
 :root[data-theme="dark"] .kinbox-tabs button.on,
-:root[data-theme="dark"] .kinbox-tabs button[aria-selected="true"] {
+:root[data-theme="dark"] .kinbox-tabs button[aria-selected="true"],
+/* Same weight as the v2 white-pill rule above (:root[data-look="v2"] .seg:not([role="tablist"]) button.on), so the
+   dark pill wins on every page (Tasks, Analytics, Activity, AI, Profile were white). */
+:root[data-theme="dark"] .seg:not([role="tablist"]) button.on,
+:root[data-theme="dark"] .seg[role="tablist"] button.on {
   background: #2D3748 !important;
   color: #FFFFFF !important;
   box-shadow: none !important;

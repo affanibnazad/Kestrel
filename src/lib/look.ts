@@ -24,9 +24,15 @@ export function readLook(): Look {
 // day). CSS for it lives under `:root[data-look="v2"]`; the App page sets that before it first paints (app/page.tsx),
 // and this keeps it set (for example after a client-side navigation).
 export function applyLayout() { document.documentElement.dataset.look = "v2"; }
+// "auto" follows the computer: dark when the OS is dark, so every [data-theme="dark"] rule applies, and no
+// data-theme at all when the OS is light (the light look, exactly as before). app/page.tsx does the same before
+// the first paint, so there is no flash of the light theme.
+const osDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
 export function applyLook(look: Look) {
   const html = document.documentElement;
-  if (look.theme === "auto") delete html.dataset.theme; else html.dataset.theme = look.theme;
+  if (look.theme !== "auto") html.dataset.theme = look.theme;
+  else if (osDark()) html.dataset.theme = "dark";
+  else delete html.dataset.theme;
   const colour = ACCENTS.find((a) => a[0] === look.accent)?.[2];
   if (look.accent === "peri" || !colour) { html.style.removeProperty("--peri"); html.style.removeProperty("--peri-deep"); html.style.removeProperty("--peri-light"); }
   else {
@@ -35,6 +41,14 @@ export function applyLook(look: Look) {
     html.style.setProperty("--peri-light", `color-mix(in srgb, ${colour} 22%, #fff)`);
   }
   html.classList.toggle("reduce-motion", look.reduceMotion);
+}
+// While the theme is "auto", switch the App live when the OS changes between light and dark. Returns the clean-up.
+export function followOsTheme(look: Look): () => void {
+  if (look.theme !== "auto") return () => {};
+  const scheme = window.matchMedia("(prefers-color-scheme: dark)");
+  const onChange = () => applyLook(look);
+  scheme.addEventListener?.("change", onChange);
+  return () => scheme.removeEventListener?.("change", onChange);
 }
 export function saveLook(look: Look) {
   try { localStorage.setItem(KEY, JSON.stringify(look)); } catch { /* private window: lasts until reload */ }
