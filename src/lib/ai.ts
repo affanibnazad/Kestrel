@@ -328,6 +328,8 @@ export function qcSystem(o: Offer, voiceNotes?: VoiceNotes) {
   return `You are the Ethics & Quality QC checker for cold emails. Check one email (and its follow-ups) written for one lead, before anyone sends it.
 
 The seller offers: ${o.offer || "(not set)"}. Ideal customer: ${o.customer || "(not set)"}.
+The seller's own one line on what they do: ${o.one_line || "(not set)"}${o.first_step ? `\nThe seller's first step offer: ${o.first_step}` : ""}
+Anything said in the seller's offer, one line or first step above is the seller's own claim and is allowed, even when reworded with the same meaning.
 ${voiceNotes
       ? `Sender Voice Profile:
 - Greeting style: ${voiceNotes.greeting || "Hi {name},"}
@@ -343,7 +345,7 @@ Fail it for any of the following problems:
 3. The greeting greets the company (e.g. "Hi Social,") or a name that is not in the lead data. When no contact person is named, "Hi there," is the correct greeting matching "Hi {name},". Do NOT fail "Hi there,".
 4. The first line is generic: it would fit any business of this kind.
 5. Price, packages, trials, free work, discounts, payment, guarantees, hype or AI-style words (leverage, elevate, seamless, unlock, tailored, delve, robust).
-6. The question is vague, asks for a meeting straight away, assumes a tool or problem the lead data does not show, or asks about something the seller's offer has nothing to do with.
+6. The question is vague, asks for a meeting straight away, assumes a tool, tech stack, traffic level or problem the lead data does not show, or asks about something the seller's offer has nothing to do with. A neutral question that only asks whether the seller's kind of work is on the lead's plans (e.g. "is X something you are planning this year?") assumes nothing and is valid: do NOT fail it.
 7. A follow-up repeats the first email or another follow-up, or says "just following up" / "circling back".
 8. Fake urgency or artificial deadlines: "only today", "last chance", "expires today", "offer ends", "limited time", "don't miss out", "before tomorrow".
 9. Fake scarcity or artificial exclusivity: "only taking 2 clients", "only 1 spot left", "almost booked up", "exclusive access".
@@ -635,9 +637,9 @@ Rules (Strict Stage D Writing Quality):
   * social proof: naturally mention the exact verified proof point.
   * reciprocity: ${o.first_step ? `introduce the low-risk first step offer, exactly as the sender wrote it: ${o.first_step}.` : "no first step is set, so do not offer one."}
   * evidence: lead directly with the verified website observation.
-- question: one clear question, 12 to 18 words, about this lead's own work that ties the sender's offer (${o.offer || "the offer above"}) directly to a real verified observation.
+- question: one clear, neutral question, 12 to 18 words, that asks whether the sender's kind of work (${o.offer || "the offer above"}) is on this lead's plans, for example "is <the work the offer does> something you are planning this year?". It may name the lead or the quoted observation.
   * MANDATORY OPENING: The question MUST start with "${voiceNotes?.words_used?.includes("Quick question") ? "Quick question:" : "Honestly,"}".
-  * Ask about something the sender's offer can actually help with, tied to what the lead data shows. NEVER claim or assume which tools, software, platform or problems the lead has unless an observation explicitly states so.
+  * The question must assume NOTHING about the lead: no pain point, bottleneck, tech stack, tools, traffic, speed or growth, unless an observation quote states it word for word. Ask, never diagnose.
   * NEVER ask about the lead's internal operations that the offer has nothing to do with.
 - one_line: the sender's "One line on what we do", said in NEW words for this email. Keep the exact meaning and every fact; change the wording, the order and the opening every time, so no two emails share it. 14 to 19 words, plain words, no hype, no claims, skills, results or numbers that are not in the line, never price, free, discount, guarantee or other spam words. NEVER use buzzwords (tailored, leverage, elevate, seamless, scalable, delve, robust, cutting-edge). If the sender's line includes an avoided word, leave that part out; never swap in a new claim such as "fast" or "high-performance".
 - subject: 3 to 6 lower-case words, truthful and plain. No hype, no question marks, no emojis.

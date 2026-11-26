@@ -767,4 +767,11 @@ describe("Email writer: facts only, no invented claims", () => {
     const pay = emailPayload({ name: "Loom", research: { observations: [{ fact: "Trusted by 22 million", quote: "Millions of people" }] } });
     assert.deepEqual(pay.evidence.observations, [{ quote: "Millions of people" }]);
   });
+
+  it("QC sees the sender's own one line, and both sides use a neutral question", () => {
+    const q = qcSystem({ ...offer, one_line: "We build fast, scalable Next.js web applications." });
+    assert.match(q, /We build fast, scalable Next\.js web applications\./);
+    assert.match(q, /assumes nothing and is valid/);
+    assert.match(emailSystem(offer, sender), /must assume NOTHING about the lead/);
+  });
 });
