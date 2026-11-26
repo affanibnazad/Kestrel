@@ -1,20 +1,24 @@
-/* Lead Brain Canvas (U5) — strictly --ds-* tokens, zero hex colors, zero !important */
+/* Lead Brain node canvas. Matches Affan's lead-brain.html concept (v4).
+   Colours come only from --ds-* tokens (src/styles/tokens.css, "Lead Brain node canvas").
+   The wrapper carries the .ds-root class, so the tokens are defined here. Zero hex colours, zero !important. */
 
 .stagewrap {
-  --lb-sky: var(--ds-page);
-  --lb-dot: color-mix(in srgb, var(--ds-text) 11%, transparent);
-  --lb-edge: var(--ds-border-strong);
-  --lb-tile: var(--ds-card);
-  --lb-tileb: var(--ds-border);
-  --lb-lbl: var(--ds-text);
-  --lb-sub: var(--ds-text-2);
-  --lb-zt: var(--ds-focus);
-  --lb-ai: var(--ds-status-purple);
-  --lb-wait: var(--ds-status-orange);
-  --lb-done: var(--ds-status-green);
+  --lb-sky: var(--ds-canvas-sky);
+  --lb-dot: var(--ds-canvas-dot);
+  --lb-star: var(--ds-canvas-star);
+  --lb-edge: var(--ds-canvas-edge);
+  --lb-tile: var(--ds-canvas-tile);
+  --lb-tileb: var(--ds-canvas-tile-border);
+  --lb-lbl: var(--ds-canvas-label);
+  --lb-sub: var(--ds-canvas-sub);
+  --lb-zt: var(--ds-canvas-zone);
+  --lb-port: var(--ds-canvas-port);
+  --lb-glow: var(--ds-canvas-glow);
+  --lb-ai: var(--ds-canvas-ai);
+  --lb-wait: var(--ds-canvas-wait);
+  --lb-done: var(--ds-canvas-done);
   --lb-err: var(--ds-status-red);
-  --lb-trace: var(--ds-status-yellow);
-  --lb-glow: 0.45;
+  --lb-trace: var(--ds-canvas-trace);
 
   position: relative;
   width: 100%;
@@ -24,28 +28,63 @@
   border: 1px solid var(--lb-tileb);
   background: var(--lb-sky);
   overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+  color: var(--lb-lbl);
 }
 
-:global([data-theme="dark"]) .stagewrap {
-  --lb-glow: 0.9;
+/* React Flow's own pane is transparent so the sky, nebula and stars show through. */
+.flow {
+  --xy-background-color: transparent;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: transparent;
 }
 
-:global([data-theme="gradient"]) .stagewrap {
-  --lb-sky: transparent;
-  --lb-tile: color-mix(in srgb, var(--ds-card) 92%, transparent);
-  --lb-glow: 0.6;
+/* Dark space: a slow nebula and a few stars (both empty in light and gradient). */
+.nebula {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  background:
+    radial-gradient(40% 35% at 30% 35%, var(--ds-canvas-nebula), transparent 70%),
+    radial-gradient(35% 30% at 75% 65%, color-mix(in srgb, var(--ds-canvas-nebula) 75%, transparent), transparent 70%),
+    radial-gradient(30% 30% at 60% 15%, color-mix(in srgb, var(--ds-canvas-nebula) 45%, transparent), transparent 70%);
+  animation: drift 30s ease-in-out infinite alternate;
+}
+
+@keyframes drift {
+  to {
+    transform: translate(4%, 3%) scale(1.05);
+  }
+}
+
+.stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.9;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, var(--lb-star), transparent),
+    radial-gradient(1px 1px at 33% 72%, var(--lb-star), transparent),
+    radial-gradient(1.5px 1.5px at 58% 30%, var(--lb-star), transparent),
+    radial-gradient(1px 1px at 77% 64%, var(--lb-star), transparent),
+    radial-gradient(1px 1px at 90% 12%, var(--lb-star), transparent),
+    radial-gradient(1.5px 1.5px at 6% 88%, var(--lb-star), transparent),
+    radial-gradient(1px 1px at 45% 46%, var(--lb-star), transparent),
+    radial-gradient(1px 1px at 68% 90%, var(--lb-star), transparent);
 }
 
 /* HUD */
 .hud {
   position: absolute;
-  left: 20px;
-  top: 16px;
-  right: 20px;
+  left: 24px;
+  top: 20px;
+  right: 24px;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   pointer-events: none;
   z-index: 5;
 }
@@ -57,8 +96,8 @@
 .title {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: var(--ds-font-size-20);
+  gap: 12px;
+  font-size: 22px;
   font-weight: var(--ds-font-weight-semibold);
   color: var(--lb-lbl);
 }
@@ -87,7 +126,7 @@
 
 @keyframes livePulse {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--lb-done) 55%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--lb-done) 60%, transparent);
   }
   70% {
     box-shadow: 0 0 0 8px transparent;
@@ -100,6 +139,7 @@
 .stat {
   display: flex;
   gap: 8px;
+  margin-left: 8px;
   flex-wrap: wrap;
 }
 
@@ -142,7 +182,7 @@
 }
 
 .pill:hover {
-  background: var(--ds-btn-sec-hover);
+  border-color: var(--lb-edge);
 }
 
 .pill[aria-pressed="true"] {
@@ -151,30 +191,80 @@
   border-color: var(--ds-accent);
 }
 
-/* Empty state banner on canvas */
-.emptyBanner {
+.pill:focus-visible,
+.themeBtn:focus-visible,
+.zoom button:focus-visible,
+.chatForm button:focus-visible {
+  outline: 2px solid var(--ds-focus);
+  outline-offset: 2px;
+}
+
+/* Light / Dark / Gradient, under the HUD buttons (same place as the concept) */
+.themeBar {
   position: absolute;
-  left: 50%;
-  top: 66px;
-  transform: translateX(-50%);
+  right: 24px;
+  top: 62px;
+  z-index: 7;
+  display: flex;
+  gap: 8px;
+}
+
+.themeBtn {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: var(--ds-radius-pill);
+  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-btn-ghost-bg);
+  color: var(--lb-lbl);
+  font: inherit;
+  font-size: 14px;
+  font-weight: var(--ds-font-weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease-out, scale 0.15s ease-out;
+}
+
+:global([data-theme="light"]) .themeBtn,
+:global([data-theme="gradient"]) .themeBtn {
+  background: var(--ds-btn-sec-bg);
+}
+
+.themeBtn:hover {
+  background: var(--ds-btn-sec-hover);
+}
+
+.themeBtn:active {
+  scale: 0.96;
+}
+
+.themeBtn[aria-pressed="true"] {
+  background: var(--ds-accent);
+  color: var(--ds-accent-text);
+  border-color: transparent;
+}
+
+/* Status pill under the theme bar (where the concept says "Replay of a recorded run") */
+.src {
+  position: absolute;
+  right: 20px;
+  top: 126px;
   z-index: 5;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: var(--ds-radius-pill);
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--lb-sub);
   background: var(--lb-tile);
   border: 1px solid var(--lb-tileb);
-  color: var(--lb-sub);
-  font-size: 13px;
-  pointer-events: auto;
+  border-radius: var(--ds-radius-pill);
+  padding: 5px 11px;
 }
 
 /* Zoom & Legend */
 .zoom {
   position: absolute;
-  left: 20px;
-  bottom: 20px;
+  left: 24px;
+  bottom: 24px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -182,8 +272,8 @@
 }
 
 .zoom button {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: var(--ds-radius-pill);
   border: 1px solid var(--lb-tileb);
   background: var(--lb-tile);
@@ -194,18 +284,14 @@
   justify-content: center;
 }
 
-.zoom button:hover {
-  background: var(--ds-btn-sec-hover);
-}
-
 .legend {
   position: absolute;
-  left: 72px;
-  bottom: 24px;
+  left: 76px;
+  bottom: 86px;
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
-  font-size: var(--ds-font-size-12);
+  font-size: 12px;
   color: var(--lb-sub);
   z-index: 5;
   pointer-events: none;
@@ -237,6 +323,73 @@
   background: var(--lb-done);
 }
 
+/* Ask Kestrel AI bar */
+.chat {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 140px));
+  z-index: 5;
+}
+
+.chatForm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 50px;
+  padding: 0 8px 0 18px;
+  border-radius: var(--ds-radius-pill);
+  background: var(--lb-tile);
+  border: 1px solid var(--lb-tileb);
+  box-shadow: 0 12px 40px var(--ds-canvas-shadow-strong);
+  backdrop-filter: blur(10px);
+}
+
+.chatSpark {
+  color: var(--lb-ai);
+  display: flex;
+}
+
+.chatForm .chatInput.chatInput {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  appearance: none;
+  background: transparent;
+  color: var(--lb-lbl);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.chatInput::placeholder {
+  color: var(--lb-sub);
+}
+
+.chatForm button {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--ds-radius-pill);
+  border: 0;
+  background: var(--ds-canvas-ai-deep);
+  color: var(--ds-canvas-on-ai);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.chatForm button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Zone floating labels */
 .zoneLabel {
   position: absolute;
@@ -260,7 +413,7 @@
   color: var(--lb-sub);
 }
 
-/* Nodes */
+/* Nodes (n8n-style agent cards) */
 .node {
   --c: var(--lb-lbl);
   position: relative;
@@ -271,13 +424,14 @@
   width: 184px;
   height: 62px;
   box-sizing: border-box;
-  border-radius: var(--ds-radius-card);
+  border-radius: 14px;
   background: var(--lb-tile);
   border: 1px solid var(--lb-tileb);
   color: var(--lb-lbl);
   cursor: grab;
   user-select: none;
-  transition: border-color 0.2s, opacity 0.2s, box-shadow 0.2s;
+  box-shadow: 0 6px 22px var(--ds-canvas-shadow);
+  transition: box-shadow 0.2s, border-color 0.2s, opacity 0.2s;
 }
 
 .node:hover {
@@ -301,17 +455,17 @@
 
 .nodeAi {
   --c: var(--lb-ai);
-  border-color: color-mix(in srgb, var(--lb-ai) 45%, var(--lb-tileb));
+  border-color: color-mix(in srgb, var(--lb-ai) 45%, transparent);
 }
 
 .nodeWait {
   --c: var(--lb-wait);
-  border-color: color-mix(in srgb, var(--lb-wait) 50%, var(--lb-tileb));
+  border-color: color-mix(in srgb, var(--lb-wait) 50%, transparent);
 }
 
 .nodeDone {
   --c: var(--lb-done);
-  border-color: color-mix(in srgb, var(--lb-done) 50%, var(--lb-tileb));
+  border-color: color-mix(in srgb, var(--lb-done) 50%, transparent);
 }
 
 .ico {
@@ -375,6 +529,11 @@
   font-size: 12px;
 }
 
+.nodeSub .tx small {
+  white-space: normal;
+}
+
+/* Count badge: black in light, white in dark, blue-violet in gradient (the theme's main button colour) */
 .countBadge {
   position: absolute;
   top: -10px;
@@ -390,33 +549,62 @@
   justify-content: center;
   background: var(--ds-accent);
   color: var(--ds-accent-text);
-  border: 2px solid var(--ds-page);
+  border: 2px solid var(--lb-sky);
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+
+:global([data-theme="gradient"]) .countBadge {
+  border-color: var(--ds-card);
+}
+
+/* Ports: the wires start and end exactly here. Doubled class beats React Flow's default handle style. */
+.handle.handle {
+  width: 12px;
+  height: 12px;
+  min-width: 0;
+  min-height: 0;
+  border-radius: var(--ds-radius-pill);
+  background: var(--lb-port);
+  border: 2px solid var(--lb-edge);
   box-sizing: border-box;
 }
 
-/* Handles */
-.handle {
+.handleDiamond.handleDiamond {
   width: 10px;
   height: 10px;
-  border-radius: var(--ds-radius-pill);
-  background: var(--lb-tile);
+  min-width: 0;
+  min-height: 0;
+  border-radius: 0;
+  background: var(--lb-port);
   border: 2px solid var(--lb-edge);
+  box-sizing: border-box;
 }
 
-.handleDiamond {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  transform: rotate(45deg);
-  background: var(--lb-tile);
-  border: 2px solid var(--lb-edge);
+.handleDiamond.handleDiamond:global(.react-flow__handle-bottom) {
+  transform: translate(-50%, 50%) rotate(45deg);
 }
 
-/* Working / Error / Flash / Trace */
+.handleDiamond.handleDiamond:global(.react-flow__handle-top) {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.flashNode {
+  border-color: var(--lb-done);
+}
+
+.flashNode .handle.handle:global(.react-flow__handle-right) {
+  background: var(--lb-done);
+  border-color: var(--lb-done);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--lb-done) 25%, transparent);
+}
+
+/* Processing: glow, real progress bar, and the AI thinking ring */
 .working {
   border-color: var(--c);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent),
-    0 0 32px color-mix(in srgb, var(--c) calc(45% * var(--lb-glow)), transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent),
+    0 0 34px color-mix(in srgb, var(--c) calc(45% * var(--lb-glow)), transparent);
 }
 
 .working .tx small {
@@ -429,8 +617,34 @@
 
 @keyframes breathe {
   50% {
-    transform: scale(0.84);
-    opacity: 0.72;
+    transform: scale(0.82);
+    opacity: 0.7;
+  }
+}
+
+@property --lb-a {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.working.nodeAi::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 16px;
+  padding: 2px;
+  background: conic-gradient(from var(--lb-a), transparent 0 62%, var(--lb-ai) 82%, var(--ds-canvas-ai-blue) 100%);
+  -webkit-mask: linear-gradient(var(--lb-lbl) 0 0) content-box, linear-gradient(var(--lb-lbl) 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: ring 1.1s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes ring {
+  to {
+    --lb-a: 360deg;
   }
 }
 
@@ -442,7 +656,6 @@
   height: 3px;
   border-radius: 3px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--c) 18%, transparent);
 }
 
 .progressBarFill {
@@ -458,12 +671,8 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--lb-err) 25%, transparent);
 }
 
-.flashNode {
-  border-color: var(--lb-done);
-}
-
 .selected {
-  outline: 2px solid var(--ds-focus);
+  outline: 2px solid var(--ds-canvas-ai-deep);
   outline-offset: 3px;
 }
 
@@ -476,7 +685,7 @@
   opacity: 0.25;
 }
 
-/* Edges */
+/* Wires */
 .edgeBase {
   fill: none;
   stroke: var(--lb-edge);
@@ -489,6 +698,7 @@
 
 .edgeFlow {
   stroke: var(--lb-ai);
+  stroke-opacity: 1;
   stroke-width: 2.4;
   stroke-dasharray: 7 7;
   animation: edgeFlow 0.5s linear infinite;
@@ -512,18 +722,19 @@
 /* Right-side inspector panel */
 .panel {
   position: absolute;
-  top: 70px;
-  right: 16px;
-  bottom: 16px;
+  top: 118px;
+  right: 20px;
+  bottom: 20px;
   width: 360px;
-  border-radius: var(--ds-radius-panel);
+  border-radius: 24px;
   background: var(--lb-tile);
   border: 1px solid var(--lb-tileb);
   color: var(--lb-lbl);
-  z-index: 6;
+  z-index: 8;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  backdrop-filter: blur(10px);
 }
 
 .panelHead {
@@ -545,6 +756,26 @@
   font-size: 12.5px;
 }
 
+.panelHead .ico {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+/* Colour of the icon tile in the panel header, same as the card */
+.kindAi {
+  --c: var(--lb-ai);
+}
+.kindWait {
+  --c: var(--lb-wait);
+}
+.kindDone {
+  --c: var(--lb-done);
+}
+.kindCode {
+  --c: var(--lb-lbl);
+}
+
 .panelClose {
   margin-left: auto;
   background: transparent;
@@ -557,10 +788,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.panelClose:hover {
-  background: var(--ds-btn-ghost-hover);
 }
 
 .panelBody {
@@ -599,7 +826,7 @@
 .sectionTitle {
   font-size: 12.5px;
   color: var(--lb-sub);
-  margin: 8px 0;
+  margin: 14px 0 8px;
 }
 
 .leadRow {
@@ -620,11 +847,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--ds-accent);
-  color: var(--ds-accent-text);
+  background: var(--ds-canvas-ai-deep);
+  color: var(--ds-canvas-on-ai);
   font-size: 11px;
   font-weight: var(--ds-font-weight-semibold);
   flex: none;
+}
+
+.panelHead .avatar {
+  width: 44px;
+  height: 44px;
+  font-size: 14px;
 }
 
 .leadText {
@@ -638,7 +871,6 @@
   padding: 0;
   color: var(--lb-lbl);
   font: inherit;
-  font-weight: var(--ds-font-weight-medium);
   cursor: pointer;
   text-decoration: underline;
   text-decoration-color: var(--lb-tileb);
@@ -667,9 +899,21 @@
   cursor: pointer;
 }
 
+:global([data-theme="gradient"]) .approveBtn {
+  background: linear-gradient(90deg, var(--ds-card) 0%, var(--ds-status-green-bg) 100%);
+  color: var(--ds-text);
+  border: 0.5px solid color-mix(in srgb, var(--ds-status-green-bg) 70%, var(--ds-text));
+}
+
 .approveBtn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.more {
+  font-size: 12px;
+  color: var(--lb-sub);
+  margin: 8px 2px 0;
 }
 
 .eventCard {
@@ -684,6 +928,10 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
+}
+
+.eventTop b {
+  font-weight: var(--ds-font-weight-medium);
 }
 
 .eventMeta {
@@ -742,9 +990,9 @@
 .kv {
   display: grid;
   grid-template-columns: 110px 1fr;
-  gap: 8px 10px;
+  gap: 6px 10px;
   font-size: 13px;
-  margin: 0;
+  margin: 0 0 14px;
 }
 
 .kv dt {
@@ -784,12 +1032,23 @@
     top: auto;
     height: 60%;
   }
+  .chat {
+    width: calc(100% - 80px);
+    left: auto;
+    right: 10px;
+    transform: none;
+  }
+  .src {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .liveDot,
   .working .ico svg,
-  .edgeFlow {
+  .working.nodeAi::before,
+  .edgeFlow,
+  .nebula {
     animation: none;
   }
 }

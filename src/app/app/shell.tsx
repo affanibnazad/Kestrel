@@ -1215,6 +1215,9 @@ export default function AppShell({ email, loading = false, preview = false, acco
               leads={leads}
               demo={Boolean(demo)}
               onApproveLead={(leadId) => approveForOutreach([leadId])}
+              theme={look.theme}
+              onTheme={(t) => { const l = { ...look, theme: t }; setLook(l); saveLook(l); }}
+              onAsk={(q) => { chatAskId.current += 1; setChatAsk({ text: q, id: chatAskId.current }); pick("ai"); }}
             />
           ) : (view === "ai" || view === "assistant") ? <AssistantView account={account} demo={Boolean(demo)} editable={editable} toast={setToast} go={pick} addDnc={addDnc} onChanged={reload} dnc={dnc}
             question={chatAsk} onAsked={() => setChatAsk(null)} onChatFrame={setChatFrame}

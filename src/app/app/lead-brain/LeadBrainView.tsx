@@ -24,6 +24,7 @@ import {
   Briefcase,
   Compass,
   Cpu,
+  ArrowUp,
   Eye,
   Gauge,
   GitMerge,
@@ -45,6 +46,7 @@ import {
   Share2,
   ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   UserCheck,
   X,
   Zap,
@@ -53,7 +55,9 @@ import type { LeadRow } from "@/lib/leads";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import {
   E,
+  H,
   N,
+  W,
   Z,
   defaultPositions,
   edgePath,
@@ -65,6 +69,8 @@ import {
 } from "./graph";
 import styles from "./lead-brain.module.css";
 
+export type LeadBrainTheme = "auto" | "light" | "dark" | "gradient";
+
 type Props = {
   teamId: string | null;
   userId?: string | null;
@@ -73,7 +79,19 @@ type Props = {
   leads: LeadRow[];
   demo: boolean;
   onApproveLead: (leadId: string) => Promise<boolean>;
+  /** The App's saved theme (Profile → Appearance). The Light / Dark / Gradient buttons change it for the whole App. */
+  theme?: LeadBrainTheme;
+  onTheme?: (theme: Exclude<LeadBrainTheme, "auto">) => void;
+  /** Sends a question to Kestrel AI (opens the chat with it). */
+  onAsk?: (question: string) => void;
 };
+
+// The fit leaves room for the HUD at the top and the legend + Ask bar at the bottom (same numbers as the concept's fit()).
+const FIT_TOP = 120;
+const FIT_BOTTOM = 140;
+const FIT_SIDE = 40;
+// The "leads here now" list shows this many rows; the count on the card is always the full number.
+const PANEL_ROWS = 60;
 
 type AgentNodeData = {
   def: BrainNodeDef;
@@ -228,6 +246,7 @@ function SubNode({ data }: NodeProps<Node<AgentNodeData>>) {
       </span>
       <span className={styles.tx}>
         <b>{def.n}</b>
+        {data.subtitle ? <small>{data.subtitle}</small> : null}
       </span>
     </div>
   );
@@ -266,8 +285,8 @@ function formatTime(iso: string): string {
   return d.toTimeString().slice(0, 8);
 }
 
-function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onApproveLead }: Props) {
-  const { zoomIn, zoomOut, fitView } = useReactFlow();
+function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onApproveLead, theme = "auto", onTheme, onAsk }: Props) {
+  const { zoomIn, zoomOut, setViewport } = useReactFlow();
   const [ownerView, setOwnerView] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [tab, setTab] = useState<"now" | "track" | "setup">("now");
@@ -281,6 +300,7 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<AgentNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<BrainEdgeData>>([]);
   const didFitRef = useRef(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   const layoutKey = `kestrel_lead_brain_layout_${teamId || "anon"}_${userId || "anon"}`;
 
@@ -303,6 +323,39 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
       // ignore storage errors
     }
   }, [layoutKey]);
+
+  // Fit every visible card into the canvas, like the concept's fit(): never above 100 %, never below 30 %.
+  const fitCanvas = useCallback(
+    (duration = 0) => {
+      const el = wrapRef.current;
+      if (!el) return;
+      const ids = N.filter((n) => (isAdmin && ownerView) || !n.own);
+      if (!ids.length) return;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const n of ids) {
+        const p = positions[n.id];
+        if (!p) continue;
+        const size = nodeSize(n);
+        x0 = Math.min(x0, p.x);
+        y0 = Math.min(y0, p.y - 40);
+        x1 = Math.max(x1, p.x + W[size]);
+        y1 = Math.max(y1, p.y + H[size] + (size === "sub" ? 30 : 0));
+      }
+      const r = el.getBoundingClientRect();
+      const aw = r.width - FIT_SIDE * 2;
+      const ah = r.height - FIT_TOP - FIT_BOTTOM;
+      const zoom = Math.max(0.3, Math.min(1, aw / (x1 - x0), ah / (y1 - y0)));
+      void setViewport(
+        {
+          x: FIT_SIDE + (aw - (x1 - x0) * zoom) / 2 - x0 * zoom,
+          y: FIT_TOP + (ah - (y1 - y0) * zoom) / 2 - y0 * zoom,
+          zoom,
+        },
+        { duration }
+      );
+    },
+    [isAdmin, ownerView, positions, setViewport]
+  );
 
   const savePositions = useCallback(
     (next: Record<string, { x: number; y: number }>) => {
@@ -433,8 +486,9 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
       };
     });
 
-    for (const l of leads.filter((x) => x.status !== "removed").slice(0, 100)) {
-      if (latestByLead.has(l.id)) continue;
+    // Every lead the App has loaded (the same list the sidebar badge counts), not only the newest 100.
+    for (const l of leads) {
+      if (l.status === "removed" || latestByLead.has(l.id)) continue;
       let at = "new";
       let summary = "Collected lead";
       if (l.outreach_approved) {
@@ -462,6 +516,17 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
     return out;
   }, [events, leads]);
 
+  // One pass over all leads: how many sit at each node and who is working there.
+  const byNode = useMemo(() => {
+    const m = new Map<string, BrainLead[]>();
+    for (const l of brainLeads) {
+      const arr = m.get(l.at);
+      if (arr) arr.push(l);
+      else m.set(l.at, [l]);
+    }
+    return m;
+  }, [brainLeads]);
+
   const traceNodeIds = useMemo(() => {
     if (!traceLeadId) return new Set<string>();
     const set = new Set<string>();
@@ -486,7 +551,7 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
   // Sync React Flow nodes & edges
   useEffect(() => {
     const nextNodes: Node<AgentNodeData>[] = visibleDefs.map((def) => {
-      const here = brainLeads.filter((l) => l.at === def.id);
+      const here = byNode.get(def.id) ?? [];
       const working = here.filter((l) => l.phase === "work");
       const workingLabel = working.length
         ? `Working · ${working[working.length - 1].name}${working.length > 1 ? ` +${working.length - 1}` : ""}`
@@ -551,7 +616,7 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
     setEdges(nextEdges);
   }, [
     visibleDefs,
-    brainLeads,
+    byNode,
     positions,
     errorNodes,
     flashNodes,
@@ -568,10 +633,10 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
     if (!didFitRef.current && nodes.length > 0) {
       didFitRef.current = true;
       requestAnimationFrame(() => {
-        void fitView({ padding: 0.16, duration: 0 });
+        fitCanvas(0);
       });
     }
-  }, [nodes.length, fitView]);
+  }, [nodes.length, fitCanvas]);
 
   const handleNodeDragStop = useCallback(
     (_: unknown, node: Node) => {
@@ -593,22 +658,17 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
       // ignore
     }
     requestAnimationFrame(() => {
-      void fitView({ padding: 0.16, duration: 200 });
+      fitCanvas(200);
     });
-  }, [layoutKey, fitView]);
+  }, [layoutKey, fitCanvas]);
 
+  // Same meaning as the concept: "Working" = leads inside the brain (not new, not waiting for you, not ready or sent).
   const workingCount = useMemo(
-    () => brainLeads.filter((l) => l.phase === "work").length,
+    () => brainLeads.filter((l) => !["new", "approve", "ready", "camp"].includes(l.at)).length,
     [brainLeads]
   );
-  const waitingCount = useMemo(
-    () => brainLeads.filter((l) => l.at === "approve").length,
-    [brainLeads]
-  );
-  const readyCount = useMemo(
-    () => brainLeads.filter((l) => l.at === "ready").length,
-    [brainLeads]
-  );
+  const waitingCount = byNode.get("approve")?.length ?? 0;
+  const readyCount = byNode.get("ready")?.length ?? 0;
 
   const selectedDef = useMemo(
     () => (selectedNodeId ? N.find((n) => n.id === selectedNodeId) ?? null : null),
@@ -616,8 +676,8 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
   );
 
   const selectedLeads = useMemo(
-    () => (selectedNodeId ? brainLeads.filter((l) => l.at === selectedNodeId) : []),
-    [brainLeads, selectedNodeId]
+    () => (selectedNodeId ? byNode.get(selectedNodeId) ?? [] : []),
+    [byNode, selectedNodeId]
   );
 
   const selectedEvents = useMemo(
@@ -645,6 +705,42 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
     return `${avg.toFixed(1)} s`;
   }, [selectedEvents]);
 
+  const [ask, setAsk] = useState("");
+  // Fill the window below the App's top bar (and the demo banner), so the Ask bar is never cut off.
+  const [wrapHeight, setWrapHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const fitHeight = () => {
+      const el = wrapRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setWrapHeight(Math.max(580, Math.round(window.innerHeight - top - 16)));
+    };
+    fitHeight();
+    window.addEventListener("resize", fitHeight);
+    return () => window.removeEventListener("resize", fitHeight);
+  }, []);
+  // "auto" shows the theme the computer picked, so one button is always lit.
+  const [shownTheme, setShownTheme] = useState<Exclude<LeadBrainTheme, "auto">>("light");
+  useEffect(() => {
+    const read = () => {
+      const t = document.documentElement.dataset.theme;
+      setShownTheme(t === "dark" || t === "gradient" ? t : "light");
+    };
+    read();
+    const watch = new MutationObserver(read);
+    watch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => watch.disconnect();
+  }, [theme]);
+
+  // Fit again once the canvas has its final height (the first fit ran before it was measured).
+  useEffect(() => {
+    if (!wrapHeight || !didFitRef.current) return;
+    const id = requestAnimationFrame(() => fitCanvas(0));
+    return () => cancelAnimationFrame(id);
+    // Only when the height changes, not after every drag.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wrapHeight]);
+
   async function handleApprove(leadId: string) {
     setApprovingId(leadId);
     await onApproveLead(leadId);
@@ -652,7 +748,9 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
   }
 
   return (
-    <div className={`${styles.stagewrap} ds-root`}>
+    <div ref={wrapRef} className={`${styles.stagewrap} ds-root`} style={wrapHeight ? { height: wrapHeight } : undefined}>
+      <div className={styles.nebula} aria-hidden="true" />
+      <div className={styles.stars} aria-hidden="true" />
       <div className={styles.hud}>
         <div className={styles.title}>
           Lead Brain
@@ -690,14 +788,30 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
         ) : null}
       </div>
 
-      {events.length === 0 ? (
-        <div className={styles.emptyBanner} role="status">
-          <BrainCircuit size={15} aria-hidden="true" />
-          <span>Nothing running. Ask Kestrel AI to find leads.</span>
-        </div>
-      ) : null}
+      <div className={styles.themeBar} role="group" aria-label="Theme">
+        {(["light", "dark", "gradient"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            className={styles.themeBtn}
+            aria-pressed={shownTheme === t}
+            onClick={() => onTheme?.(t)}
+          >
+            {t === "light" ? "Light" : t === "dark" ? "Dark" : "Gradient"}
+          </button>
+        ))}
+      </div>
+
+      <div className={styles.src} role="status">
+        {demo
+          ? "Demo leads · sign in to see your live runs"
+          : events.length
+            ? `${events.length} recent ${events.length === 1 ? "step" : "steps"} · live events stream in`
+            : "No runs yet · counts come from your leads"}
+      </div>
 
       <ReactFlow
+        className={styles.flow}
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
@@ -751,7 +865,7 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
         <button type="button" aria-label="Zoom out" onClick={() => void zoomOut({ duration: 150 })}>
           <Minus size={16} aria-hidden="true" />
         </button>
-        <button type="button" aria-label="Fit view" onClick={() => void fitView({ padding: 0.16, duration: 200 })}>
+        <button type="button" aria-label="Fit view" onClick={() => fitCanvas(200)}>
           <Scan size={16} aria-hidden="true" />
         </button>
       </div>
@@ -773,6 +887,34 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
           <i className={`${styles.legendSwatch} ${styles.swatchDone}`} />
           Done
         </span>
+        <span>Drag a node to move it · drag empty space to pan · scroll to zoom · click to open</span>
+      </div>
+
+      <div className={styles.chat}>
+        <form
+          className={`${styles.chatForm} lb-ask-search`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const q = ask.trim();
+            if (!q || !onAsk) return;
+            onAsk(q);
+            setAsk("");
+          }}
+        >
+          <span className={styles.chatSpark}>
+            <Sparkles size={18} aria-hidden="true" />
+          </span>
+          <input
+            className={styles.chatInput}
+            value={ask}
+            onChange={(e) => setAsk(e.target.value)}
+            placeholder="Ask Kestrel AI — e.g. “research 40 video agencies in Texas”"
+            aria-label="Ask Kestrel AI"
+          />
+          <button type="submit" aria-label="Send" disabled={!ask.trim() || !onAsk}>
+            <ArrowUp size={16} aria-hidden="true" />
+          </button>
+        </form>
       </div>
 
       {traceLead || selectedDef ? (
@@ -836,7 +978,17 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
           ) : selectedDef ? (
             <>
               <div className={styles.panelHead}>
-                <span className={styles.ico}>
+                <span
+                  className={`${styles.ico} ${
+                    isAiNode(selectedDef)
+                      ? styles.kindAi
+                      : selectedDef.k.includes("wait")
+                        ? styles.kindWait
+                        : selectedDef.k.includes("done")
+                          ? styles.kindDone
+                          : styles.kindCode
+                  }`}
+                >
                   <NodeIcon name={selectedDef.ic} size={20} />
                 </span>
                 <div>
@@ -883,10 +1035,10 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
                 {tab === "now" ? (
                   <>
                     <div className={styles.sectionTitle}>
-                      {selectedLeads.length} {selectedLeads.length === 1 ? "lead" : "leads"} here now
+                      {selectedLeads.length.toLocaleString()} {selectedLeads.length === 1 ? "lead" : "leads"} here now
                     </div>
                     {selectedLeads.length ? (
-                      selectedLeads.map((l) => (
+                      selectedLeads.slice(0, PANEL_ROWS).map((l) => (
                         <div key={l.id} className={styles.leadRow}>
                           <span className={styles.avatar}>{initials(l.name)}</span>
                           <div className={styles.leadText}>
@@ -916,6 +1068,11 @@ function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onAppr
                     ) : (
                       <p className={styles.sectionTitle}>Nobody here right now.</p>
                     )}
+                    {selectedLeads.length > PANEL_ROWS ? (
+                      <p className={styles.more}>
+                        Showing {PANEL_ROWS} of {selectedLeads.length.toLocaleString()}. Open Leads to see them all.
+                      </p>
+                    ) : null}
                   </>
                 ) : tab === "track" ? (
                   <>

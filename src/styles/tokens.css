@@ -293,3 +293,62 @@
   --ds-duration-panel: 200ms;
   --ds-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* Lead Brain node canvas (from Affan's lead-brain.html concept, 26 Nov 2026).
+   Only the Lead Brain page reads these; no other page changes. */
+.ds-root,
+.ds-root[data-theme="light"],
+[data-theme="light"] .ds-root {
+  --ds-canvas-sky: #eef0f3;
+  --ds-canvas-dot: rgba(20, 20, 40, 0.1);
+  --ds-canvas-star: rgba(20, 20, 40, 0);
+  --ds-canvas-edge: #c9ccd6;
+  --ds-canvas-tile: #ffffff;
+  --ds-canvas-tile-border: #d6d8df;
+  --ds-canvas-label: #1d1d22;
+  --ds-canvas-sub: #6b7080;
+  --ds-canvas-zone: #5b54e8;
+  --ds-canvas-port: #ffffff;
+  --ds-canvas-glow: 0.45;
+  --ds-canvas-shadow: rgba(0, 0, 0, 0.16);
+  --ds-canvas-shadow-strong: rgba(20, 20, 40, 0.18);
+  --ds-canvas-nebula: transparent;
+  --ds-canvas-ai: #7c74ff;
+  --ds-canvas-ai-deep: #5b54e8;
+  --ds-canvas-ai-blue: #2f6bff;
+  --ds-canvas-wait: #ff9500;
+  --ds-canvas-done: #34c759;
+  --ds-canvas-trace: #ffd60a;
+  --ds-canvas-on-ai: #ffffff;
+}
+
+.ds-root[data-theme="dark"],
+[data-theme="dark"] .ds-root {
+  --ds-canvas-sky: #0b0b10;
+  --ds-canvas-dot: rgba(255, 255, 255, 0.1);
+  --ds-canvas-star: rgba(255, 255, 255, 0.55);
+  --ds-canvas-edge: #3a3a46;
+  --ds-canvas-tile: #16161d;
+  --ds-canvas-tile-border: #2c2c38;
+  --ds-canvas-label: #d9d9e3;
+  --ds-canvas-sub: #8a8a99;
+  --ds-canvas-zone: #b9b5ff;
+  --ds-canvas-port: #16161d;
+  --ds-canvas-glow: 0.9;
+  --ds-canvas-nebula: rgba(91, 84, 232, 0.16);
+}
+
+.ds-root[data-theme="gradient"],
+[data-theme="gradient"] .ds-root {
+  --ds-canvas-sky: transparent;
+  --ds-canvas-dot: rgba(60, 50, 140, 0.12);
+  --ds-canvas-star: rgba(91, 84, 232, 0);
+  --ds-canvas-edge: #cfc9ef;
+  --ds-canvas-tile: rgba(255, 255, 255, 0.9);
+  --ds-canvas-tile-border: #e2ddf6;
+  --ds-canvas-label: #1d1d22;
+  --ds-canvas-sub: #6b7080;
+  --ds-canvas-zone: #5b54e8;
+  --ds-canvas-port: #ffffff;
+  --ds-canvas-glow: 0.6;
+}
