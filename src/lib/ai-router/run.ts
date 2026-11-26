@@ -321,14 +321,17 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   const callProviderImpl = params.providerFn ?? callProvider;
   const logRunImpl = params.logRunFn ?? logRun;
 
-  // Streamed chat: note when the first piece reaches the person. From then on a failure is final.
+  // Streamed chat: note when part of the ANSWER is on the person's screen. From then on a failure is final,
+  // because starting again would show a second answer under the first. Thinking and steps alone don't count:
+  // a failure after them (say, on the call after a lookup) still retries or goes to Nest, and the new
+  // thinking and steps simply follow the old ones. A note that was moved into the thinking doesn't count either.
   let streamed = false;
   const outer = params.onStream;
   const sink: StreamSink | undefined = outer
     ? {
-        thinking: (t) => { streamed = true; outer.thinking(t); },
+        thinking: (t) => outer.thinking(t),
         text: (t) => { streamed = true; outer.text(t); },
-        textReset: () => outer.textReset(),
+        textReset: () => { streamed = false; outer.textReset(); },
       }
     : undefined;
 
