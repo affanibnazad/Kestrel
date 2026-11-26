@@ -27708,7 +27708,11 @@ select:not(.kinbox-snooze-select):not(.search select) {
 :root[data-theme="dark"] .br-filters button.on,
 :root[data-theme="dark"] .br-filters button[aria-selected="true"],
 :root[data-theme="dark"] .kinbox-tabs button.on,
-:root[data-theme="dark"] .kinbox-tabs button[aria-selected="true"] {
+:root[data-theme="dark"] .kinbox-tabs button[aria-selected="true"],
+/* Same weight as the v2 white-pill rule above (:root[data-look="v2"] .seg:not([role="tablist"]) button.on), so the
+   dark pill wins on every page (Tasks, Analytics, Activity, AI, Profile were white). */
+:root[data-theme="dark"] .seg:not([role="tablist"]) button.on,
+:root[data-theme="dark"] .seg[role="tablist"] button.on {
   background: #2D3748 !important;
   color: #FFFFFF !important;
   box-shadow: none !important;
