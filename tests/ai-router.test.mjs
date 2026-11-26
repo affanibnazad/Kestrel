@@ -7,7 +7,7 @@ import http from "node:http";
 import { aiLeadError, aiOne, NEEDS_RESEARCH } from "@/lib/lead-steps";
 import { runAiTask, AI_TASKS } from "@/lib/ai-router";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
-import { readJson, assemble, emailSystem, emailPayload, qcSystem, cleanParts, cleanQc, hasObservations } from "@/lib/ai";
+import { readJson, assemble, emailSystem, emailPayload, qcSystem, cleanParts, cleanQc, hasObservations, cleanResearch, numbersNotInQuote } from "@/lib/ai";
 
 // Ensure server secret is valid for standalone test runner
 process.env.MAIL_SERVER_SECRET = "1234567890123456789012345678901234";
@@ -752,5 +752,19 @@ describe("Email writer: facts only, no invented claims", () => {
     const q = cleanQc({ pass: true, issues: [] }, "Hi there,\n\nYour site says \"Plan and build products\".", vn);
     assert.ok(!q.issues.some((x) => /sender's voice/.test(x)), JSON.stringify(q));
     assert.ok(!/MUST include at least one/.test(emailSystem({ name: "", offer: "x", customer: "y", good: "", bad: "", criteria: "", strictness: "balanced", one_line: "z" }, { sender_name: "A", business: "", address: "", signature: "" }, undefined, vn)));
+  });
+
+  it("Research drops an observation whose fact adds a number, and the writer sees quotes only", () => {
+    assert.deepEqual(numbersNotInQuote("Trusted by over 22 million people across 400,000 companies", "Millions of people across 400,000 companies choose Loom"), ["22"]);
+    assert.deepEqual(numbersNotInQuote("Captions in 50+ languages", "transcripts and captions in 50+ languages"), []);
+    const site = "Millions of people across 400,000 companies choose Loom. We offer SSO, SCIM as well as custom data retention policies.";
+    const r = cleanResearch({ observations: [
+      { fact: "Trusted by over 22 million people.", quote: "Millions of people across 400,000 companies choose Loom" },
+      { fact: "Offers SSO and SCIM.", quote: "We offer SSO, SCIM as well as custom data retention policies" },
+    ], hypotheses: [], unknowns: [], problem: "", how: "", detail: "", sure: "high" }, site, "loom.com");
+    assert.equal(r.observations.length, 1);
+    assert.match(r.observations[0].quote, /SSO, SCIM/);
+    const pay = emailPayload({ name: "Loom", research: { observations: [{ fact: "Trusted by 22 million", quote: "Millions of people" }] } });
+    assert.deepEqual(pay.evidence.observations, [{ quote: "Millions of people" }]);
   });
 });

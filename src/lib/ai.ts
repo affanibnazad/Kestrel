@@ -208,6 +208,12 @@ Output Requirements:
 Plain, everyday English. No AI-style words. Never invent facts.
 Use ONLY the provided website text. Do not assume or import external company names or facts.`;
 }
+// Numbers written in `fact` (22, 400,000, 3.5, 50+) that do not appear in `quote`. Commas and spaces inside numbers are ignored.
+export function numbersNotInQuote(fact: string, quote: string): string[] {
+  const nums = (t: string) => (String(t || "").match(/\d[\d,.\s]*\d|\d/g) ?? []).map((n) => n.replace(/[,\s]/g, "").replace(/\.$/, ""));
+  const inQuote = new Set(nums(quote));
+  return nums(fact).filter((n) => !inQuote.has(n));
+}
 const RESEARCH_BAD = /https?:|www\.|@|<|>|\{\{|\[[A-Z_]{3,}\]/i;
 export function cleanResearch(d: Record<string, unknown> | null, siteText?: string, host = ""): Omit<Research, "host" | "by" | "at"> & { dropped_observations?: Observation[] } | null {
   if (!d) return null;
@@ -231,6 +237,9 @@ export function cleanResearch(d: Record<string, unknown> | null, siteText?: stri
     if (!fact || !quote) continue;
 
     const obs: Observation = { fact, quote, ...(url ? { url } : {}) };
+    // A number in the fact that its own quote does not have was made up ("over 22 million people" from "Millions of
+    // people", staging 26 Nov 2026): the observation is dropped, since Write trusts observations as verified.
+    if (numbersNotInQuote(fact, quote).length) { droppedObs.push(obs); continue; }
 
     if (normalizedSiteText) {
       const normalizedQuote = quote.replace(/["'“”‘’]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
@@ -675,7 +684,10 @@ export function emailPayload(l: LeadData) {
   const fromEmail = person?.name ? "" : nameFromEmail(typeof l.email === "string" ? l.email : "", l.name);
   const r = l.research;
   return {
-    ...leadPayload(l), contact_name: person?.name || "", contact_role: person ? person.position || person.role || "" : "", name_from_email: fromEmail,
+    ...leadPayload(l),
+    // The writer gets each observation's exact quote only: the "fact" is the AI's own rewording and can add things.
+    ...(r ? { evidence: { observations: (r.observations || []).filter((o) => String(o?.quote || "").trim()).map((o) => ({ quote: o.quote })) } } : {}),
+    contact_name: person?.name || "", contact_role: person ? person.position || person.role || "" : "", name_from_email: fromEmail,
     // AI guesses (fit reason, research problem / how / detail): never facts. The writer and QC are told so.
     unverified_notes: { fit_reason: l.ai?.reason || "", ...(r ? { website_detail: r.detail, likely_problem: r.problem, how_they_work: r.how } : {}) },
   };
