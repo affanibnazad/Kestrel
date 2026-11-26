@@ -729,6 +729,7 @@ describe("Email writer: facts only, no invented claims", () => {
     const sys = emailSystem({ ...offer, offer: "" }, sender) + qcSystem(offer);
     assert.ok(!/Next\.js|web application speed|frontend dashboard|test review/i.test(sys));
     assert.match(sys, /unverified_notes are AI guesses/);
+    assert.match(sys, /Never write about what the lead does NOT have/);
     const pay = emailPayload({ name: "Sam TV", research: { observations: [{ fact: "posts weekly", quote: "new video every Friday" }], problem: "They are slow.", how: "Solo.", detail: "Has 2 editors." }, ai: { reason: "Posts often." } });
     assert.equal(pay.likely_problem, undefined);
     assert.equal(pay.website_detail, undefined);
