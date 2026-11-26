@@ -5,7 +5,8 @@ import http from "node:http";
 
 // Import REAL source modules using tsx TypeScript & @/ alias support
 import { aiLeadError, aiAnswer, aiOne, NEEDS_RESEARCH } from "@/lib/lead-steps";
-import { runAiTask, AI_TASKS } from "@/lib/ai-router";
+import { runAiTask, AI_TASKS, checkKestrelAllowance } from "@/lib/ai-router";
+import { runDueAiJobs } from "@/lib/ai-jobs";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
 import { readJson, EMPTY_SENDER, assemble, emailSystem, emailPayload, qcSystem, cleanParts, cleanQc, hasObservations, cleanResearch, numbersNotInQuote } from "@/lib/ai";
 
@@ -1142,5 +1143,83 @@ describe("Email writer: facts only, no invented claims", () => {
     assert.match(q, /We build fast, scalable Next\.js web applications\./);
     assert.match(q, /assumes nothing and is valid/);
     assert.match(emailSystem(offer, sender), /must assume NOTHING about the lead/);
+  });
+});
+
+
+// ── AI-4b Background Job Worker & Server-Secret Allowance ───────────
+describe("AI-4b: runDueAiJobs & serverSecret allowance", () => {
+  it("empty queue returns zero counts", async () => {
+    const sb = {
+      rpc: async () => ({ data: [], error: null }),
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }), update: () => ({ eq: async () => ({ error: null }) }) }),
+    };
+    const res = await runDueAiJobs({ sb, secret: "s", phaseDeadlineMs: 10_000 });
+    assert.deepEqual(res, { claimed: 0, done: 0, retried: 0, skipped: 0, error: 0 });
+  });
+
+  it("runs done, retry, and skipped jobs and logs started/ok/error/skipped Lead Brain events", async () => {
+    const events = [];
+    const finishes = [];
+    const claimed = [
+      { id: "j1", team_id: "t1", user_id: "u1", lead_id: "l1", offer_id: "o1", sequence_id: null, kind: "score", attempts: 1, max_attempts: 3, payload: {} },
+      { id: "j2", team_id: "t1", user_id: "u1", lead_id: "l2", offer_id: "o1", sequence_id: null, kind: "write", attempts: 1, max_attempts: 3, payload: {} },
+      { id: "j3", team_id: "t1", user_id: "u1", lead_id: "l3", offer_id: "o1", sequence_id: null, kind: "research", attempts: 3, max_attempts: 3, payload: {} },
+    ];
+    const sb = {
+      rpc: async (fn, args) => {
+        if (fn === "claim_ai_jobs") return { data: claimed, error: null };
+        if (fn === "log_lead_brain_event") { events.push({ job: args.p_job_id, status: args.p_status, agent: args.p_agent, from: args.p_from_agent }); return { data: 1, error: null }; }
+        if (fn === "finish_ai_job") { finishes.push({ job: args.p_job_id, status: args.p_status }); return { data: null, error: null }; }
+        return { data: null, error: null };
+      },
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }), update: () => ({ eq: async () => ({ error: null }) }) }),
+    };
+
+    const res = await runDueAiJobs({
+      sb,
+      secret: "s",
+      phaseDeadlineMs: 12_000,
+      maxJobs: 3,
+      runStep: async (job) => {
+        if (job.id === "j1") return { status: "done", summary: "Score Good" };
+        if (job.id === "j2") return { status: "skipped", error: "monthly_allowance_reached" };
+        return { status: "retry", error: "AI busy", retryAfterSec: 60 };
+      },
+    });
+
+    assert.deepEqual(res, { claimed: 3, done: 1, retried: 0, skipped: 1, error: 1 });
+    assert.equal(finishes.find((f) => f.job === "j1")?.status, "done");
+    assert.equal(finishes.find((f) => f.job === "j2")?.status, "skipped");
+    assert.equal(finishes.find((f) => f.job === "j3")?.status, "retry");
+    assert.ok(events.some((e) => e.job === "j1" && e.status === "started" && e.agent === "score" && e.from === "quote"));
+    assert.ok(events.some((e) => e.job === "j1" && e.status === "ok"));
+    assert.ok(events.some((e) => e.job === "j2" && e.status === "skipped"));
+    assert.ok(events.some((e) => e.job === "j3" && e.status === "error"));
+  });
+
+  it("checkKestrelAllowance with serverSecret calls ai_usage_this_month(server_secret, p_team_id) without my_account", async () => {
+    let myAccountCalled = false;
+    let passedSecret = "";
+    const sb = {
+      rpc: async (fn, args) => {
+        if (fn === "my_account") { myAccountCalled = true; return { data: null, error: null }; }
+        if (fn === "ai_usage_this_month") { passedSecret = args?.server_secret ?? ""; return { data: 99999, error: null }; }
+        return { data: null, error: null };
+      },
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: { plan: "starter", paid_until: null }, error: null }),
+          }),
+        }),
+      }),
+    };
+
+    const lim = await checkKestrelAllowance(sb, "team-1", { serverSecret: "srv-sec" });
+    assert.equal(myAccountCalled, false);
+    assert.equal(passedSecret, "srv-sec");
+    assert.equal(lim.allowed, false);
+    assert.equal(lim.code, "monthly_allowance_reached");
   });
 });
