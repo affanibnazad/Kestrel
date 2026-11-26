@@ -54,7 +54,7 @@ import InboxView from "./inbox-view";
 import ViewErrorBoundary from "@/components/view-error-boundary";
 import { Globe } from "lucide-react";
 import { BizAvatar, PersonAvatar, Socials, siteOfEmail } from "./biz";
-import { ACCENTS, applyLayout, applyLook, openPhoto, readLook, saveLook, type Look } from "@/lib/look";
+import { ACCENTS, applyLayout, applyLook, followOsTheme, openPhoto, readLook, saveLook, type Look } from "@/lib/look";
 import { noteRecent, readRecent, type RecentItem } from "@/lib/recent";
 import PhotoCrop from "./photo-crop";
 import AnalyticsView from "./analytics-view";
@@ -69,7 +69,7 @@ import { PENDING, claim } from "../redeem/redeem";
 import { EXAMPLE_LEADS, LEAD_COLUMNS, LEAD_COLUMNS_STATUS, LEAD_COLUMNS_VERIFY, LEAD_COLUMNS_STAGE_C, LEADS_DRAG, leadsCsv, placeOf, searchGroups, searchKey, leadsFromBackup, toRow, type LeadRow } from "@/lib/leads";
 import downloads from "@/lib/downloads";
 import { EXTENSION, storeUrl } from "@/lib/site";
-import { LAUNCH as INTRO, PLANS, TRIAL_DAYS, introPrice, money, planName, type PlanId } from "@/lib/plans";
+import { LAUNCH as INTRO, PLANS, TRIAL_DAYS, aiAllowance, introPrice, money, nextMonthResetLabel, planName, type PlanId } from "@/lib/plans";
 import OfferBanner from "@/components/offer-banner";
 import OfferCode from "@/components/offer-code";
 
@@ -280,7 +280,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
   const [collapsed, setCollapsed] = useState(false); // computer: the left bar folds to a slim row of icons
   const [kitFilters, setKitFilters] = useState(false);   // v2 Leads: the filter row under the search box   // the new design (?look=v2): the Figma kit's layouts
   const [look, setLook] = useState<Look>(readLook);   // read once from localStorage
-  useEffect(() => { applyLook(look); applyLayout(); }, [look]);   // Profile → Appearance (theme, accent, reduce motion)
+  useEffect(() => { applyLook(look); applyLayout(); return followOsTheme(look); }, [look]);   // Profile → Appearance (theme, accent, reduce motion); "auto" follows OS switches live
   const [leads, setLeads] = useState<LeadRow[]>(demo ?? []);
   const [query, setQuery] = useState("");
   const [searchQ, setSearchQ] = useState("");
@@ -2009,6 +2009,19 @@ function PlanView({ account }: { account: Account | null }) {
   const [code, setCode] = useState("");
   const [codeMsg, setCodeMsg] = useState("");
   const [codeOpen, setCodeOpen] = useState(false);
+  const [aiUsed, setAiUsed] = useState<number | null>(null);
+  useEffect(() => {
+    if (!account?.team_id) return;
+    let alive = true;
+    supabaseBrowser()
+      .rpc("ai_usage_this_month", { p_team_id: account.team_id })
+      .then(({ data, error }) => {
+        if (!alive || error || data === null || data === undefined) return;
+        setAiUsed(Number(data) || 0);
+      });
+    return () => { alive = false; };
+  }, [account?.team_id]);
+  const allowance = aiAllowance(account);
   const planNow = current ? planName(current) : hasFree ? `${planName(account!.access_plan ?? "pro")} (access code)` : account?.active === false ? "None" : "Free trial";
   const seats = PLANS.find((p) => p.id === seatPlan(account))?.seats ?? "";
   async function useCode(e: React.FormEvent) {
@@ -2031,6 +2044,16 @@ function PlanView({ account }: { account: Account | null }) {
           <div><small>Team</small><b>{(account.members?.length ?? 1).toLocaleString()} {account.members?.length === 1 ? "person" : "people"}</b><i className="kpi-note">{seats}</i></div>
           {hasFree ? <div><small>Free access</small><b>Until</b><i className="kpi-note">{freeDate}</i></div> : null}
         </div>
+      ) : null}
+      {account && aiUsed !== null ? (
+        <p className="plan-msg" role="status">
+          Kestrel AI this month: {aiUsed.toLocaleString()} of {allowance.toLocaleString()} used
+          {aiUsed >= allowance
+            ? ` — resets on ${nextMonthResetLabel()}.`
+            : aiUsed >= Math.floor(allowance * 0.8)
+              ? ` (${Math.round((aiUsed / allowance) * 100)}% used).`
+              : "."}
+        </p>
       ) : null}
       {account?.active === false && !hasFree ? <p className="plan-msg lock-msg">Your trial has ended, so Kestrel is read-only. Your leads are safe and you can still export them. Pick a plan below to unlock adding leads, the extension and AI again.</p> : null}
       <OfferBanner />

@@ -5,7 +5,7 @@ import { currentUser, supabaseServer } from "@/lib/supabase/server";
 import { aiOne, aiPlan, writeChecked } from "@/lib/lead-steps";
 import { cleanVoiceNotes, readJson, voiceSystem, VOICE_SCHEMA, type Offer, type Provider } from "@/lib/ai";
 import { aboutForAi, cleanAbout } from "@/lib/about";
-import { AI_TASKS, runAiTask } from "@/lib/ai-router";
+import { AI_TASKS, checkKestrelAllowance, kestrelGateError, runAiTask } from "@/lib/ai-router";
 import { LABEL_SCHEMA, LABEL_SYSTEM } from "@/lib/inbox";
 
 // AI in the App: judges leads (Good / Maybe / No) or writes the personal parts of first emails, a few leads per call.
@@ -196,7 +196,16 @@ export async function POST(request: Request) {
   }
   // Database 039: the key is read only with the server secret (never straight to a browser).
   const provider = ((settings?.provider as Provider) || "anthropic");
-  const { data: key } = await sb.rpc("ai_key_for_server", { server_secret: process.env.MAIL_SERVER_SECRET || "", service: provider });
+  const { data: key, error: keyError } = await sb.rpc("ai_key_for_server", { server_secret: process.env.MAIL_SERVER_SECRET || "", service: provider });
+  // This lookup is also the plan and role gate (database 056): a Viewer, or a team whose trial or plan ended, gets an
+  // error here. Stop now. Before AI-4a the missing key stopped them; now "no key" means Kestrel-paid AI, so an
+  // ignored error would hand them free Kestrel AI.
+  if (keyError) {
+    const gate = kestrelGateError(keyError.message || "");
+    return gate.code
+      ? NextResponse.json({ error: gate.customer }, { status: 403 })
+      : NextResponse.json({ error: "Could not check your AI access just now. Try again in a minute." }, { status: 503 });
+  }
   // Check the offer, model and sender before the key, so the first missing thing is named.
   const pre = aiPlan(task, offer as Offer, settings, "-", sequence, activeServices, cleanAb?.voice_notes, cleanAb);
   if ("error" in pre) return NextResponse.json({ error: pre.error }, { status: 400 });
@@ -208,9 +217,10 @@ export async function POST(request: Request) {
     rowsRes = (await sb.from("leads").select("id,team_id,email,website,data").in("id", ids)) as typeof rowsRes;
   }
   const rows = rowsRes.data;
-  // The website column is the lead's main site; research reads it when the scraped details have none.
+  // The website column is the lead's main site; every task uses it when the scraped details have none. (It was research
+  // only, so the writer saw no website and wrote "you do not have a public website" for leads that have one.)
   const leads = ((rows ?? []) as { id: string; team_id: string; email: string | null; website: string | null; data: Record<string, unknown> | null; outreach_approved?: boolean }[])
-    .map(({ website, ...l }) => (task === "research" && website && !(l.data as { website?: string } | null)?.website ? { ...l, data: { ...(l.data ?? {}), website } } : l));
+    .map(({ website, ...l }) => (website && !(l.data as { website?: string } | null)?.website ? { ...l, data: { ...(l.data ?? {}), website } } : l));
   // One team per batch, and its own Do-not-contact list: never write to anyone on it. If the check fails, nothing is written.
   if (leads.some((l) => l.team_id !== leads[0].team_id)) return NextResponse.json({ error: "These leads belong to different teams. Run one team at a time." }, { status: 400 });
   const batchTeamId = leads[0]?.team_id || (offer as { team_id?: string })?.team_id || "";
@@ -226,6 +236,17 @@ export async function POST(request: Request) {
     catch { return NextResponse.json({ error: "Could not check your Do-not-contact list just now. Try again in a minute." }, { status: 503 }); }
   }
   const done: Record<string, unknown>[] = [], skipped: { id: string; why: string }[] = [];
+  if (typeof key !== "string" || !key) {
+    const limit = await checkKestrelAllowance(sb, batchTeamId);
+    if (!limit.allowed) {
+      return NextResponse.json({
+        done: [],
+        skipped: leads.map((l) => ({ id: l.id, why: limit.message! })),
+        cost: 0,
+        error: limit.message!,
+      });
+    }
+  }
   let cost: number | null = 0, fatal = "";
   const one = async (l: (typeof leads)[number]) => {
     if (fatal) return;
@@ -241,10 +262,12 @@ export async function POST(request: Request) {
     cost = cost === null || r.cost === null ? null : cost + r.cost;
     if (!r.ok) {
       console.log(`[ai-route] task=${task} lead=${l.id} not ok: ${r.why || r.fatal}`);
+      // Stop the batch only when every other lead would fail the same way (allowance used up, trial ended, key
+      // rejected). One lead's provider error or broken answer skips that lead only.
+      if (r.stop) fatal = r.why || r.fatal || "Stopped.";
       if (r.why) {
         skipped.push({ id: l.id, why: r.why });
       } else if (r.fatal) {
-        fatal = r.fatal;
         skipped.push({ id: l.id, why: r.fatal });
       }
       return;
@@ -279,6 +302,14 @@ export async function POST(request: Request) {
       break;
     }
     await Promise.all(leads.slice(i, i + AT_ONCE).map(one));
+    if (fatal) {
+      for (const rem of leads.slice(i + AT_ONCE)) {
+        if (!skipped.some((s) => s.id === rem.id)) {
+          skipped.push({ id: rem.id, why: fatal });
+        }
+      }
+      break;
+    }
   }
   if (stoppedEarly && remainingIds.length) {
     for (const remId of remainingIds) {

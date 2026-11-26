@@ -5,7 +5,7 @@ import { DEFAULT_STEPS, checkSequence, cleanSteps, emailStepsProblem, followUpCo
 import { readSite } from "./site-read";
 import { trustedFirstName } from "./email-check";
 import {
-  EMPTY_SENDER, FIT_SCHEMA, PROVIDERS, QC_SCHEMA, RESEARCH_SCHEMA, VERDICT_COLUMN, cleanFit, cleanQc, cleanResearch, qcPayload, qcSystem, researchSystem, type Draft, type Qc, cleanFollowUps, cleanParts, emailMissing, emailPayload, emailSystem, fitSystem, leadPayload,
+  EMPTY_SENDER, FIT_SCHEMA, PROVIDERS, QC_SCHEMA, RESEARCH_SCHEMA, VERDICT_COLUMN, cleanFit, cleanQc, cleanResearch, qcPayload, qcSystem, researchSystem, type Draft, type Qc, cleanFollowUps, cleanParts, emailMissing, hasObservations, emailPayload, emailSystem, fitSystem, leadPayload,
   makeDraft, offerReady, profileHash, readJson, sequenceSchema, type LeadData, type Offer, type Provider, type Sender
 } from "./ai";
 import type { About, VoiceNotes } from "./about";
@@ -13,7 +13,7 @@ import { pickAngle } from "./angles";
 import { hostOf, hunterPick, hunterUrl, mergeContacts, setEmails, type Contact } from "./hunter";
 import { applyRules, cleanRules, type ScoreLead } from "./scoring";
 import { apolloFind, findymailFind } from "./finders";
-import { runAiTask, type AiTaskName } from "./ai-router";
+import { KESTREL_STOP_CODES, runAiTask, type AiTaskName } from "./ai-router";
 import type { supabaseServer } from "./supabase/server";
 
 type Sb = Awaited<ReturnType<typeof supabaseServer>>;
@@ -24,6 +24,7 @@ type Sb = Awaited<ReturnType<typeof supabaseServer>>;
 // A money amount anywhere in an email ($49, £20, 30 EUR): the class rule is no prices in cold email.
 const MONEY = /[$€£¥]\s?\d|\b\d+(?:[.,]\d+)?\s?(?:usd|eur|gbp|dollars?|euros?|pounds?)\b/i;
 
+export const NEEDS_RESEARCH = "Research this lead first: there are no facts from its website to write from";
 // ---------- AI: score or write
 export type AiPlan = {
   task: "score" | "emails" | "research" | "qc"; provider: Provider; key: string; model: string; effort?: "low" | "medium" | "high";
@@ -45,11 +46,11 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
   if (!offer) return { error: "Choose an offer profile first." };
   const s: Sender = { ...EMPTY_SENDER, ...(settings ?? {}) } as Sender;
   // "auto" (the default for Claude): Haiku 5.5 judges leads, Sonnet 5.5 writes emails. A model the team chose is used as it is.
+  // When the team has no key (key === ""), Kestrel's included AI (Swift slot) is used instead.
   const provider = ((settings?.provider as Provider) || "anthropic"), pick = modelForTask(provider, String(settings?.model ?? ""), task === "emails" ? "emails" : "score");   // research uses the quick model
-  if (!pick.model) return { error: `Choose a ${PROVIDERS[provider]?.label ?? "AI"} model first: Integrations → Services → click Test on the key to load its models, then pick one under “AI for Score and write” and Save. Names have no spaces (e.g. gemini-2.5-flash).` };
+  if (key && !pick.model) return { error: `Choose a ${PROVIDERS[provider]?.label ?? "AI"} model first: Integrations → Services → click Test on the key to load its models, then pick one under “AI for Score and write” and Save. Names have no spaces (e.g. gemini-2.5-flash).` };
   if (!offerReady(offer)) return { error: "Add what you sell and your ideal customer to this offer first." };
   if (task === "emails") { const miss = emailMissing(offer, s); if (miss.length) return { error: `Add ${miss.join(", ")} first.` }; }
-  if (!key) return { error: "Your team has no AI key for this AI company yet. Add one in Integrations → Services." };
   let seq: AiPlan["seq"] = null;
   if (task === "emails" && sequence === "default") seq = { steps: DEFAULT_STEPS };
   else if (task === "emails" && sequence && sequence !== "default") {
@@ -58,7 +59,8 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
   }
   const followUps = seq ? followUpCount(seq.steps) : 0;
   return {
-    task, provider, key, model: pick.model, effort: provider === "anthropic" ? pick.effort : undefined, offer, sender: s, hash: profileHash(offer),
+    task, provider, key, model: pick.model, effort: key && provider === "anthropic" ? pick.effort : undefined, offer, sender: s, hash: profileHash(offer),
+    by: key ? undefined : "kestrel",
     system: task === "score" ? fitSystem(offer, s.about ?? "", activeServices) : task === "research" ? researchSystem() : task === "qc" ? qcSystem(offer, voiceNotes) : emailSystem(offer, s, seq?.steps, voiceNotes),
     schema: task === "score" ? FIT_SCHEMA : task === "research" ? RESEARCH_SCHEMA : task === "qc" ? QC_SCHEMA : sequenceSchema(followUps), followUps, seq, activeServices,
     voiceNotes, about
@@ -68,12 +70,13 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
 export type LeadIn = { id: string; email: string | null; data: LeadData | null; outreach_approved?: boolean };
 export type AiResult =
   | { ok: true; patch: Record<string, unknown>; result: Record<string, unknown>; cost: number | null }
-  | { ok: false; why: string; cost: number | null; fatal?: string };
+  | { ok: false; why: string; cost: number | null; fatal?: string; stop?: boolean };
 
 // One lead: asks the AI and returns the database change to save (or why it was skipped). A key or quota problem is "fatal".
 export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] = []): Promise<AiResult> {
   const data = l.data ?? {};
   if (p.task === "emails" && !l.email) return { ok: false, why: "no email", cost: 0 };
+  if (p.task === "emails" && !hasObservations(data)) return { ok: false, why: NEEDS_RESEARCH, cost: 0 };
   // Stage C (Opportunity Intelligence): human must approve before lead can be used for outreach
   if (p.task === "emails") {
     const isApproved = (l as { outreach_approved?: boolean }).outreach_approved === true ||
@@ -117,7 +120,7 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
       });
       if (!res.ok) {
         const mapped = aiLeadError(res);
-        return { ok: false, why: mapped.why, cost: res.cost_usd ?? 0, fatal: mapped.fatal };
+        return { ok: false, why: mapped.why, cost: res.cost_usd ?? 0, fatal: mapped.fatal, stop: mapped.stop };
       }
       const json = readJson(res.text);
       if (!json) {
@@ -137,11 +140,17 @@ export function aiLeadError(res: {
   status?: string;
   lastError?: string;
   statusCode?: number;
-}): { why: string; fatal?: string } {
+}): { why: string; fatal?: string; stop?: boolean } {
   const err = String(res.error || "");
   const raw = String(res.lastError || "");
   const statusCode = res.statusCode;
   const combined = `${err} ${raw}`;
+
+  // 0. No Kestrel AI for this team right now (allowance used up, could not count it, trial ended, Viewer).
+  //    Every other lead would get the same answer, so a bulk run stops here.
+  if (KESTREL_STOP_CODES.has(raw) || (res.status === "skipped" && /used up/i.test(err))) {
+    return { why: err, fatal: err, stop: true };
+  }
 
   // 1. Real 429 / rate_limited
   if (
@@ -158,7 +167,7 @@ export function aiLeadError(res: {
     statusCode === 403 ||
     /\b401\b|\b403\b|rejected|invalid.*key|unauthorized|permission|no.*key.*configured|no.*ai key/i.test(combined)
   ) {
-    return { why: "Your AI key was rejected. Check Settings → AI.", fatal: res.error };
+    return { why: "Your AI key was rejected. Check Settings → AI.", fatal: res.error, stop: true };
   }
 
   // 3. 413 too large
@@ -305,7 +314,7 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
 
 // ---------- QC (Phase 4C): the QC bot checks a written email; the Writer fixes it with QC's notes.
 export type QcEvent = { who: "qc" | "writer"; kind: "issue" | "fix" | "pass" | "hold"; text: string };
-export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ ok: true; pass: boolean; issues: string[]; cost: number | null } | { ok: false; fatal?: string; cost: number | null }> {
+export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ ok: true; pass: boolean; issues: string[]; cost: number | null } | { ok: false; fatal?: string; cost: number | null; stop?: boolean }> {
   try {
     const fullDraftText = `${draft.subject || ""}\n\n${draft.body || ""}\n\n${(draft.steps || []).map((s) => s.body).join("\n\n")}`;
     if (p.sb && p.teamId) {
@@ -326,7 +335,7 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
         },
       });
       if (!res.ok) {
-        return { ok: false, cost: res.cost_usd ?? null, fatal: res.error };
+        return { ok: false, cost: res.cost_usd ?? null, fatal: res.error, stop: KESTREL_STOP_CODES.has(String(res.lastError ?? "")) };
       }
       const q = cleanQc(readJson(res.text), fullDraftText, p.voiceNotes);
       return q ? { ok: true, ...q, cost: res.cost_usd } : { ok: false, cost: res.cost_usd };
@@ -351,7 +360,7 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
     const q = await qcOne(qc, leadData, draftOf(r));
     add(q.cost);
     if (!q.ok) {
-      if (q.fatal) return { ok: false, why: "error", cost, fatal: q.fatal };
+      if (q.fatal) return { ok: false, why: q.stop ? q.fatal : "error", cost, fatal: q.fatal, stop: q.stop };
       const curDraft = draftOf(r);
       const codeQc = cleanQc({ pass: true, issues: [] }, `${curDraft.subject || ""} ${curDraft.body || ""}`, w.voiceNotes);
       if (codeQc && !codeQc.pass) {
@@ -368,7 +377,7 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
     events.push({ who: "qc", kind: "issue", text: q.issues.join(" ") });
     const again = await aiOne(w, l, dnc, q.issues);
     add(again.cost);
-    if (!again.ok) { if (again.fatal) return { ok: false, why: "error", cost, fatal: again.fatal }; qcState = { status: "hold", issues: q.issues, rounds: round, at: Date.now() }; events.push({ who: "qc", kind: "hold", text: q.issues.join(" ") }); break; }
+    if (!again.ok) { if (again.fatal) return { ok: false, why: again.stop ? again.fatal : "error", cost, fatal: again.fatal, stop: again.stop }; qcState = { status: "hold", issues: q.issues, rounds: round, at: Date.now() }; events.push({ who: "qc", kind: "hold", text: q.issues.join(" ") }); break; }
     r = again; round++; fixed = [...fixed, ...q.issues].slice(0, 8);
     events.push({ who: "writer", kind: "fix", text: "Rewrote it with QC's notes." });
   }

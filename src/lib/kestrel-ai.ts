@@ -3,7 +3,7 @@ import type { supabaseServer } from "./supabase/server";
 import type { Provider } from "./ai";
 import { HAIKU } from "./ai-models";
 import { assistantConfig, serverSecret } from "./assistant-server";
-import { runAiTask, type AiTaskName } from "./ai-router";
+import { runAiTask, type AiTaskName, type UncountedTask } from "./ai-router";
 
 // Kestrel's own AI for small jobs Kestrel pays for: AI reply options, reply labels and the spam fix (18 Nov 2026).
 // Now routed through the central runAiTask function in lib/ai-router/.
@@ -35,7 +35,7 @@ export async function kestrelJson<T>(
   schema: object,
   maxTokens: number,
   timeoutMs = 25_000,
-  opts?: { sb?: Sb; teamId?: string; userId?: string | null; task?: AiTaskName }
+  opts?: { sb?: Sb; teamId?: string; userId?: string | null; task?: AiTaskName; uncounted?: UncountedTask }
 ): Promise<T | null> {
   if (opts?.sb && opts?.teamId) {
     const taskName: AiTaskName = opts.task ?? "reply_suggest";
@@ -49,6 +49,7 @@ export async function kestrelJson<T>(
       schema,
       maxTokens,
       timeoutMs,
+      uncounted: opts.uncounted,
     });
     if (!res.ok) {
       if (res.status === "skipped") return null;
