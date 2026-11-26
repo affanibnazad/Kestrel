@@ -69,6 +69,7 @@ type Props = {
   teamId: string | null;
   userId?: string | null;
   isAdmin: boolean;
+  editable: boolean;
   leads: LeadRow[];
   demo: boolean;
   onApproveLead: (leadId: string) => Promise<boolean>;
@@ -265,7 +266,7 @@ function formatTime(iso: string): string {
   return d.toTimeString().slice(0, 8);
 }
 
-function LeadBrainInner({ teamId, userId, isAdmin, leads, demo, onApproveLead }: Props) {
+function LeadBrainInner({ teamId, userId, isAdmin, editable, leads, demo, onApproveLead }: Props) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const [ownerView, setOwnerView] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -424,18 +425,35 @@ function LeadBrainInner({ teamId, userId, isAdmin, leads, demo, onApproveLead }:
       }));
     }
 
-    // Read-only fallback from existing leads waiting for human approval
+    // Read-only fallback from existing leads across brain stages when lead_brain_events is not populated yet
     return leads
-      .filter((l) => l.status !== "removed" && l.verdict === "Good" && !l.outreach_approved)
-      .slice(0, 50)
-      .map((l) => ({
-        id: l.id,
-        name: l.name || l.email || "Lead",
-        at: "approve",
-        phase: "idle" as const,
-        summary: l.reason || "Waiting for your approval",
-        outreach_approved: Boolean(l.outreach_approved),
-      }));
+      .filter((l) => l.status !== "removed")
+      .slice(0, 100)
+      .map((l) => {
+        let at = "new";
+        let summary = "Collected lead";
+        if (l.outreach_approved) {
+          at = "ready";
+          summary = "Approved for outreach";
+        } else if (l.verdict === "Good") {
+          at = "approve";
+          summary = l.reason || "Waiting for your approval";
+        } else if (l.verdict === "Maybe" || l.verdict === "No") {
+          at = "score";
+          summary = l.reason || `Scored: ${l.verdict}`;
+        } else if (l.website) {
+          at = "read";
+          summary = "Website ready to read";
+        }
+        return {
+          id: l.id,
+          name: l.name || l.email || "Lead",
+          at,
+          phase: "idle" as const,
+          summary,
+          outreach_approved: Boolean(l.outreach_approved),
+        };
+      });
   }, [events, leads]);
 
   const traceNodeIds = useMemo(() => {
@@ -877,7 +895,7 @@ function LeadBrainInner({ teamId, userId, isAdmin, leads, demo, onApproveLead }:
                               {l.phase === "work" ? "Working now…" : l.summary || "Waiting"}
                             </div>
                           </div>
-                          {selectedDef.id === "approve" ? (
+                          {selectedDef.id === "approve" && editable ? (
                             <button
                               type="button"
                               className={styles.approveBtn}
