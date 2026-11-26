@@ -198,21 +198,20 @@
   border-left: 1px solid var(--k-border);
 }
 .kchat-thinkOpen .kchat-thinkInner { padding-top: 10px; padding-bottom: 4px; }
-/* the model's own thinking: small, quiet text that scrolls inside a short window */
-.kchat-thoughts {
-  max-height: 10.5em;
+/* the model's own thinking, between the steps it led to: small, quiet text; a long stretch
+   scrolls inside a short window, newest line in view */
+.kchat-thought { animation: thoughtIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.kchat-thoughtText {
+  margin: 0;
+  max-height: 7.8em;
   overflow-y: auto;
   overscroll-behavior: contain;
-  margin-top: 2px;
   color: var(--k-muted);
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.kchat-steps + .kchat-thoughts { margin-top: 10px; }
-.kchat-thought { margin: 0 0 8px; animation: thoughtIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.kchat-thought:last-child { margin-bottom: 0; }
 @keyframes thoughtIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -390,6 +389,36 @@
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.35; transform: scale(0.7); }
 }
+
+/* The answer stopped partway (or could not start): what was written stays, and a quiet
+   line under it says so, with Try again. */
+.kchat-stopped {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 12px;
+  font-size: 13.5px;
+  color: var(--k-muted);
+}
+.kchat-stopped > svg { flex: none; color: var(--k-warning, var(--k-faint)); }
+.kchat-page .kchat-retryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--k-border);
+  background: var(--k-surface);
+  color: var(--k-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+.kchat-page .kchat-retryBtn:hover:not(:disabled) { background: var(--k-hover); border-color: var(--k-active); }
+.kchat-retryBtn:disabled { opacity: 0.5; cursor: default; }
+.kchat-retryBtn:focus-visible { outline: 2px solid var(--k-accent); outline-offset: 1px; }
 
 /* ---------- composer ---------- */
 .kchat-composerWrap {

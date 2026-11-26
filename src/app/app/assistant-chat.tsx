@@ -17,12 +17,12 @@
 // caret at the writing point that goes away when the answer is complete. While Kestrel is
 // working, the wing beats and little stars spin around the mark.
 
-import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { toBlocks } from "@/lib/assistant";
 import { scriptedTurn, STARTERS, type Receipt, type Turn } from "@/lib/ai-chat-script";
 import { liveTurn, type LiveMessage } from "@/lib/ai-chat-live";
 import { Line, MARK_PATHS } from "@/components/ui";
-import { Check, ChevronDown, LoaderCircle } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, LoaderCircle, RotateCcw } from "lucide-react";
 import "./ai-chat.css";
 
 const styles: Record<string, string> = new Proxy({} as Record<string, string>, {
@@ -38,9 +38,13 @@ type Msg = {
   phase?: "thinking" | "answer";
   sig?: string;      // the live route's signature for this answer, so the chat can continue
   thoughts?: string[]; // the model's own thinking, when it shared it (live answers only)
+  thoughtAt?: number[]; // how many steps had started when each piece of thinking began (for the order)
   startedAt?: number;  // when the question was sent (ms), for the live timer
   tookMs?: number;     // how long Kestrel worked before the answer, for "Thought for 6s"
   failed?: boolean;    // the answer is an error message
+  live?: boolean;      // the answer is still streaming in
+  error?: string;      // it stopped partway: shown under what was written, with Try again
+  retryQ?: string;     // the question, for Try again
 };
 
 const SAVE_KEY = "kestrel-ai-chat-v1";
@@ -53,13 +57,13 @@ const KIND_ICON: Record<Receipt["kind"], string> = {
 };
 
 // Animation speed for Kestrel AI answers. The scripted (demo) steps take ANIM_THINK_MS each.
-// The answer flows at a pace set by its length: a short answer is written in about two
-// seconds and a long one never crawls (between FLOW_MIN_CPS and FLOW_MAX_CPS characters a second).
+// The page follows the model's real writing. Tokens arrive in bursts, so the words on the
+// page catch up with what has arrived at a speed that grows with how far behind they are
+// (FLOW_CATCHUP per second of the backlog, never slower than FLOW_MIN_CPS characters a
+// second): steady when the model is steady, quick when a burst lands, never a wall of text.
 const ANIM_THINK_MS = 430;
-const FLOW_TARGET_S = 2.4;
-const FLOW_MIN_CPS = 60;
-const FLOW_MAX_CPS = 420;
-const FLOW_DELAY_MS = 120;
+const FLOW_CATCHUP = 3;
+const FLOW_MIN_CPS = 80;
 
 // The commands you can type after "/" (like Claude's slash commands).
 const COMMANDS = [
@@ -218,14 +222,15 @@ function FlowLine({ row, shown, flow }: { row: LineRow; shown: number; flow: boo
   );
 }
 
-// The answer. While `animate` is on, it flows in at a steady pace set by its length (see
-// FLOW_*), with a caret at the writing point; the caret goes away the moment the last
-// word is out. An answer that was already written (an earlier message, or a chat
-// restored from this browser) is shown whole, with no animation and no caret.
-function StreamAnswer({ text, animate, onDone, onTick }: {
-  text: string; animate: boolean; onDone?: () => void; onTick?: () => void;
+// The answer, written onto the page as it streams in. While `animate` is on, the words
+// follow the text that has arrived (see FLOW_*), each settling in from a soft blur, with a
+// caret at the writing point; the caret goes away the moment the answer is complete
+// (`live` is off and every word is out). An answer that was already written (an earlier
+// message, or a chat restored from this browser) is shown whole, with no animation.
+function StreamAnswer({ text, live = false, animate, onDone, onTick }: {
+  text: string; live?: boolean; animate: boolean; onDone?: () => void; onTick?: () => void;
 }) {
-  const { blocks, lines, flat } = useMemo(() => buildAnswer(text), [text]);
+  const { blocks, lines, flat } = useMemo(() => buildAnswer(live ? openBold(text) : text), [text, live]);
   // Where each word ends, in characters, so the pace is the same for long and short words.
   const ends = useMemo(() => {
     const out: number[] = [];
@@ -236,48 +241,63 @@ function StreamAnswer({ text, animate, onDone, onTick }: {
   // Whether this answer animated when it first appeared: words keep their entrance
   // only then, so a finished answer never flashes again.
   const [flow] = useState(() => animate && !calm());
-  // The callbacks live in refs, so a new callback never restarts the writing.
+  // The newest text and callbacks live in refs, so new tokens never restart the writing.
+  const now = useRef({ ends, live, words: flat.length });
   const doneRef = useRef(onDone);
   const tickRef = useRef(onTick);
-  useEffect(() => { doneRef.current = onDone; tickRef.current = onTick; });
+  useEffect(() => {
+    now.current = { ends, live, words: flat.length };
+    doneRef.current = onDone;
+    tickRef.current = onTick;
+  });
 
   useEffect(() => {
     let finished = false;
     const finish = () => {
       if (finished) return;
       finished = true;
-      setShown(flat.length);
-      tickRef.current?.();
       doneRef.current?.();
     };
-    if (!animate || calm() || !flat.length) {
-      const t = setTimeout(finish, 0);
-      return () => clearTimeout(t);
+    if (!animate || calm()) {
+      let raf = 0;
+      // No animation: show everything that has arrived, and finish once the stream ends.
+      const frame = () => {
+        setShown(now.current.words);
+        tickRef.current?.();
+        if (!now.current.live) { finish(); return; }
+        raf = requestAnimationFrame(frame);
+      };
+      raf = requestAnimationFrame(frame);
+      return () => cancelAnimationFrame(raf);
     }
-    const total = ends[ends.length - 1] ?? 0;
-    const cps = Math.min(FLOW_MAX_CPS, Math.max(FLOW_MIN_CPS, total / FLOW_TARGET_S));
-    const t0 = performance.now() + FLOW_DELAY_MS;
-    let count = 0;
+    let revealed = 0;   // characters on the page
+    let count = 0;      // words on the page
+    let last = performance.now();
     let raf = 0;
-    const frame = (now: number) => {
-      const budget = Math.max(0, ((now - t0) / 1000) * cps);
-      let n = count;
-      while (n < flat.length && ends[n] <= budget) n++;
-      // Never leave the first word waiting on a long word's length.
-      if (n === 0 && budget > 0) n = 1;
+    const frame = (t: number) => {
+      const dt = Math.min(0.1, (t - last) / 1000);
+      last = t;
+      const { ends: e, live: streaming, words } = now.current;
+      const total = e[e.length - 1] ?? 0;
+      const backlog = total - revealed;
+      if (backlog > 0) revealed = Math.min(total, revealed + Math.max(FLOW_MIN_CPS * dt, backlog * FLOW_CATCHUP * dt));
+      let n = 0;
+      while (n < words && e[n] <= revealed + 0.5) n++;
+      // While the model is still writing, the last word may not be complete yet: hold it back.
+      if (streaming && n === words && n > 0) n -= 1;
       if (n !== count) {
         count = n;
         setShown(n);
         tickRef.current?.();
       }
-      if (count >= flat.length) { finish(); return; }
+      if (!streaming && count >= words) { finish(); return; }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [animate, flat, ends]);
+  }, [animate]);
 
-  const streaming = animate && shown < flat.length;
+  const streaming = animate && (live || shown < flat.length);
   const newest = Math.min(shown, flat.length) - 1;
   const lastLine = newest >= 0 ? flat[newest].line : -1;
   const visible = lines.filter((l) => l.line <= lastLine);
@@ -312,6 +332,15 @@ function StreamAnswer({ text, animate, onDone, onTick }: {
   );
 }
 
+// While the answer is still arriving, a **bold** that has opened but not closed yet would
+// show its stars: drop the unfinished opening until its closing stars arrive.
+function openBold(text: string) {
+  const marks = text.split("**").length - 1;
+  if (marks % 2 === 0) return text;
+  const i = text.lastIndexOf("**");
+  return text.slice(0, i) + text.slice(i + 2);
+}
+
 // Seconds since a moment, counting up once a second while Kestrel is thinking.
 function Elapsed({ since }: { since?: number }) {
   const [now, setNow] = useState(() => Date.now());
@@ -333,7 +362,7 @@ const seconds = (ms: number) => `${Math.max(1, Math.round(ms / 1000))}s`;
 function ThinkBlock({ m, theme, writing }: { m: Msg; theme: ChatTheme; writing: boolean }) {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
-  const thoughtsRef = useRef<HTMLDivElement>(null);
+  const thoughtsRef = useRef<HTMLParagraphElement>(null);
   const steps = m.turn?.steps ?? [];
   const thoughts = m.thoughts ?? [];
   const working = m.phase !== "answer";
@@ -341,10 +370,39 @@ function ThinkBlock({ m, theme, writing }: { m: Msg; theme: ChatTheme; writing: 
   const expanded = working ? has : open && has;
 
   // Keep the newest thinking in view while it arrives.
+  const lastThought = thoughts[thoughts.length - 1] ?? "";
   useEffect(() => {
     const el = thoughtsRef.current;
     if (el && working) el.scrollTop = el.scrollHeight;
-  }, [thoughts.length, working]);
+  }, [lastThought, working]);
+
+  // Thinking and steps in the order they happened: each piece of thinking sits after the
+  // steps that had started when it began. (Older saved chats have no order: thinking last.)
+  const at = m.thoughtAt ?? [];
+  const thoughtRow = (i: number) => (
+    <li className={styles.thought} key={`t${i}`}>
+      <p className={styles.thoughtText} ref={i === thoughts.length - 1 ? thoughtsRef : undefined}>{thoughts[i]}</p>
+    </li>
+  );
+  const rows: ReactNode[] = [];
+  for (let k = 0; k <= steps.length; k++) {
+    thoughts.forEach((_, i) => { if ((at[i] ?? steps.length) === k) rows.push(thoughtRow(i)); });
+    const s = steps[k];
+    if (s) rows.push(
+      <li className={`${styles.step} ${s.state === "running" ? styles.stepRun : ""}`} key={s.id}>
+        <span className={styles.stepIcon} aria-hidden="true">
+          {s.state === "running" ? <LoaderCircle className={styles.spin} size={13} strokeWidth={2.2} />
+            : s.state === "done" ? <Check size={13} strokeWidth={2.4} />
+            : <span className={`${styles.dot} ${styles.dotWait}`} />}
+        </span>
+        <span className={styles.stepText}>
+          <span className={styles.stepLabel}>{s.label}</span>
+          {s.detail ? <span className={styles.stepDetail}>{s.detail}</span> : null}
+        </span>
+        <span className={styles.stepMs}>{s.state === "done" && s.ms ? (s.ms >= 1000 ? `${(s.ms / 1000).toFixed(1)}s` : `${s.ms} ms`) : ""}</span>
+      </li>,
+    );
+  }
 
   const took = m.tookMs ?? (steps.some((s) => s.ms) ? steps.reduce((n, s) => n + (s.ms || 0), 0) : undefined);
   const label = working ? "Thinking" : m.failed ? "Could not answer" : took ? `Thought for ${seconds(took)}` : "Thought through";
@@ -379,29 +437,7 @@ function ThinkBlock({ m, theme, writing }: { m: Msg; theme: ChatTheme; writing: 
       {has ? (
         <div className={styles.thinkBody} id={bodyId} aria-hidden={!expanded}>
           <div className={styles.thinkInner}>
-            {steps.length ? (
-              <ol className={styles.steps}>
-                {steps.map((s) => (
-                  <li className={`${styles.step} ${s.state === "running" ? styles.stepRun : ""}`} key={s.id}>
-                    <span className={styles.stepIcon} aria-hidden="true">
-                      {s.state === "running" ? <LoaderCircle className={styles.spin} size={13} strokeWidth={2.2} />
-                        : s.state === "done" ? <Check size={13} strokeWidth={2.4} />
-                        : <span className={`${styles.dot} ${styles.dotWait}`} />}
-                    </span>
-                    <span className={styles.stepText}>
-                      <span className={styles.stepLabel}>{s.label}</span>
-                      {s.detail ? <span className={styles.stepDetail}>{s.detail}</span> : null}
-                    </span>
-                    <span className={styles.stepMs}>{s.state === "done" && s.ms ? (s.ms >= 1000 ? `${(s.ms / 1000).toFixed(1)}s` : `${s.ms} ms`) : ""}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : null}
-            {thoughts.length ? (
-              <div className={styles.thoughts} ref={thoughtsRef}>
-                {thoughts.map((t, i) => <p key={i} className={styles.thought}>{t}</p>)}
-              </div>
-            ) : null}
+            <ol className={styles.steps}>{rows}</ol>
           </div>
         </div>
       ) : null}
@@ -502,9 +538,12 @@ export default function AiChat({ question, onAsked }: {
 
   // Asks a question. It says whether the question actually started, so a
   // question that arrives while Kestrel is busy can wait instead of being lost.
-  const ask = useCallback((question: string): boolean => {
+  // `replace` (Try again) takes the failed question and answer out first and asks again.
+  const ask = useCallback((question: string, replace?: string[]): boolean => {
     const q = question.trim();
     if (!q || busyRef.current) return false;
+    const gone = new Set(replace ?? []);
+    const before = msgs.filter((m) => !gone.has(m.id));
     const uid = `${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
     const userId = `u-${uid}`;
     const botId = `b-${uid}`;
@@ -519,7 +558,7 @@ export default function AiChat({ question, onAsked }: {
     const t0 = Date.now();
 
     setMsgs((all) => [
-      ...all,
+      ...all.filter((m) => !gone.has(m.id)),
       { id: userId, role: "user", text: q, files: sent },
       { id: botId, role: "bot", phase: "thinking", startedAt: t0, thoughts: [], turn: { steps: [], answer: "", receipts: [], context: { title: "What I am looking at", rows: [] } } },
     ]);
@@ -528,7 +567,7 @@ export default function AiChat({ question, onAsked }: {
     // session silently: there is no log-in page here. With no session (or with
     // the AI not switched on yet) the scripted answer is used instead.
     const history: LiveMessage[] = [
-      ...msgs.flatMap((m): LiveMessage[] => {
+      ...before.flatMap((m): LiveMessage[] => {
         if (m.role === "user" && m.text) return [{ role: "user", content: m.text }];
         // Only the live answers carry the server's signature, so only they can
         // be sent back.
@@ -542,9 +581,24 @@ export default function AiChat({ question, onAsked }: {
 
     void (async () => {
       // Never leave the answer on "Thinking": any unexpected failure becomes a visible error.
+      // The answer streams in: thinking first (the Thinking section stays open), then the
+      // answer text (the section folds into "Thought for Xs" and the words follow the model).
+      let writing = false;
       const live = await liveTurn(history, {
         onSteps: (steps) => patch(botId, (m) => ({ ...m, turn: { ...m.turn!, steps } })),
-        onThought: (t) => patch(botId, (m) => ({ ...m, thoughts: [...(m.thoughts ?? []), t] })),
+        onThinking: (thoughts, thoughtAt) => patch(botId, (m) => ({ ...m, thoughts, thoughtAt })),
+        onText: (answer) => {
+          if (answer && !writing) { writing = true; setWritingId(botId); }
+          // A note before a tool call is taken back (it moves into the thinking): back to Thinking.
+          if (!answer) writing = false;
+          patch(botId, (m) => ({
+            ...m,
+            phase: answer ? "answer" : "thinking",
+            live: Boolean(answer),
+            tookMs: answer ? (m.tookMs ?? Date.now() - t0) : undefined,
+            turn: { ...m.turn!, answer },
+          }));
+        },
       }).catch((): Awaited<ReturnType<typeof liveTurn>> => ({ kind: "error", error: "Kestrel AI could not answer just now. Try again." }));
 
       if (live.kind === "live") {
@@ -552,9 +606,11 @@ export default function AiChat({ question, onAsked }: {
         patch(botId, (m) => ({
           ...m,
           phase: "answer",
+          live: false,
           sig: live.sig,
           thoughts: live.thoughts,
-          tookMs: Date.now() - t0,
+          thoughtAt: live.thoughtAt,
+          tookMs: m.tookMs ?? Date.now() - t0,
           turn: { steps: live.steps, answer: live.text, receipts: [], context: { title: "What I am looking at", rows }, ai: live.ai },
         }));
         setWritingId(botId);
@@ -563,13 +619,20 @@ export default function AiChat({ question, onAsked }: {
       }
 
       if (live.kind === "error") {
-        // Keep the steps that did happen, so the person can see how far it got.
+        // Keep the steps, thinking and any words that did arrive, so the person can see how
+        // far it got, and offer Try again.
+        const partial = live.partial;
         patch(botId, (m) => ({
           ...m,
           phase: "answer",
-          failed: true,
-          tookMs: Date.now() - t0,
-          turn: { steps: (m.turn?.steps ?? []).map((s) => ({ ...s, state: "done" as const })), answer: live.error, receipts: [], context: { title: "What I am looking at", rows: [] } },
+          live: false,
+          failed: !partial,
+          error: live.error,
+          retryQ: q,
+          thoughts: live.thoughts?.length ? live.thoughts : m.thoughts,
+          thoughtAt: live.thoughts?.length ? live.thoughtAt : m.thoughtAt,
+          tookMs: m.tookMs ?? Date.now() - t0,
+          turn: { steps: (m.turn?.steps ?? []).map((s) => ({ ...s, state: "done" as const })), answer: partial ?? "", receipts: [], context: { title: "What I am looking at", rows: [] } },
         }));
         setWritingId(botId);
         idle();
@@ -757,12 +820,36 @@ export default function AiChat({ question, onAsked }: {
                       {m.phase === "answer" ? (
                         <>
                           <Receipts receipts={m.turn.receipts} />
+                          {m.turn.answer ? (
                           <StreamAnswer
                             text={m.turn.answer}
+                            live={m.live}
                             animate={writingId === m.id}
                             onDone={() => setWritingId((id) => (id === m.id ? null : id))}
                             onTick={() => toEnd()}
                           />
+                          ) : null}
+                          {m.error ? (
+                            <div className={styles.stopped} role="alert">
+                              <CircleAlert size={15} strokeWidth={2} aria-hidden="true" />
+                              <span>{m.retryQ ? m.error.replace(/\s*Try again\.?$/i, "") : m.error}</span>
+                              {m.retryQ ? (
+                                <button
+                                  type="button"
+                                  className={styles.retryBtn}
+                                  disabled={busy}
+                                  onClick={() => {
+                                    const i = msgs.findIndex((x) => x.id === m.id);
+                                    const asked = i > 0 && msgs[i - 1].role === "user" ? msgs[i - 1].id : "";
+                                    ask(m.retryQ!, [m.id, asked].filter(Boolean));
+                                  }}
+                                >
+                                  <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
+                                  <span>Try again</span>
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </>
                       ) : null}
                     </div>
