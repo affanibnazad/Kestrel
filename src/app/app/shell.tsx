@@ -52,7 +52,10 @@ import SequencesView from "./sequences-view";
 import CampaignsView from "./campaigns-view";
 import InboxView from "./inbox-view";
 import ViewErrorBoundary from "@/components/view-error-boundary";
-import { Globe } from "lucide-react";
+import dynamic from "next/dynamic";
+import { BrainCircuit, Globe } from "lucide-react";
+
+const LeadBrainView = dynamic(() => import("./lead-brain/LeadBrainView"), { ssr: false });
 import { BizAvatar, PersonAvatar, Socials, siteOfEmail } from "./biz";
 import { ACCENTS, applyLayout, applyLook, followOsTheme, openPhoto, readLook, saveLook, type Look } from "@/lib/look";
 import { noteRecent, readRecent, type RecentItem } from "@/lib/recent";
@@ -158,7 +161,7 @@ const VALID_VIEWS = new Set([
   ...SMART.map(([id]) => id),
   ...SOURCES.map(([id]) => id),
   ...Object.keys(PAGES),
-  "owner", "creator", "placement", "assistant", "settings",
+  "owner", "creator", "placement", "assistant", "settings", "lead-brain",
 ]);
 
 export function isValidView(v: string | null | undefined): boolean {
@@ -680,9 +683,13 @@ export default function AppShell({ email, loading = false, preview = false, acco
     setToast(`“${word}” is skipped from now on. Connected extensions use it the next time they open.`);
   }
   // Bulk Keep, Remove, verdicts, and Stage C outreach approval for the ticked leads.
-  async function bulk(patch: { status?: "kept" | "removed" | "new"; verdict?: "Good" | "Maybe" | "No"; outreach_approved?: boolean; outreach_approved_at?: string | null; outreach_approved_by?: string | null }, done: string) {
-    const ids = [...picked];
-    if (!account || !ids.length || !editable) return;
+  async function bulk(
+    patch: { status?: "kept" | "removed" | "new"; verdict?: "Good" | "Maybe" | "No"; outreach_approved?: boolean; outreach_approved_at?: string | null; outreach_approved_by?: string | null },
+    done: string,
+    overrideIds?: string[]
+  ): Promise<boolean> {
+    const ids = overrideIds ?? [...picked];
+    if (!account || !ids.length || !editable) return false;
     if (!demo) {
       const sb = supabaseBrowser();
       for (let i = 0; i < ids.length; i += 300) {
@@ -696,16 +703,26 @@ export default function AppShell({ email, loading = false, preview = false, acco
           const res2 = await sb.from("leads").update(safePatch).in("id", ids.slice(i, i + 300));
           error = res2.error;
         }
-        if (error) { setToast(error.message); return; }
+        if (error) { setToast(error.message); return false; }
       }
     }
     const set = new Set(ids);
     setLeads((ls) => ls.map((l) => (set.has(l.id) ? { ...l, ...patch } : l)));
-    setPicked(new Set());
+    if (!overrideIds) setPicked(new Set());
     if (patch.status === "removed" && openLead && set.has(openLead)) {
       setOpenLead(null);
     }
     setToast(`${done} ${ids.length} ${ids.length === 1 ? "lead" : "leads"}.`);
+    return true;
+  }
+  async function approveForOutreach(ids: string[]): Promise<boolean> {
+    if (!editable || !ids.length) return false;
+    const uid = demo ? null : (await supabaseBrowser().auth.getUser()).data.user?.id ?? null;
+    return bulk(
+      { outreach_approved: true, outreach_approved_at: new Date().toISOString(), outreach_approved_by: uid },
+      "Approved for outreach:",
+      ids
+    );
   }
   // Pipeline moves (Leads → Pipeline): Good / Not a fit / back to review change the lead's mark; Meeting, Won and Lost are
   // saved on the lead with set_lead_result (database 058), which also updates its reply status in Replies.
@@ -962,6 +979,14 @@ export default function AppShell({ email, loading = false, preview = false, acco
             title: "Tools",
             items: [
               {
+                id: "lead-brain",
+                label: "Lead Brain",
+                icon: <BrainCircuit size={18} strokeWidth={1.6} aria-hidden="true" />,
+                count: leads.filter((l) => l.status !== "removed" && l.verdict === "Good" && !l.outreach_approved).length || undefined,
+                onClick: () => pick("lead-brain"),
+                ariaCurrent: view === "lead-brain",
+              },
+              {
                 id: "find",
                 label: "Find leads",
                 icon: <FindLeadsIcon />,
@@ -1182,7 +1207,16 @@ export default function AppShell({ email, loading = false, preview = false, acco
         ) : null}
         <ViewErrorBoundary key={`${account?.team_id ?? (demo ? "demo" : "anon")}-${view}`} viewName={view} onReset={reload} onNavigateHome={() => pick("home")}>
         {view === "home" ? <HomeView account={account} leads={leads} loaded={loaded || (!account && !loading)} email={email} go={pick} demo={Boolean(demo) || !account} onSpam={() => setSpam({ subject: "", body: "" })} onLead={setOpenLead} />
-          : (view === "ai" || view === "assistant") ? <AssistantView account={account} demo={Boolean(demo)} editable={editable} toast={setToast} go={pick} addDnc={addDnc} onChanged={reload} dnc={dnc}
+          : view === "lead-brain" ? (
+            <LeadBrainView
+              teamId={account?.team_id ?? null}
+              isAdmin={isAdmin}
+              editable={editable}
+              leads={leads}
+              demo={Boolean(demo)}
+              onApproveLead={(leadId) => approveForOutreach([leadId])}
+            />
+          ) : (view === "ai" || view === "assistant") ? <AssistantView account={account} demo={Boolean(demo)} editable={editable} toast={setToast} go={pick} addDnc={addDnc} onChanged={reload} dnc={dnc}
             question={chatAsk} onAsked={() => setChatAsk(null)} onChatFrame={setChatFrame}
             tools={<AiView account={account} leads={leads} demo={Boolean(demo)} editable={editable} toast={setToast} go={pick} blocked={blocked}
               onLeads={(p) => setLeads((ls) => ls.map((l) => (p[l.id] ? { ...l, ...p[l.id] } : l)))} />} />
@@ -1245,13 +1279,7 @@ export default function AppShell({ email, loading = false, preview = false, acco
                                                             <div className="kmenu" onClick={(e) => { if ((e.target as HTMLElement).closest("button")) (e.currentTarget.closest("details") as HTMLDetailsElement).open = false; }}>
                                                               <p className="kmenu-h">{picked.size ? `${picked.size.toLocaleString()} selected` : `All ${shown.length.toLocaleString()} shown`}</p>
                                                               {picked.size ? <>
-                                                                <button type="button" disabled={!editable} onClick={async () => {
-                                                                  const now = new Date().toISOString();
-                                                                  const sb = supabaseBrowser();
-                                                                  const { data: u } = await sb.auth.getUser();
-                                                                  const uid = u.user?.id || null;
-                                                                  bulk({ outreach_approved: true, outreach_approved_at: now, outreach_approved_by: uid }, "Approved for outreach:");
-                                                                }}>Approve selected for outreach</button>
+                                                                <button type="button" disabled={!editable} onClick={() => void approveForOutreach([...picked])}>Approve selected for outreach</button>
                                                                 <button type="button" disabled={!editable} onClick={() => bulk({ verdict: "Good" }, "Marked Good:")}>Mark Good</button>
                                                                 <button type="button" disabled={!editable} onClick={() => bulk({ verdict: "Maybe" }, "Marked Maybe:")}>Mark Maybe</button>
                                                                 <button type="button" disabled={!editable} onClick={() => bulk({ verdict: "No" }, "Marked No:")}>Mark No</button>
