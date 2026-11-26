@@ -82,6 +82,8 @@ export async function POST(req: Request) {
     deadlineMs: 20_000,
     noFallback: true,
     retries: 0,
+    // Owner test clicks are Kestrel's own checks: never blocked by, or counted in, the admin team's allowance.
+    uncounted: "slot_test",
     resolution: {
       provider,
       baseUrl,

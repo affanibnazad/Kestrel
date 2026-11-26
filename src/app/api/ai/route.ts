@@ -5,7 +5,7 @@ import { currentUser, supabaseServer } from "@/lib/supabase/server";
 import { aiOne, aiPlan, writeChecked } from "@/lib/lead-steps";
 import { cleanVoiceNotes, readJson, voiceSystem, VOICE_SCHEMA, type Offer, type Provider } from "@/lib/ai";
 import { aboutForAi, cleanAbout } from "@/lib/about";
-import { AI_TASKS, checkKestrelAllowance, runAiTask } from "@/lib/ai-router";
+import { AI_TASKS, checkKestrelAllowance, kestrelGateError, runAiTask } from "@/lib/ai-router";
 import { LABEL_SCHEMA, LABEL_SYSTEM } from "@/lib/inbox";
 
 // AI in the App: judges leads (Good / Maybe / No) or writes the personal parts of first emails, a few leads per call.
@@ -196,7 +196,16 @@ export async function POST(request: Request) {
   }
   // Database 039: the key is read only with the server secret (never straight to a browser).
   const provider = ((settings?.provider as Provider) || "anthropic");
-  const { data: key } = await sb.rpc("ai_key_for_server", { server_secret: process.env.MAIL_SERVER_SECRET || "", service: provider });
+  const { data: key, error: keyError } = await sb.rpc("ai_key_for_server", { server_secret: process.env.MAIL_SERVER_SECRET || "", service: provider });
+  // This lookup is also the plan and role gate (database 056): a Viewer, or a team whose trial or plan ended, gets an
+  // error here. Stop now. Before AI-4a the missing key stopped them; now "no key" means Kestrel-paid AI, so an
+  // ignored error would hand them free Kestrel AI.
+  if (keyError) {
+    const gate = kestrelGateError(keyError.message || "");
+    return gate.code
+      ? NextResponse.json({ error: gate.customer }, { status: 403 })
+      : NextResponse.json({ error: "Could not check your AI access just now. Try again in a minute." }, { status: 503 });
+  }
   // Check the offer, model and sender before the key, so the first missing thing is named.
   const pre = aiPlan(task, offer as Offer, settings, "-", sequence, activeServices, cleanAb?.voice_notes, cleanAb);
   if ("error" in pre) return NextResponse.json({ error: pre.error }, { status: 400 });
@@ -252,7 +261,9 @@ export async function POST(request: Request) {
     cost = cost === null || r.cost === null ? null : cost + r.cost;
     if (!r.ok) {
       console.log(`[ai-route] task=${task} lead=${l.id} not ok: ${r.why || r.fatal}`);
-      if (r.fatal) fatal = r.fatal;
+      // Stop the batch only when every other lead would fail the same way (allowance used up, trial ended, key
+      // rejected). One lead's provider error or broken answer skips that lead only.
+      if (r.stop) fatal = r.why || r.fatal || "Stopped.";
       if (r.why) {
         skipped.push({ id: l.id, why: r.why });
       } else if (r.fatal) {

@@ -44,6 +44,8 @@ function createMockSb(options = {}) {
         if (options.hasTeamKey === false) return { data: null, error: null };
         return { data: "test-secret-key-123", error: null };
       }
+      // 078: this month's Kestrel-paid use. The router blocks Kestrel AI when it cannot count, so the mock answers.
+      if (fn === "ai_usage_this_month") return { data: options.usage ?? 0, error: null };
       if (fn === "assistant_included") {
         return {
           data: {
@@ -157,6 +159,7 @@ describe("AI Router Unit Tests (Real runAiTask & Injected Mocks)", () => {
             return { data: { slot: "nest", provider: "openai", model: "nest-model", key: "nest-key", enabled: true }, error: null };
           }
         }
+        if (fn === "ai_usage_this_month") return { data: 0, error: null };
         if (fn === "log_ai_run") return { data: null, error: null };
         return { data: null, error: null };
       },
@@ -516,7 +519,8 @@ describe("AI Lead Error Honest Classification (Real runAiTask -> aiLeadError)", 
     assert.equal(res.statusCode, 401);
     assert.equal(leadErr.why, "Your AI key was rejected. Check Settings → AI.");
 
-    // 2. Missing team key in database
+    // 2. No team key (AI-4a): not an error any more; Kestrel's included AI answers instead.
+    //    (Before, this ran with no providerFn, so it made a real network call with a fake key to get its 401.)
     const sbNoKey = createMockSb({ hasTeamKey: false });
     const resNoKey = await runAiTask({
       sb: sbNoKey,
@@ -524,9 +528,11 @@ describe("AI Lead Error Honest Classification (Real runAiTask -> aiLeadError)", 
       task: "score",
       system: "sys",
       user: "usr",
+      providerFn: async () => ({ text: "ok", usage: { input_tokens: 1, output_tokens: 1 } }),
+      logRunFn: async () => {},
     });
-    assert.equal(resNoKey.statusCode, 401);
-    assert.equal(aiLeadError(resNoKey).why, "Your AI key was rejected. Check Settings → AI.");
+    assert.equal(resNoKey.ok, true);
+    assert.equal(resNoKey.source, "kestrel");
   });
 
   it("forces timeout via runAiTask and returns 'AI took too long. Try again.'", async () => {
@@ -682,7 +688,7 @@ describe("AI Lead Error Honest Classification (Real runAiTask -> aiLeadError)", 
     };
     const res = await runAiTask({
       sb, teamId: "t", task: "reply_label", system: "s", user: "u",
-      noFallback: true, retries: 0,
+      noFallback: true, retries: 0, uncounted: "slot_test",
       resolution: { provider: "groq", model: "swift-model", key: "k", source: "kestrel", slot: "swift" },
       providerFn: async (p) => { models.push(p.model); throw new ProviderCallError("rate limited", 429); },
       logRunFn: async () => {},
@@ -921,5 +927,85 @@ describe("AI-4a Kestrel-Paid AI & Monthly Allowance", () => {
     assert.equal(requestedSlots[0], "swift");
     assert.equal(requestedSlots.includes("talon"), false);
     assert.equal(calledModel, "llama-swift-fast");
+  });
+});
+
+describe("AI-4a review fixes: gate, fail closed, uncounted runs, batch stop", () => {
+  // A team with no key of its own; rpcOverrides replaces single database functions.
+  function noKeySb(rpcOverrides = {}) {
+    const calls = [];
+    return {
+      calls,
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async (fn, args) => {
+        calls.push(fn);
+        if (fn in rpcOverrides) return rpcOverrides[fn](args);
+        if (fn === "ai_key_for_server") return { data: null, error: null };
+        if (fn === "ai_slot_for_server") return { data: { slot: args?.p_slot, provider: "groq", model: `${args?.p_slot}-model`, key: "kestrel-key", enabled: true }, error: null };
+        if (fn === "ai_usage_this_month") return { data: 0, error: null };
+        if (fn === "my_account") return { data: { plan: "trial", active: true }, error: null };
+        return { data: null, error: null };
+      },
+    };
+  }
+  const neverCalled = async () => { throw new Error("provider must not be called"); };
+
+  it("usage cannot be counted (e.g. 078 not run) -> fails closed, provider NOT called, batch stops", async () => {
+    const sb = noKeySb({ ai_usage_this_month: () => ({ data: null, error: { message: "function ai_usage_this_month does not exist" } }) });
+    const res = await runAiTask({ sb, teamId: "t", task: "score", system: "s", user: "u", providerFn: neverCalled, logRunFn: async () => {} });
+    assert.equal(res.ok, false);
+    assert.equal(res.status, "skipped");
+    assert.equal(res.lastError, "allowance_check_failed");
+    assert.match(res.error, /Could not check this month's Kestrel AI use/);
+    assert.equal(aiLeadError(res).stop, true);
+  });
+
+  it("trial ended, no key of its own -> no Kestrel AI, honest message", async () => {
+    const sb = noKeySb({ ai_key_for_server: () => ({ data: null, error: { message: "PLAN_NEEDED: Your free trial has ended. Choose a plan to keep using AI." } }) });
+    const res = await runAiTask({ sb, teamId: "t", task: "score", system: "s", user: "u", providerFn: neverCalled, logRunFn: async () => {} });
+    assert.equal(res.ok, false);
+    assert.equal(res.lastError, "plan_needed");
+    assert.equal(res.error, "Your free trial has ended. Choose a plan to keep using AI.");
+    assert.equal(sb.calls.includes("ai_slot_for_server"), false, "Kestrel's slots must not even be looked up");
+    assert.equal(aiLeadError(res).stop, true);
+  });
+
+  it("Viewer -> no Kestrel AI for team-key tasks (voice, explain, score)", async () => {
+    for (const task of ["voice", "explain", "score"]) {
+      const sb = noKeySb({ ai_key_for_server: () => ({ data: null, error: { message: "Only people who can change leads can use AI" } }) });
+      const res = await runAiTask({ sb, teamId: "t", task, system: "s", user: "u", providerFn: neverCalled, logRunFn: async () => {} });
+      assert.equal(res.ok, false, task);
+      assert.equal(res.lastError, "role_not_allowed", task);
+    }
+  });
+
+  it("uncounted run (slot test / inbox auto-label) -> runs even when used up, logged under its own name", async () => {
+    for (const uncounted of ["slot_test", "reply_label_auto"]) {
+      const logged = [];
+      const sb = noKeySb({ ai_usage_this_month: () => ({ data: 99999, error: null }) });
+      const res = await runAiTask({
+        sb, teamId: "t", task: "reply_label", system: "s", user: "u", uncounted,
+        providerFn: async () => ({ text: "ok", usage: { input_tokens: 1, output_tokens: 1 } }),
+        logRunFn: async (...args) => { logged.push(args[3]); },
+      });
+      assert.equal(res.ok, true, uncounted);
+      assert.equal(sb.calls.includes("ai_usage_this_month"), false, "allowance not checked");
+      assert.deepEqual(logged, [uncounted], "ai_runs.task is the uncounted name, which 078 leaves out");
+    }
+  });
+
+  it("counted reply_label (not auto) is still blocked when used up", async () => {
+    const sb = noKeySb({ ai_usage_this_month: () => ({ data: 100, error: null }) });
+    const res = await runAiTask({ sb, teamId: "t", task: "reply_label", system: "s", user: "u", providerFn: neverCalled, logRunFn: async () => {} });
+    assert.equal(res.ok, false);
+    assert.equal(res.lastError, "monthly_allowance_reached");
+  });
+
+  it("batch stop: only team-wide failures stop a bulk run, one lead's server error does not", () => {
+    assert.equal(aiLeadError({ error: "x", status: "skipped", lastError: "monthly_allowance_reached" }).stop, true);
+    assert.equal(aiLeadError({ error: "x", status: "error", statusCode: 401 }).stop, true);
+    assert.notEqual(aiLeadError({ error: "x", status: "error", statusCode: 500 }).stop, true);
+    assert.notEqual(aiLeadError({ error: "something odd", status: "error" }).stop, true);
+    assert.notEqual(aiLeadError({ error: "x", status: "timeout" }).stop, true);
   });
 });

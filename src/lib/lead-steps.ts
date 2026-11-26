@@ -13,7 +13,7 @@ import { pickAngle } from "./angles";
 import { hostOf, hunterPick, hunterUrl, mergeContacts, setEmails, type Contact } from "./hunter";
 import { applyRules, cleanRules, type ScoreLead } from "./scoring";
 import { apolloFind, findymailFind } from "./finders";
-import { runAiTask, type AiTaskName } from "./ai-router";
+import { KESTREL_STOP_CODES, runAiTask, type AiTaskName } from "./ai-router";
 import type { supabaseServer } from "./supabase/server";
 
 type Sb = Awaited<ReturnType<typeof supabaseServer>>;
@@ -69,7 +69,7 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
 export type LeadIn = { id: string; email: string | null; data: LeadData | null };
 export type AiResult =
   | { ok: true; patch: Record<string, unknown>; result: Record<string, unknown>; cost: number | null }
-  | { ok: false; why: string; cost: number | null; fatal?: string };
+  | { ok: false; why: string; cost: number | null; fatal?: string; stop?: boolean };
 
 // One lead: asks the AI and returns the database change to save (or why it was skipped). A key or quota problem is "fatal".
 export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] = []): Promise<AiResult> {
@@ -118,7 +118,7 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
       });
       if (!res.ok) {
         const mapped = aiLeadError(res);
-        return { ok: false, why: mapped.why, cost: res.cost_usd ?? 0, fatal: mapped.fatal };
+        return { ok: false, why: mapped.why, cost: res.cost_usd ?? 0, fatal: mapped.fatal, stop: mapped.stop };
       }
       const json = readJson(res.text);
       if (!json) {
@@ -138,15 +138,16 @@ export function aiLeadError(res: {
   status?: string;
   lastError?: string;
   statusCode?: number;
-}): { why: string; fatal?: string } {
+}): { why: string; fatal?: string; stop?: boolean } {
   const err = String(res.error || "");
   const raw = String(res.lastError || "");
   const statusCode = res.statusCode;
   const combined = `${err} ${raw}`;
 
-  // 0. Monthly Kestrel AI allowance exhausted
-  if (raw === "monthly_allowance_reached" || (res.status === "skipped" && /used up/i.test(err))) {
-    return { why: err, fatal: err };
+  // 0. No Kestrel AI for this team right now (allowance used up, could not count it, trial ended, Viewer).
+  //    Every other lead would get the same answer, so a bulk run stops here.
+  if (KESTREL_STOP_CODES.has(raw) || (res.status === "skipped" && /used up/i.test(err))) {
+    return { why: err, fatal: err, stop: true };
   }
 
   // 1. Real 429 / rate_limited
@@ -164,7 +165,7 @@ export function aiLeadError(res: {
     statusCode === 403 ||
     /\b401\b|\b403\b|rejected|invalid.*key|unauthorized|permission|no.*key.*configured|no.*ai key/i.test(combined)
   ) {
-    return { why: "Your AI key was rejected. Check Settings → AI.", fatal: res.error };
+    return { why: "Your AI key was rejected. Check Settings → AI.", fatal: res.error, stop: true };
   }
 
   // 3. 413 too large
@@ -309,7 +310,7 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
 
 // ---------- QC (Phase 4C): the QC bot checks a written email; the Writer fixes it with QC's notes.
 export type QcEvent = { who: "qc" | "writer"; kind: "issue" | "fix" | "pass" | "hold"; text: string };
-export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ ok: true; pass: boolean; issues: string[]; cost: number | null } | { ok: false; fatal?: string; cost: number | null }> {
+export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ ok: true; pass: boolean; issues: string[]; cost: number | null } | { ok: false; fatal?: string; cost: number | null; stop?: boolean }> {
   try {
     const fullDraftText = `${draft.subject || ""}\n\n${draft.body || ""}\n\n${(draft.steps || []).map((s) => s.body).join("\n\n")}`;
     if (p.sb && p.teamId) {
@@ -330,7 +331,7 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
         },
       });
       if (!res.ok) {
-        return { ok: false, cost: res.cost_usd ?? null, fatal: res.error };
+        return { ok: false, cost: res.cost_usd ?? null, fatal: res.error, stop: KESTREL_STOP_CODES.has(String(res.lastError ?? "")) };
       }
       const q = cleanQc(readJson(res.text), fullDraftText, p.voiceNotes);
       return q ? { ok: true, ...q, cost: res.cost_usd } : { ok: false, cost: res.cost_usd };
@@ -355,7 +356,7 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
     const q = await qcOne(qc, leadData, draftOf(r));
     add(q.cost);
     if (!q.ok) {
-      if (q.fatal) return { ok: false, why: "error", cost, fatal: q.fatal };
+      if (q.fatal) return { ok: false, why: q.stop ? q.fatal : "error", cost, fatal: q.fatal, stop: q.stop };
       const curDraft = draftOf(r);
       const codeQc = cleanQc({ pass: true, issues: [] }, `${curDraft.subject || ""} ${curDraft.body || ""}`, w.voiceNotes);
       if (codeQc && !codeQc.pass) {
@@ -372,7 +373,7 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
     events.push({ who: "qc", kind: "issue", text: q.issues.join(" ") });
     const again = await aiOne(w, l, dnc, q.issues);
     add(again.cost);
-    if (!again.ok) { if (again.fatal) return { ok: false, why: "error", cost, fatal: again.fatal }; qcState = { status: "hold", issues: q.issues, rounds: round, at: Date.now() }; events.push({ who: "qc", kind: "hold", text: q.issues.join(" ") }); break; }
+    if (!again.ok) { if (again.fatal) return { ok: false, why: again.stop ? again.fatal : "error", cost, fatal: again.fatal, stop: again.stop }; qcState = { status: "hold", issues: q.issues, rounds: round, at: Date.now() }; events.push({ who: "qc", kind: "hold", text: q.issues.join(" ") }); break; }
     r = again; round++; fixed = [...fixed, ...q.issues].slice(0, 8);
     events.push({ who: "writer", kind: "fix", text: "Rewrote it with QC's notes." });
   }

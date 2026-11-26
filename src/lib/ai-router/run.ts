@@ -39,7 +39,13 @@ export type RunAiTaskParams = {
   // can never show another slot's model.
   noFallback?: boolean;
   retries?: number;
+  // Runs that Kestrel pays for but that do not count toward the team's monthly allowance. The run is logged under
+  // this task name instead (ai_usage_this_month leaves these names out) and the allowance is not checked first.
+  // "slot_test": Owner -> AI Test clicks. "reply_label_auto": Replies labelling new replies when the inbox loads.
+  uncounted?: UncountedTask;
 };
+
+export type UncountedTask = "slot_test" | "reply_label_auto";
 
 export type RunAiTaskResult<T = unknown> =
   | {
@@ -70,6 +76,29 @@ export type RunAiTaskResult<T = unknown> =
       lastError?: string;
       statusCode?: number;
     };
+
+// lastError codes that mean "no Kestrel AI for this team right now". A bulk run stops on these instead of trying
+// every remaining lead, because every lead would get the same answer.
+export const KESTREL_STOP_CODES = new Set([
+  "monthly_allowance_reached",
+  "allowance_check_failed",
+  "plan_needed",
+  "role_not_allowed",
+]);
+
+type ResolveError = { error: string; isDbError?: boolean; code?: string; customer?: string };
+
+// ai_key_for_server raises for a person who may not use AI (Viewers) and for a team whose trial or plan has ended.
+// Turn those into honest messages; anything else is a database/config problem.
+export function kestrelGateError(message: string): ResolveError {
+  if (/PLAN_NEEDED/i.test(message)) {
+    return { error: message, code: "plan_needed", customer: "Your free trial has ended. Choose a plan to keep using AI." };
+  }
+  if (/Only people who can change leads/i.test(message)) {
+    return { error: message, code: "role_not_allowed", customer: "Viewers cannot run AI. Ask the team owner to change your role." };
+  }
+  return { error: message || "Could not check AI access.", isDbError: true };
+}
 
 export const CUSTOMER_ERROR_MESSAGE = "Kestrel AI can't answer right now. Try again in a minute.";
 
@@ -199,7 +228,7 @@ async function resolveKestrelSlot(
 export async function checkKestrelAllowance(
   sb: Sb,
   teamId: string
-): Promise<{ allowed: boolean; used: number; allowance: number; message?: string }> {
+): Promise<{ allowed: boolean; used: number; allowance: number; message?: string; code?: string }> {
   const [usageRes, acctRes] = await Promise.all([
     sb.rpc("ai_usage_this_month", { p_team_id: teamId }),
     sb.rpc("my_account"),
@@ -219,13 +248,22 @@ export async function checkKestrelAllowance(
   }
 
   const allowance = aiAllowance(planData);
-  const used =
-    !usageRes?.error && usageRes?.data !== null && usageRes?.data !== undefined
-      ? Number(usageRes.data) || 0
-      : 0;
+  // Fail closed: if this month's use cannot be counted (database error, 078 not run yet), do not call Kestrel's AI.
+  // Before, a failed count read as 0 used, so a missing migration meant unlimited Kestrel-paid AI.
+  if (usageRes?.error || usageRes?.data === null || usageRes?.data === undefined) {
+    console.error("[ai-router] ai_usage_this_month failed:", usageRes?.error?.message ?? "no data");
+    return {
+      allowed: false,
+      used: 0,
+      allowance,
+      message: "Could not check this month's Kestrel AI use. Try again in a minute.",
+      code: "allowance_check_failed",
+    };
+  }
+  const used = Number(usageRes.data) || 0;
 
   if (used >= allowance) {
-    return { allowed: false, used, allowance, message: allowanceExhaustedMessage() };
+    return { allowed: false, used, allowance, message: allowanceExhaustedMessage(), code: "monthly_allowance_reached" };
   }
   return { allowed: true, used, allowance };
 }
@@ -236,7 +274,7 @@ export async function resolveModelForSlot(
   teamId: string,
   slot: AiSlot,
   task: AiTaskName
-): Promise<ModelResolution | { error: string; isDbError?: boolean }> {
+): Promise<ModelResolution | ResolveError> {
   const secret = serverSecret();
 
   // 1. Kestrel AI tasks ALWAYS use Kestrel's AI (ai_slots first, then safe-rollout fallback)
@@ -262,13 +300,7 @@ export async function resolveModelForSlot(
       server_secret: secret,
       service: provider,
     });
-    if (keyError) {
-      const isPlanErr = /PLAN_NEEDED/i.test(keyError.message || "");
-      return {
-        error: keyError.message || "Failed to retrieve team AI key.",
-        isDbError: !isPlanErr,
-      };
-    }
+    if (keyError) return kestrelGateError(keyError.message || "Failed to retrieve team AI key.");
     if (key && typeof key === "string") {
       const pick = modelForTask(
         provider,
@@ -292,6 +324,15 @@ export async function resolveModelForSlot(
   }
 
   // No team key configured -> use Kestrel's Swift slot for all tiers (including write).
+  // The key lookup above is also what blocks Viewers and teams whose trial or plan ended. When it did not run
+  // (no provider chosen), run it now as the gate, so those people cannot reach Kestrel-paid AI either.
+  if (!provider) {
+    if (secret.length < 32) return { error: "Server secret is not set.", isDbError: true };
+    const { error: gateError } = await sb.rpc("ai_key_for_server", { server_secret: secret, service: "anthropic" });
+    if (gateError) return kestrelGateError(gateError.message || "");
+  } else if (secret.length < 32) {
+    return { error: "Server secret is not set.", isDbError: true };
+  }
   return resolveKestrelSlot(sb, "swift");
 }
 
@@ -349,7 +390,9 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   }
 
   const callProviderImpl = params.providerFn ?? callProvider;
-  const logRunImpl = params.logRunFn ?? logRun;
+  const baseLog = params.logRunFn ?? logRun;
+  const logRunImpl: typeof logRun = (lsb, lteam, luser, ltask, ...rest) =>
+    baseLog(lsb, lteam, luser, params.uncounted ?? ltask, ...rest);
 
   // Deadline calculation: default 50s from start of request unless specified
   const now = Date.now();
@@ -372,6 +415,9 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   } else {
     const resolution = await resolveModelForSlot(sb, teamId, cfg.slot, task);
     if ("error" in resolution) {
+      if (resolution.code) {
+        return { ok: false, error: resolution.customer ?? CUSTOMER_ERROR_MESSAGE, status: "skipped", slot: currentSlot, lastError: resolution.code, statusCode: 403 };
+      }
       const isDb = Boolean("isDbError" in resolution && resolution.isDbError) || /database|relation|failed to read/i.test(resolution.error);
       const code = isDb ? 500 : 401;
       return { ok: false, error: CUSTOMER_ERROR_MESSAGE, status: "error", slot: currentSlot, lastError: resolution.error, statusCode: code };
@@ -381,7 +427,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
   }
 
   // Check monthly Kestrel AI allowance before every Kestrel-paid call (chat has its own daily limit).
-  if (currentResolution.source === "kestrel" && task !== "chat") {
+  if (currentResolution.source === "kestrel" && task !== "chat" && !params.uncounted) {
     const limit = await checkKestrelAllowance(sb, teamId);
     if (!limit.allowed) {
       await logRunImpl(
@@ -398,7 +444,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         0,
         null,
         "skipped",
-        "monthly_allowance_reached",
+        limit.code ?? "monthly_allowance_reached",
         currentSlot
       );
       return {
@@ -409,7 +455,7 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
         model: currentResolution.model,
         source: "kestrel",
         slot: currentSlot,
-        lastError: "monthly_allowance_reached",
+        lastError: limit.code ?? "monthly_allowance_reached",
       };
     }
   }

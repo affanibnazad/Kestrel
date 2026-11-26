@@ -1,6 +1,9 @@
 -- 078_ai_allowance.sql
 -- Monthly Kestrel-paid AI allowance usage counter.
--- One AI action = one ai_runs row with source = 'kestrel', status in ('ok', 'fallback'), task <> 'chat'.
+-- One AI action = one ai_runs row with source = 'kestrel', status in ('ok', 'fallback'), and a task that counts.
+-- Not counted: chat (own daily limit, database 021), slot_test (Owner -> AI Test clicks) and reply_label_auto
+-- (Replies labelling new replies by itself when the inbox loads).
+-- RUN THIS ON LIVE BEFORE DEPLOYING THE AI-4a CODE: without it the app cannot count use and blocks Kestrel-paid AI.
 -- Callable by team members for their own team or by is_admin(). Never returns model or provider.
 
 create or replace function public.ai_usage_this_month(p_team_id uuid)
@@ -26,7 +29,7 @@ begin
   where team_id = p_team_id
     and source = 'kestrel'
     and status in ('ok', 'fallback')
-    and task <> 'chat'
+    and task not in ('chat', 'slot_test', 'reply_label_auto')
     and created_at >= (date_trunc('month', now() at time zone 'utc') at time zone 'utc');
 
   return coalesce(v_count, 0);
