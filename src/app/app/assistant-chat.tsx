@@ -18,9 +18,9 @@
 // working, the wing beats and little stars spin around the mark.
 
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { toBlocks } from "@/lib/assistant";
+import { DOUBLE_CHECK, toBlocks, type ProposedAction } from "@/lib/assistant";
 import { scriptedTurn, STARTERS, type Receipt, type Turn } from "@/lib/ai-chat-script";
-import { liveTurn, type LiveMessage } from "@/lib/ai-chat-live";
+import { liveTurn, runProposedAction, type LiveMessage } from "@/lib/ai-chat-live";
 import { Line, MARK_PATHS } from "@/components/ui";
 import { Check, ChevronDown, CircleAlert, LoaderCircle, RotateCcw } from "lucide-react";
 import "./ai-chat.css";
@@ -45,6 +45,7 @@ type Msg = {
   live?: boolean;      // the answer is still streaming in
   error?: string;      // it stopped partway: shown under what was written, with Try again
   retryQ?: string;     // the question, for Try again
+  actions?: ProposedAction[];
 };
 
 const SAVE_KEY = "kestrel-ai-chat-v1";
@@ -446,6 +447,59 @@ function ThinkBlock({ m, theme, writing }: { m: Msg; theme: ChatTheme; writing: 
 }
 
 // The search receipts: exactly what it searched for, and how much it found.
+function ActionCards({ actions }: { actions: ProposedAction[] }) {
+  const [armed, setArmed] = useState<Record<string, boolean>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [done, setDone] = useState<Record<string, { ok: boolean; msg: string }>>({});
+
+  async function run(a: ProposedAction) {
+    if (DOUBLE_CHECK.includes(a.kind) && !armed[a.id]) {
+      setArmed((p) => ({ ...p, [a.id]: true }));
+      return;
+    }
+    setBusyId(a.id);
+    const res = await runProposedAction(a);
+    setBusyId(null);
+    setDone((p) => ({ ...p, [a.id]: res }));
+  }
+
+  return (
+    <div style={{ display: "grid", gap: "8px", marginTop: "10px" }}>
+      {actions.map((a) => {
+        const res = done[a.id];
+        return (
+          <div
+            key={a.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "10px",
+              padding: "10px 12px",
+              borderRadius: "12px",
+              border: "1px solid var(--line, var(--ds-border-subtle))",
+            }}
+          >
+            <span style={{ fontSize: "13px" }}>{a.summary}</span>
+            {res ? (
+              <span className={`tag ${res.ok ? "ok" : "bad"}`}>{res.msg}</span>
+            ) : (
+              <button
+                type="button"
+                className="btn primary small"
+                disabled={busyId === a.id}
+                onClick={() => void run(a)}
+              >
+                {busyId === a.id ? "Running…" : armed[a.id] ? "Click again to confirm" : "Confirm"}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Receipts({ receipts }: { receipts: Receipt[] }) {
   if (!receipts.length) return null;
   return (
@@ -608,6 +662,7 @@ export default function AiChat({ question, onAsked }: {
           phase: "answer",
           live: false,
           sig: live.sig,
+          actions: live.actions,
           thoughts: live.thoughts,
           thoughtAt: live.thoughtAt,
           tookMs: m.tookMs ?? Date.now() - t0,
@@ -829,6 +884,7 @@ export default function AiChat({ question, onAsked }: {
                             onTick={() => toEnd()}
                           />
                           ) : null}
+                          {m.actions?.length ? <ActionCards actions={m.actions} /> : null}
                           {m.error ? (
                             <div className={styles.stopped} role="alert">
                               <CircleAlert size={15} strokeWidth={2} aria-hidden="true" />

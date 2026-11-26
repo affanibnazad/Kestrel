@@ -8,6 +8,7 @@
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { supabaseReady } from "@/lib/supabase/config";
 import { readNdjson } from "@/lib/ndjson";
+import type { ProposedAction } from "@/lib/assistant";
 import type { Step } from "@/lib/ai-chat-script";
 
 // One message of the conversation, in the shape the route expects. The assistant
@@ -15,7 +16,7 @@ import type { Step } from "@/lib/ai-chat-script";
 export type LiveMessage = { role: "user" | "assistant"; content: string; sig?: string };
 
 export type LiveResult =
-  | { kind: "live"; text: string; steps: Step[]; thoughts: string[]; thoughtAt: number[]; ai: string; usage: { used: number; limit: number } | null; sig?: string }
+  | { kind: "live"; text: string; steps: Step[]; thoughts: string[]; thoughtAt: number[]; ai: string; usage: { used: number; limit: number } | null; sig?: string; actions?: ProposedAction[] }
   | { kind: "fallback" }
   // partial: the answer text that had already been written when it failed (shown above the error).
   | { kind: "error"; error: string; partial?: string; thoughts?: string[]; thoughtAt?: number[] };
@@ -170,7 +171,7 @@ export async function liveTurn(history: LiveMessage[], listener: LiveListener | 
   for (let i = 0; i < steps.length; i++) if (steps[i].state !== "done") steps[i] = { ...steps[i], state: "done" };
   if (failure) return { kind: "error", error: failure, partial: written.trim() || undefined, thoughts: thoughtsOut, thoughtAt: thoughtAtOut };
   // The route filled this in from inside the stream callback.
-  const answer = turn as { text?: unknown; messages?: unknown; ai?: unknown; usage?: unknown } | null;
+  const answer = turn as { text?: unknown; messages?: unknown; ai?: unknown; usage?: unknown; actions?: unknown } | null;
   const text = answer && typeof answer.text === "string" ? answer.text : "";
   if (!text) return { kind: "error", error: "Kestrel AI could not answer just now. Try again." };
 
@@ -179,6 +180,7 @@ export async function liveTurn(history: LiveMessage[], listener: LiveListener | 
   const usage = answer && answer.usage && typeof answer.usage === "object" ? answer.usage as { used?: unknown; limit?: unknown } : null;
   const counted = usage && typeof usage.used === "number" && typeof usage.limit === "number"
     ? { used: usage.used, limit: usage.limit } : null;
+  const actions = answer && Array.isArray(answer.actions) ? (answer.actions as ProposedAction[]) : undefined;
 
   return {
     kind: "live",
@@ -189,5 +191,77 @@ export async function liveTurn(history: LiveMessage[], listener: LiveListener | 
     ai: answer && typeof answer.ai === "string" ? answer.ai : "Kestrel AI",
     usage: counted,
     sig: last && typeof last.sig === "string" ? last.sig : undefined,
+    ...(actions?.length ? { actions } : {}),
   };
+}
+
+/**
+ * Executes a `ProposedAction` after the user clicks Confirm in chat.
+ * Bulk AI actions (5+ leads) queue via /api/ai/enqueue (AI-4b) with /api/ai fallback.
+ */
+export async function runProposedAction(a: ProposedAction): Promise<{ ok: boolean; msg: string }> {
+  const sb = supabaseBrowser();
+  if (a.kind === "score_leads" || a.kind === "write_emails" || a.kind === "find_emails") {
+    const ids = a.lead_ids ?? [];
+    if (!ids.length) return { ok: false, msg: "No leads selected." };
+    const task = a.kind === "score_leads" ? "score" : a.kind === "write_emails" ? "emails" : "find_emails";
+    if (ids.length >= 5 || task === "find_emails") {
+      const qRes = await fetch("/api/ai/enqueue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task, ids, offerId: a.offer_id, ...(a.sequence ? { sequence: a.sequence } : {}) }),
+      }).catch(() => null);
+      const qOut = qRes ? await qRes.json().catch(() => null) : null;
+      if (qRes?.ok && qOut?.queued) {
+        return { ok: true, msg: `Queued ${qOut.queued} leads in background — watch live progress in Lead Brain.` };
+      }
+      if (qRes && !qOut?.fallback) {
+        return { ok: false, msg: qOut?.error || "Could not queue leads." };
+      }
+      if (task === "find_emails") {
+        return { ok: false, msg: "Run Find emails from the Leads page." };
+      }
+    }
+    let done = 0;
+    for (let i = 0; i < ids.length; i += 4) {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task, ids: ids.slice(i, i + 4), offerId: a.offer_id || "current", ...(a.sequence ? { sequence: a.sequence } : {}) }),
+      }).catch(() => null);
+      const out = res ? await res.json().catch(() => null) : null;
+      if (!res?.ok || out?.error) return { ok: false, msg: out?.error || `Done ${done} of ${ids.length} before error.` };
+      done += Array.isArray(out?.done) ? out.done.length : 0;
+    }
+    return { ok: true, msg: `Done for ${done} lead${done === 1 ? "" : "s"}.` };
+  }
+
+  if (a.kind === "pause_campaign" || a.kind === "resume_campaign" || a.kind === "stop_campaign") {
+    if (!a.campaign_id) return { ok: false, msg: "Missing campaign id." };
+    const status = a.kind === "pause_campaign" ? "paused" : a.kind === "resume_campaign" ? "running" : "stopped";
+    const { error } = await sb.from("campaigns").update({ status }).eq("id", a.campaign_id);
+    return error ? { ok: false, msg: error.message } : { ok: true, msg: `Campaign ${status}.` };
+  }
+
+  if (a.kind === "set_lead_fit" && a.lead_ids?.length && a.verdict) {
+    const { error } = await sb.from("leads").update({ verdict: a.verdict }).in("id", a.lead_ids);
+    return error ? { ok: false, msg: error.message } : { ok: true, msg: `Updated ${a.lead_ids.length} leads.` };
+  }
+
+  if (a.kind === "set_lead_keep" && a.lead_ids?.length && a.keep) {
+    const { error } = await sb.from("leads").update({ status: a.keep }).in("id", a.lead_ids);
+    return error ? { ok: false, msg: error.message } : { ok: true, msg: `Updated ${a.lead_ids.length} leads.` };
+  }
+
+  if (a.kind === "mark_reply_done" && a.conversation_id) {
+    const { error } = await sb.from("conversations").update({ done: true }).eq("id", a.conversation_id);
+    return error ? { ok: false, msg: error.message } : { ok: true, msg: "Marked as done." };
+  }
+
+  if (a.kind === "set_lead_status" && a.conversation_id) {
+    const { error } = await sb.from("conversations").update({ stage: a.stage ?? null }).eq("id", a.conversation_id);
+    return error ? { ok: false, msg: error.message } : { ok: true, msg: "Updated reply status." };
+  }
+
+  return { ok: false, msg: "Open the linked page to complete this action." };
 }
