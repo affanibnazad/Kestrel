@@ -196,6 +196,30 @@ export default function AiView({ account, leads, demo, editable, onLeads, toast,
     if (rewrites && !(await askConfirm(`${rewrites} ${rewrites === 1 ? "lead already has" : "leads already have"} a first email.\nWriting the follow-ups rewrites their first email too, including any changes you made by hand. Continue?`, { ok: "Rewrite them" }))) return;
     if (settings.booking_link && !/^https:\/\/[^\s<>"]+$/.test(settings.booking_link.trim())) { setMsg("The booking link must start with https:// (for example https://cal.com/you/15min)."); return; }
     stop.current = false; setMsg("");
+    // Bulk runs (5+ leads) queue into ai_jobs (AI-4b) so the browser never hits Vercel's 60s limit.
+    if (list.length >= 5) {
+      const qRes = await fetch("/api/ai/enqueue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          task,
+          ids: list.slice(0, 1000).map((l) => l.id),
+          offerId: offer.id,
+          ...(task === "emails" && choice !== "none" ? { sequence: choice } : {}),
+        }),
+      }).catch(() => null);
+      const qOut = qRes ? await qRes.json().catch(() => null) : null;
+      if (qRes?.ok && qOut?.queued) {
+        const label = task === "score" ? "scoring" : "email writing";
+        setMsg(`Queued ${qOut.queued} leads for background ${label}. Watch live progress in Lead Brain.`);
+        toast(`Queued ${qOut.queued} leads in background.`);
+        return;
+      }
+      if (qRes && !qOut?.fallback && qOut?.error) {
+        setMsg(qOut.error);
+        return;
+      }
+    }
     let done = 0, skipped = 0, cost: number | null = 0;
     setRun({ task, done, total: list.length, skipped, cost });
     // Writing now includes the QC bot's check and one fix (Phase 4C), so 4 leads per call keep each call well inside 60 s.
