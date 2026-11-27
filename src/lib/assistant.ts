@@ -86,3 +86,19 @@ export function sortBestLeads<T extends { verdict?: string | null; fit_score?: n
     return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
   });
 }
+
+export function fillStepDefaults(raw: unknown[]): { day: number; subject: string; body: string }[] {
+  let prevDay = 0;
+  return raw.map((x, i) => {
+    const r = (x ?? {}) as Record<string, unknown>;
+    const rawDay = r.day;
+    const hasDay = rawDay !== undefined && rawDay !== null && rawDay !== "" && Number.isFinite(Number(rawDay));
+    const day = hasDay ? Number(rawDay) : i === 0 ? 0 : prevDay + 3;
+    prevDay = day;
+    return {
+      day,
+      subject: String(r.subject ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 120),
+      body: String(r.body ?? "").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, " ").slice(0, 1500),
+    };
+  });
+}

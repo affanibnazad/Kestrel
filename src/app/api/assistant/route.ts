@@ -5,7 +5,7 @@ import { resolveAssistant, serverSecret, type Prefs } from "@/lib/assistant-serv
 import { EngineError, runAssistant, type ChatMsg, type NeutralTool } from "@/lib/assistant-engine";
 import type { StreamSink } from "@/lib/ai-router/providers";
 import { ARTICLES } from "@/lib/help";
-import { ACTION_KINDS, ASSISTANT_PAGES, LEAD_STAGES, sortBestLeads, type AssistantTurn, type ProposedAction } from "@/lib/assistant";
+import { ACTION_KINDS, ASSISTANT_PAGES, LEAD_STAGES, fillStepDefaults, sortBestLeads, type AssistantTurn, type ProposedAction } from "@/lib/assistant";
 import { aboutForAi, cleanAbout } from "@/lib/about";import { STAGES, leadStage, readResult, type ConvStage, type MailState } from "@/lib/pipeline";
 import { aboutReady } from "@/lib/about";
 import { cleanRules, isOldPointsRule, NO_VALUE, RULE_ACTIONS, RULE_FIELDS, RULE_OPS } from "@/lib/scoring";
@@ -146,8 +146,8 @@ const TOOLS: Tool[] = [
       offer_id: { type: "string" },
       sequence_id: { type: "string" },
       name: { type: "string" },
-      steps: { type: "array", maxItems: 4, description: "First email (<90w) + up to 3 follow-ups (<50w), plain text, start 'Hi {{FIRST_NAME}},', first uses {{ICEBREAKER}} & {{QUESTION}}, follow-ups use {{FOLLOW_UP}}. Allowed fields: FIRST_NAME, ICEBREAKER, ONE_LINE, QUESTION, FOLLOW_UP, SUBJECT, SENDER_NAME, BUSINESS, BOOKING_LINK. No raw links, prices, or spam words. Follow-up subjects empty. Days 0, then 3-7d apart.",
-        items: { type: "object", additionalProperties: false, required: ["day", "body"], properties: { day: { type: "integer", minimum: 0, maximum: 90 }, subject: { type: "string" }, body: { type: "string" } } } },
+      steps: { type: "array", maxItems: 4, description: "First email (<90w) + up to 3 follow-ups (<50w), plain text, start 'Hi {{FIRST_NAME}},', first uses {{ICEBREAKER}} & {{QUESTION}}, follow-ups use {{FOLLOW_UP}}. Allowed fields: FIRST_NAME, ICEBREAKER, ONE_LINE, QUESTION, FOLLOW_UP, SUBJECT, SENDER_NAME, BUSINESS, BOOKING_LINK. No raw links, prices, or spam words. Follow-up subjects empty. Days default to 0, then +3d each.",
+        items: { type: "object", additionalProperties: false, required: ["body"], properties: { day: { type: "integer", minimum: 0, maximum: 90 }, subject: { type: "string" }, body: { type: "string" } } } },
       offer_patch: { type: "object", additionalProperties: false, properties: {
         offer: { type: "string" }, customer: { type: "string" }, good: { type: "string" }, bad: { type: "string" }, one_line: { type: "string" } } } } } },
   { name: "remember", description: "Propose saving one short non-secret fact about the user/outreach (requires Confirm).",
@@ -173,8 +173,7 @@ const READS_OTHERS = new Set(["get_pipeline", "find_leads", "get_lead", "list_ca
 // would carry this text, so it is never written after reading outside text (leads, replies) in the same answer.
 function aiSteps(raw: unknown[], turn: { readOutside?: boolean }): { steps: Step[] } | { error: string } {
   if (turn.readOutside) return { error: "Not prepared: you read leads or replies (other people's text) in this answer. Ask the person to say it again in a new message, then write the emails from get_business and list_offers only." };
-  const steps = cleanSteps(raw.map((x) => { const r = (x ?? {}) as Record<string, unknown>;
-    return { day: Number(r.day) || 0, subject: String(r.subject ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 120), body: String(r.body ?? "").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, " ").slice(0, 1500) }; })).slice(0, MAX_STEPS);
+  const steps = cleanSteps(fillStepDefaults(raw)).slice(0, MAX_STEPS);
   const all = steps.map((x) => `${x.subject}\n${x.body}`).join("\n");
   const unknown = unknownFields(all);
   if (unknown.length) return { error: `Unknown merge fields: ${unknown.join(", ")}. Use only FIRST_NAME, ICEBREAKER, ONE_LINE, QUESTION, FOLLOW_UP, SUBJECT, SENDER_NAME, BUSINESS, BOOKING_LINK.` };
