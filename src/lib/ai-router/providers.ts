@@ -729,7 +729,7 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
     };
     if (!c) return { text: "", usage, skip: "no answer" };
     if (c.message?.refusal) return { text: "", usage, skip: "declined" };
-    if (c.finish_reason === "length") return { text: "", usage, skip: "cut off" };
+    if (c.finish_reason === "length") throw new ProviderCallError(`${provider} response cut off (finish_reason=length)`, 500);
     return { text: c.message?.content || "", usage };
     /* eslint-enable @typescript-eslint/no-explicit-any */
   }
