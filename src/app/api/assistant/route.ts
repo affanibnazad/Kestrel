@@ -5,7 +5,7 @@ import { resolveAssistant, serverSecret, type Prefs } from "@/lib/assistant-serv
 import { EngineError, runAssistant, type ChatMsg, type NeutralTool } from "@/lib/assistant-engine";
 import type { StreamSink } from "@/lib/ai-router/providers";
 import { ARTICLES } from "@/lib/help";
-import { ACTION_KINDS, ASSISTANT_PAGES, LEAD_STAGES, type AssistantTurn, type ProposedAction } from "@/lib/assistant";
+import { ACTION_KINDS, ASSISTANT_PAGES, LEAD_STAGES, sortBestLeads, type AssistantTurn, type ProposedAction } from "@/lib/assistant";
 import { aboutForAi, cleanAbout } from "@/lib/about";import { STAGES, leadStage, readResult, type ConvStage, type MailState } from "@/lib/pipeline";
 import { aboutReady } from "@/lib/about";
 import { cleanRules, isOldPointsRule, NO_VALUE, RULE_ACTIONS, RULE_FIELDS, RULE_OPS } from "@/lib/scoring";
@@ -277,7 +277,7 @@ async function runTool(sb: Sb, name: string, input: Record<string, unknown>, tur
     }
     case "find_leads": {
       turn.activity.push("Searched your leads");
-      let q = sb.from("leads").select("id,name,category,location,email,website,verdict,fit_score:data->ai->>fit,drafted:data->outreach->>at").order("created_at", { ascending: false }).limit(Math.min(50, Number(input.limit) || 10));
+      let q = sb.from("leads").select("id,name,category,location,email,website,verdict,created_at,fit_score:data->ai->>fit,drafted:data->outreach->>at").order("created_at", { ascending: false }).limit(Math.min(50, Number(input.limit) || 10));
       const words = clean(input.query).split(/\s+/).filter(Boolean).slice(0, 4);
       for (const w of words) q = q.or(`name.ilike.%${w}%,category.ilike.%${w}%,location.ilike.%${w}%`);
       if (input.fit === "Good" || input.fit === "Maybe" || input.fit === "No") q = q.eq("verdict", input.fit);
@@ -287,9 +287,10 @@ async function runTool(sb: Sb, name: string, input: Record<string, unknown>, tur
       if (input.needs_email_draft === true) q = q.is("data->outreach->>at", null);
       const { data, error } = await q;
       if (error) return JSON.stringify({ error: "Could not read leads." });
-      const rows = ((data ?? []) as { id: string; name: string | null; category: string | null; location: string | null; email: string | null; website: string | null; verdict: string | null; fit_score: string | null; drafted: string | null }[])
-        .map((r) => ({ ...r, fit_score: r.fit_score ? Number(r.fit_score) : null, drafted: Boolean(r.drafted) }))
-        .sort((a, b) => (b.fit_score ?? -1) - (a.fit_score ?? -1));
+      const rows = sortBestLeads(
+        ((data ?? []) as { id: string; name: string | null; category: string | null; location: string | null; email: string | null; website: string | null; verdict: string | null; created_at: string | null; fit_score: string | null; drafted: string | null }[])
+          .map((r) => ({ ...r, fit_raw: r.fit_score, fit_score: r.fit_score && Number.isFinite(Number(r.fit_score)) ? Number(r.fit_score) : null, drafted: Boolean(r.drafted) }))
+      );
       return JSON.stringify({ leads: rows });
     }
     case "list_campaigns": {

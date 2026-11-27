@@ -64,3 +64,25 @@ export function toBlocks(md: string): Block[] {
   }
   return out;
 }
+
+const FIT_RANK: Record<string, number> = { good: 3, maybe: 2, poor: 1, no: 1 };
+
+export function fitRank(verdict?: string | null, fitRaw?: string | number | null): number {
+  const v = String(verdict ?? "").trim().toLowerCase();
+  if (v in FIT_RANK) return FIT_RANK[v];
+  const f = String(fitRaw ?? "").trim().toLowerCase();
+  if (f in FIT_RANK) return FIT_RANK[f];
+  return 0;
+}
+
+export function sortBestLeads<T extends { verdict?: string | null; fit_score?: number | null; fit_raw?: string | number | null; created_at?: string | null }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const ra = fitRank(a.verdict, a.fit_raw);
+    const rb = fitRank(b.verdict, b.fit_raw);
+    if (rb !== ra) return rb - ra;
+    const sa = typeof a.fit_score === "number" && Number.isFinite(a.fit_score) ? a.fit_score : -1;
+    const sb = typeof b.fit_score === "number" && Number.isFinite(b.fit_score) ? b.fit_score : -1;
+    if (sb !== sa) return sb - sa;
+    return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
+  });
+}
