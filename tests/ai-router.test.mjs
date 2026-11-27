@@ -1547,6 +1547,67 @@ describe("AI-4b: runDueAiJobs & serverSecret allowance", () => {
     assert.ok(res.result.qc.rounds >= 1, `Expected rounds >= 1, got ${res.result.qc.rounds}`);
     assert.ok(res.result.qc.issues.length > 0);
   });
+
+  it("executeClaimedJob uses talon (gpt-oss-120b) when team_ai has settings but key is null, and passes if qc 429 retries ok", async () => {
+    const seenModels = [];
+    const sb = {
+      from: (table) => { throw new Error(`Anon client blocked on ${table}`); },
+      rpc: async (fn, args) => {
+        if (fn === "ai_slot_for_server") {
+          return { data: { slot: args.p_slot, provider: "groq", model: args.p_slot === "talon" ? "openai/gpt-oss-120b" : "openai/gpt-oss-20b", key: "gsk-kestrel", enabled: true }, error: null };
+        }
+        if (fn === "ai_usage_this_month") return { data: 0, error: null };
+        if (fn === "ai_job_context") {
+          return {
+            data: {
+              lead: {
+                id: "lead-kestrel-settings",
+                team_id: "t1",
+                email: "hello@linear.app",
+                website: "https://linear.app",
+                outreach_approved: true,
+                data: { name: "Linear", outreach_approved: true, research: { observations: [{ url: "linear.app", fact: "System", quote: "The product development system for teams and agents" }] } },
+              },
+              offer: { id: "o1", name: "Web", offer: "Next.js web apps", customer: "B2B SaaS", good: "SaaS", bad: "None", one_line: "We build Next.js web apps." },
+              sequence: null,
+              settings: { provider: "groq", model: "qwen/qwen3.8-27b", sender_name: "Affan", business: "Norven", address: "London, UK", signature: "Best" },
+              about: null,
+              team_plan: { plan: "pro" },
+              key: null,
+              dnc_too_long: false,
+              dnc: [],
+            },
+            error: null,
+          };
+        }
+        return { data: null, error: null };
+      },
+    };
+    const draftJson = JSON.stringify({
+      first_name: "",
+      subject: "next js web app",
+      icebreaker: "I saw your site says \"The product development system for teams and agents\" on your homepage.",
+      one_line: "We build fast custom Next.js web apps for growing B2B SaaS teams.",
+      question: "Quick question: is building a Next.js web app part of your plans this year?",
+    });
+    let calls = 0;
+    const job = { id: "j-k2", team_id: "t1", user_id: null, lead_id: "lead-kestrel-settings", offer_id: "o1", sequence_id: null, kind: "write", attempts: 1, max_attempts: 3, payload: {} };
+    const out = await executeClaimedJob(sb, job, Date.now() + 60_000, "srv-sec", async (p) => {
+      calls++;
+      seenModels.push(p.model);
+      if (calls === 2) {
+        const err = new Error("rate_limited");
+        err.status = 429;
+        throw err;
+      }
+      return {
+        text: calls === 1 ? draftJson : JSON.stringify({ pass: true, issues: [] }),
+        usage: { input_tokens: 10, output_tokens: 10 },
+      };
+    });
+    assert.equal(out.status, "done");
+    assert.deepEqual(seenModels, ["openai/gpt-oss-120b", "openai/gpt-oss-120b", "openai/gpt-oss-120b"]);
+  });
 });
 
 // ── Chat find_leads best-lead sorting ──────────────────────────────────
