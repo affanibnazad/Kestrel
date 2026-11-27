@@ -1407,6 +1407,70 @@ describe("AI-4b: runDueAiJobs & serverSecret allowance", () => {
     const res = cleanQc({ pass: true, issues: [] }, body);
     assert.equal(res?.pass, true, `Expected pass, got issues: ${JSON.stringify(res?.issues)}`);
   });
+
+  it("worker write and qc on Kestrel AI (no team key) use talon slot (gpt-oss-120b) and 60s write deadline", async () => {
+    const seenModels = [];
+    const seenDeadlines = [];
+    const sb = {
+      from: (table) => { throw new Error(`Anon client blocked on ${table}`); },
+      rpc: async (fn, args) => {
+        if (fn === "ai_slot_for_server") {
+          if (args.p_slot === "talon") return { data: { slot: "talon", provider: "groq", model: "openai/gpt-oss-120b", key: "gsk-talon", enabled: true }, error: null };
+          return { data: { slot: "swift", provider: "groq", model: "openai/gpt-oss-20b", key: "gsk-swift", enabled: true }, error: null };
+        }
+        if (fn === "ai_usage_this_month") return { data: 0, error: null };
+        if (fn === "ai_job_context") {
+          return {
+            data: {
+              lead: {
+                id: "lead-kestrel-120b",
+                team_id: "t1",
+                email: "hello@linear.app",
+                website: "https://linear.app",
+                outreach_approved: true,
+                data: {
+                  name: "Linear",
+                  outreach_approved: true,
+                  research: { observations: [{ url: "linear.app", fact: "System", quote: "The product development system for teams and agents" }] },
+                },
+              },
+              offer: { id: "o1", name: "Web", offer: "Next.js web apps", customer: "B2B SaaS", good: "SaaS", bad: "None", one_line: "We build Next.js web apps." },
+              sequence: null,
+              settings: { sender_name: "Affan", business: "Norven", address: "London, UK", signature: "Best" },
+              about: null,
+              team_plan: { plan: "pro" },
+              key: null,
+              dnc_too_long: false,
+              dnc: [],
+            },
+            error: null,
+          };
+        }
+        return { data: null, error: null };
+      },
+    };
+    const draftJson = JSON.stringify({
+      first_name: "",
+      subject: "next js web app",
+      icebreaker: "I saw your site says \"The product development system for teams and agents\" on your homepage.",
+      one_line: "We build fast custom Next.js web apps for growing B2B SaaS teams.",
+      question: "Quick question: is building a Next.js web app part of your plans this year?",
+    });
+    let calls = 0;
+    const job = { id: "j-k1", team_id: "t1", user_id: null, lead_id: "lead-kestrel-120b", offer_id: "o1", sequence_id: null, kind: "write", attempts: 1, max_attempts: 3, payload: {} };
+    const before = Date.now();
+    const out = await executeClaimedJob(sb, job, before + 60_000, "srv-sec", async (p) => {
+      calls++;
+      seenModels.push(p.model);
+      seenDeadlines.push(p.timeoutMs);
+      return {
+        text: calls === 1 ? draftJson : JSON.stringify({ pass: true, issues: [] }),
+        usage: { input_tokens: 10, output_tokens: 10 },
+      };
+    });
+    assert.equal(out.status, "done");
+    assert.deepEqual(seenModels, ["openai/gpt-oss-120b", "openai/gpt-oss-120b"]);
+  });
 });
 
 // ── Chat find_leads best-lead sorting ──────────────────────────────────

@@ -181,7 +181,7 @@ export async function POST(request: Request) {
   }));
   // Phase 7 (AI-4b): run up to 2 queued AI jobs in parallel if >= 19s remain, then clean up old events/jobs.
   const aiJobs = left() >= 19_000
-    ? await runDueAiJobs({ sb: sb as never, secret, phaseDeadlineMs: Math.min(15_000, left() - 4_000), maxJobs: 2 })
+    ? await runDueAiJobs({ sb: sb as never, secret, phaseDeadlineMs: Math.max(15_000, left() - 4_000), maxJobs: 2 })
     : { claimed: 0, done: 0, retried: 0, skipped: 0, error: 0 };
   if (left() > 3_000) {
     await Promise.resolve(sb.rpc("cleanup_ai_jobs_and_events", { server_secret: secret })).catch(() => {});
