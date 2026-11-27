@@ -5,7 +5,7 @@ import { resolveAssistant, serverSecret, type Prefs } from "@/lib/assistant-serv
 import { EngineError, runAssistant, type ChatMsg, type NeutralTool } from "@/lib/assistant-engine";
 import type { StreamSink } from "@/lib/ai-router/providers";
 import { ARTICLES } from "@/lib/help";
-import { ACTION_KINDS, ASSISTANT_PAGES, LEAD_STAGES, type AssistantTurn, type ProposedAction } from "@/lib/assistant";
+import { ACTION_KINDS, ASSISTANT_PAGES, LEAD_STAGES, fillStepDefaults, sortBestLeads, type AssistantTurn, type ProposedAction } from "@/lib/assistant";
 import { aboutForAi, cleanAbout } from "@/lib/about";import { STAGES, leadStage, readResult, type ConvStage, type MailState } from "@/lib/pipeline";
 import { aboutReady } from "@/lib/about";
 import { cleanRules, isOldPointsRule, NO_VALUE, RULE_ACTIONS, RULE_FIELDS, RULE_OPS } from "@/lib/scoring";
@@ -67,6 +67,7 @@ Rules:
 - When a page fits best, call open_page and say "Click Open below." Never write tool names in your answer.
 - Only name buttons and pages from the App map below; if unsure, open the page.
 - Supported propose_change actions: pause/resume/stop campaign, set lead status in Replies, mark reply done, add/remove Do-not-contact, set lead fit or keep/remove, find emails (max 30), score leads, write emails, create/update sequence, create campaign (not started), update offer, mark Meeting/Won (with deal_value)/Lost (with reason), add lead rule, update Your business (from user's own words), add leads to campaign. Look up IDs first (batches max 50). Do not call the same tool twice. Use get_pipeline for funnel/"what next", get_business for business/offers/tone, get_rules for rules.
+- When the user asks about "my best lead", "top leads", or asks to write an email / score / find emails without naming a lead, NEVER ask the user for a lead ID or details first — call find_leads (e.g. fit: "Good", has_email: true) to find their leads, then call propose_change.
 - Sequences: call get_business and list_offers, write steps yourself, and pass to create_sequence (or list_sequences -> update_sequence). If "Fix and try again", fix and re-propose. Every sequence is personalized per lead ({{ICEBREAKER}}, {{QUESTION}}, {{ONE_LINE}}, {{FOLLOW_UP}} are written per lead when emails are generated), so never say sequences are "not personalized".
 - You cannot send emails, start campaigns (needs a self-test in Campaigns first), connect email accounts, change billing, or install the extension. Explain steps and open the page.
 - Cold email rules: ~25 emails/day/inbox (new inboxes start at 5/day, +2/day); never send from main domain; set SPF/DKIM/DMARC; verify emails (<1% bounce); plain text with sender name, postal address, and opt-out; no price/payment/trial words; follow-ups day 5, 10, 15 only to non-repliers; 1–2% reply rate is normal; judge by replies, not opens.
@@ -90,13 +91,14 @@ ${KNOWLEDGE}`;
 const TOOLS: Tool[] = [
   { name: "get_overview", description: "Team summary: leads, campaigns by status, email accounts, replies waiting. Use first for 'how am I doing'.",
     input_schema: { type: "object", properties: {}, additionalProperties: false } },
-  { name: "find_leads", description: "Search leads by query words and/or fit. Returns up to 25 leads.",
+  { name: "find_leads", description: "Search leads by query words and/or fit. Always call this first when the user asks about 'best lead', 'top leads', or any lead without giving an ID. Returns up to 50 leads with fit_score and drafted status.",
     input_schema: { type: "object", additionalProperties: false, properties: {
       query: { type: "string", description: "Search words, e.g. 'video agency london'." },
       fit: { type: "string", enum: ["Good", "Maybe", "No"], description: "Filter by AI fit." },
       has_email: { type: "boolean" },
       no_email: { type: "boolean" },
       not_scored: { type: "boolean" },
+      needs_email_draft: { type: "boolean", description: "Only leads that do not have a written email yet." },
       limit: { type: "integer", minimum: 1, maximum: 50 } } } },
   { name: "get_lead", description: "One lead's full details, fit, status, and written email subject.",
     input_schema: { type: "object", additionalProperties: false, required: ["lead_id"], properties: { lead_id: { type: "string" } } } },
@@ -144,8 +146,8 @@ const TOOLS: Tool[] = [
       offer_id: { type: "string" },
       sequence_id: { type: "string" },
       name: { type: "string" },
-      steps: { type: "array", maxItems: 4, description: "First email (<90w) + up to 3 follow-ups (<50w), plain text, start 'Hi {{FIRST_NAME}},', first uses {{ICEBREAKER}} & {{QUESTION}}, follow-ups use {{FOLLOW_UP}}. Allowed fields: FIRST_NAME, ICEBREAKER, ONE_LINE, QUESTION, FOLLOW_UP, SUBJECT, SENDER_NAME, BUSINESS, BOOKING_LINK. No raw links, prices, or spam words. Follow-up subjects empty. Days 0, then 3-7d apart.",
-        items: { type: "object", additionalProperties: false, required: ["day", "body"], properties: { day: { type: "integer", minimum: 0, maximum: 90 }, subject: { type: "string" }, body: { type: "string" } } } },
+      steps: { type: "array", maxItems: 4, description: "First email (<90w) + up to 3 follow-ups (<50w), plain text, start 'Hi {{FIRST_NAME}},', first uses {{ICEBREAKER}} & {{QUESTION}}, follow-ups use {{FOLLOW_UP}}. Allowed fields: FIRST_NAME, ICEBREAKER, ONE_LINE, QUESTION, FOLLOW_UP, SUBJECT, SENDER_NAME, BUSINESS, BOOKING_LINK. No raw links, prices, or spam words. Follow-up subjects empty. Days default to 0, then +3d each.",
+        items: { type: "object", additionalProperties: false, required: ["body"], properties: { day: { type: "integer", minimum: 0, maximum: 90 }, subject: { type: "string" }, body: { type: "string" } } } },
       offer_patch: { type: "object", additionalProperties: false, properties: {
         offer: { type: "string" }, customer: { type: "string" }, good: { type: "string" }, bad: { type: "string" }, one_line: { type: "string" } } } } } },
   { name: "remember", description: "Propose saving one short non-secret fact about the user/outreach (requires Confirm).",
@@ -171,8 +173,7 @@ const READS_OTHERS = new Set(["get_pipeline", "find_leads", "get_lead", "list_ca
 // would carry this text, so it is never written after reading outside text (leads, replies) in the same answer.
 function aiSteps(raw: unknown[], turn: { readOutside?: boolean }): { steps: Step[] } | { error: string } {
   if (turn.readOutside) return { error: "Not prepared: you read leads or replies (other people's text) in this answer. Ask the person to say it again in a new message, then write the emails from get_business and list_offers only." };
-  const steps = cleanSteps(raw.map((x) => { const r = (x ?? {}) as Record<string, unknown>;
-    return { day: Number(r.day) || 0, subject: String(r.subject ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 120), body: String(r.body ?? "").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, " ").slice(0, 1500) }; })).slice(0, MAX_STEPS);
+  const steps = cleanSteps(fillStepDefaults(raw)).slice(0, MAX_STEPS);
   const all = steps.map((x) => `${x.subject}\n${x.body}`).join("\n");
   const unknown = unknownFields(all);
   if (unknown.length) return { error: `Unknown merge fields: ${unknown.join(", ")}. Use only FIRST_NAME, ICEBREAKER, ONE_LINE, QUESTION, FOLLOW_UP, SUBJECT, SENDER_NAME, BUSINESS, BOOKING_LINK.` };
@@ -275,15 +276,21 @@ async function runTool(sb: Sb, name: string, input: Record<string, unknown>, tur
     }
     case "find_leads": {
       turn.activity.push("Searched your leads");
-      let q = sb.from("leads").select("id,name,category,location,email,website,verdict").order("created_at", { ascending: false }).limit(Math.min(50, Number(input.limit) || 10));
+      let q = sb.from("leads").select("id,name,category,location,email,website,verdict,created_at,fit_score:data->ai->>fit,drafted:data->outreach->>at").order("created_at", { ascending: false }).limit(Math.min(50, Number(input.limit) || 10));
       const words = clean(input.query).split(/\s+/).filter(Boolean).slice(0, 4);
       for (const w of words) q = q.or(`name.ilike.%${w}%,category.ilike.%${w}%,location.ilike.%${w}%`);
       if (input.fit === "Good" || input.fit === "Maybe" || input.fit === "No") q = q.eq("verdict", input.fit);
       if (input.has_email === true) q = q.not("email", "is", null);
       if (input.no_email === true) q = q.is("email", null);
       if (input.not_scored === true) q = q.is("verdict", null);
+      if (input.needs_email_draft === true) q = q.is("data->outreach->>at", null);
       const { data, error } = await q;
-      return error ? JSON.stringify({ error: "Could not read leads." }) : JSON.stringify({ leads: data ?? [] });
+      if (error) return JSON.stringify({ error: "Could not read leads." });
+      const rows = sortBestLeads(
+        ((data ?? []) as { id: string; name: string | null; category: string | null; location: string | null; email: string | null; website: string | null; verdict: string | null; created_at: string | null; fit_score: string | null; drafted: string | null }[])
+          .map((r) => ({ ...r, fit_raw: r.fit_score, fit_score: r.fit_score && Number.isFinite(Number(r.fit_score)) ? Number(r.fit_score) : null, drafted: Boolean(r.drafted) }))
+      );
+      return JSON.stringify({ leads: rows });
     }
     case "list_campaigns": {
       turn.activity.push("Looked at your campaigns");

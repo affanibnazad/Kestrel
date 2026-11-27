@@ -626,6 +626,7 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
     }
 
     let totalIn = 0, totalOut = 0;
+    let retriedToolValidation = false;
     for (let round = 0; round < 6; round++) {
       const body = {
         model,
@@ -639,9 +640,22 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
         ...(provider === "nvidia" ? { reasoning_effort: params.onStream ? "medium" : "low" } : {}),
       };
       /* eslint-disable @typescript-eslint/no-explicit-any */
-      const r = params.onStream
-        ? await oaStreamRound(url, headers, body, params, round, params.onStream)
-        : await oaRound(url, headers, body, params, round);
+      let r: Awaited<ReturnType<typeof oaRound>>;
+      try {
+        r = params.onStream
+          ? await oaStreamRound(url, headers, body, params, round, params.onStream)
+          : await oaRound(url, headers, body, params, round);
+      } catch (err) {
+        if (!retriedToolValidation && err instanceof ProviderCallError && err.status === 400 && /tool call validation failed/i.test(err.message)) {
+          retriedToolValidation = true;
+          messages.push({
+            role: "user",
+            content: `Your previous tool call failed validation: ${err.message}. Fix the tool arguments to match the schema and try again.`,
+          });
+          continue;
+        }
+        throw err;
+      }
       totalIn += r.usageIn;
       totalOut += r.usageOut;
       if (r.refusal) return { text: "", usage: { input_tokens: totalIn, output_tokens: totalOut }, skip: "declined" };

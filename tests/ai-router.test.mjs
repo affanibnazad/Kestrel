@@ -9,6 +9,7 @@ import { runAiTask, AI_TASKS, checkKestrelAllowance } from "@/lib/ai-router";
 import { runDueAiJobs, executeClaimedJob } from "@/lib/ai-jobs";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
 import { readJson, EMPTY_SENDER, assemble, emailSystem, emailPayload, qcSystem, cleanParts, cleanQc, hasObservations, cleanResearch, numbersNotInQuote } from "@/lib/ai";
+import { sortBestLeads, fillStepDefaults } from "@/lib/assistant";
 
 // Ensure server secret is valid for standalone test runner
 process.env.MAIL_SERVER_SECRET = "1234567890123456789012345678901234";
@@ -1292,5 +1293,76 @@ describe("AI-4b: runDueAiJobs & serverSecret allowance", () => {
     // Not researched yet is permanent for this job: skip it instead of retrying it 3 times.
     assert.equal(outcome.status, "skipped");
     assert.match(outcome.error, /Research this lead first/i);
+  });
+});
+
+// ── Chat find_leads best-lead sorting ──────────────────────────────────
+describe("Assistant: sortBestLeads", () => {
+  it("sorts Good > Maybe > Poor/No > null, then higher numeric fit_score, then most recent created_at", () => {
+    const sorted = sortBestLeads([
+      { id: "poor-new", verdict: "No", fit_score: null, created_at: "2026-11-26T00:00:00Z" },
+      { id: "maybe-old", verdict: "Maybe", fit_score: 50, created_at: "2026-11-20T00:00:00Z" },
+      { id: "good-old", verdict: "Good", fit_score: null, created_at: "2026-11-20T00:00:00Z" },
+      { id: "good-new", verdict: "Good", fit_score: null, created_at: "2026-11-25T00:00:00Z" },
+      { id: "good-high", verdict: "Good", fit_score: 92, created_at: "2026-11-18T00:00:00Z" },
+      { id: "poor-label", verdict: null, fit_raw: "Poor", fit_score: null, created_at: "2026-11-27T00:00:00Z" },
+    ]);
+    assert.deepEqual(sorted.map((x) => x.id), [
+      "good-high",
+      "good-new",
+      "good-old",
+      "maybe-old",
+      "poor-label",
+      "poor-new",
+    ]);
+  });
+
+  it("fillStepDefaults fills missing day with 0 for step 1 and +3 days for each next step", () => {
+    const steps = fillStepDefaults([
+      { subject: "Quick idea", body: "Hi {{FIRST_NAME}}, {{ICEBREAKER}} {{QUESTION}}" },
+      { body: "Hi {{FIRST_NAME}}, {{FOLLOW_UP}}" },
+      { body: "Hi {{FIRST_NAME}}, {{FOLLOW_UP}}" },
+    ]);
+    assert.deepEqual(steps.map((s) => s.day), [0, 3, 6]);
+  });
+
+  it("callProvider retries exactly once on 400 tool call validation failed, feeding the error back", async () => {
+    const origFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (_url, init) => {
+      calls.push(JSON.parse(init.body));
+      if (calls.length === 1) {
+        return new Response(
+          JSON.stringify({ error: { message: "Tool call validation failed: missing properties: 'day'" } }),
+          { status: 400, headers: { "content-type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "Prepared it; click Confirm below.", tool_calls: [] }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    };
+    try {
+      const ans = await callProvider({
+        provider: "groq",
+        key: "gsk_test",
+        model: "openai/gpt-oss-20b",
+        system: "You are Kestrel AI.",
+        user: "write an email",
+        maxTokens: 200,
+        timeoutMs: 5000,
+        tools: [{ name: "propose_change", description: "Propose", schema: { type: "object", properties: {} } }],
+        runTool: async () => "{}",
+      });
+      assert.equal(calls.length, 2);
+      assert.equal(ans.text, "Prepared it; click Confirm below.");
+      const lastMsg = calls[1].messages[calls[1].messages.length - 1];
+      assert.match(lastMsg.content, /Tool call validation failed/i);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
   });
 });
