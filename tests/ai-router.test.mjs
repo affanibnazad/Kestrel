@@ -9,7 +9,8 @@ import { runAiTask, AI_TASKS, checkKestrelAllowance } from "@/lib/ai-router";
 import { runDueAiJobs, executeClaimedJob } from "@/lib/ai-jobs";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
 import { readJson, EMPTY_SENDER, assemble, emailSystem, emailPayload, qcSystem, cleanParts, cleanQc, hasObservations, cleanResearch, numbersNotInQuote } from "@/lib/ai";
-import { sortBestLeads, fillStepDefaults } from "@/lib/assistant";
+import { sortBestLeads, fillStepDefaults, looksLikeInlineColdEmail } from "@/lib/assistant";
+import { CHAT_SYSTEM, CHAT_TOOLS } from "@/lib/assistant-prompt";
 
 // Ensure server secret is valid for standalone test runner
 process.env.MAIL_SERVER_SECRET = "1234567890123456789012345678901234";
@@ -1364,5 +1365,16 @@ describe("Assistant: sortBestLeads", () => {
     } finally {
       globalThis.fetch = origFetch;
     }
+  });
+
+  it("round-1 CHAT_SYSTEM + CHAT_TOOLS stay under 2,200 tokens (chars / 4)", () => {
+    const estTokens = (CHAT_SYSTEM.length + JSON.stringify(CHAT_TOOLS).length) / 4;
+    assert.ok(estTokens <= 2200, `Expected <= 2200 tokens, got ${Math.round(estTokens)}`);
+  });
+
+  it("looksLikeInlineColdEmail detects inline drafts with {{FIRST_NAME}} or Hi+signoff, ignoring normal replies", () => {
+    assert.equal(looksLikeInlineColdEmail("Hi {{FIRST_NAME}},\n\nI saw your site.\n\nBest,\nAffan"), true);
+    assert.equal(looksLikeInlineColdEmail("Hi Jane,\n\nQuick question about your app.\n\nBest,\n[Your Name]"), true);
+    assert.equal(looksLikeInlineColdEmail("1. You have 2 draft campaigns.\n2. Open Campaigns to test them."), false);
   });
 });
