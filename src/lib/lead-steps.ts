@@ -71,11 +71,11 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
 
 export type LeadIn = { id: string; email: string | null; data: LeadData | null; outreach_approved?: boolean };
 export type AiResult =
-  | { ok: true; patch: Record<string, unknown>; result: Record<string, unknown>; cost: number | null }
-  | { ok: false; why: string; cost: number | null; fatal?: string; stop?: boolean };
+  | { ok: true; patch: Record<string, unknown>; result: Record<string, unknown>; cost: number | null; warning?: string }
+  | { ok: false; why: string; cost: number | null; fatal?: string; stop?: boolean; missingFollowUps?: string[]; retryIssue?: string };
 
 // One lead: asks the AI and returns the database change to save (or why it was skipped). A key or quota problem is "fatal".
-export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] = []): Promise<AiResult> {
+export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] = [], allowPartial = false): Promise<AiResult> {
   const data = l.data ?? {};
   if (p.task === "emails" && !l.email) return { ok: false, why: "no email", cost: 0 };
   if (p.task === "emails" && !hasObservations(data)) return { ok: false, why: NEEDS_RESEARCH, cost: 0 };
@@ -130,7 +130,14 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
       if (!json) {
         return { ok: false, why: "AI answer was broken. Try again.", cost: res.cost_usd ?? 0 };
       }
-      return aiAnswer(p, l, json, res.cost_usd, site?.host, site?.text);
+      const ans = aiAnswer(p, l, json, res.cost_usd, site?.host, site?.text, allowPartial);
+      if (!ans.ok && ans.missingFollowUps?.length && !allowPartial) {
+        const retryNote = `Missing required fields: ${ans.missingFollowUps.join(", ")}. You MUST output every one of ${ans.missingFollowUps.join(", ")}.`;
+        const again = await aiOne(p, l, dnc, [...fix, retryNote], true);
+        const totalCost = ans.cost === null || again.cost === null ? null : ans.cost + again.cost;
+        return { ...again, cost: totalCost };
+      }
+      return ans;
     }
     return { ok: false, why: "error", cost: 0, fatal: "Database connection not provided." };
   } catch (e) {
@@ -203,7 +210,7 @@ export function aiLeadError(res: {
 // An AI answer (already parsed JSON) → the database change, with every check of the App's own AI: a readable fit, a full
 // email and follow-ups, no [FIELD] left, no price or payment words. Used for the team's AI and for Kestrel MCP (the person's
 // own Claude Code or Codex plan). Do-not-contact is checked by the caller before (aiOne, /api/mcp/ai-save).
-export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null = 0, host = "", siteText = ""): AiResult {
+export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null = 0, host = "", siteText = "", allowPartialFollowUps = false): AiResult {
   const data = l.data ?? {};
   const answer = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
   const by = p.by ?? p.provider;
@@ -275,25 +282,56 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
   }
   const parts = cleanParts(answer), fu = cleanFollowUps(answer, p.followUps);
   if (!parts) return { ok: false, why: "AI answer was broken. Try again.", cost };
+  const missingFollowUps = Array.from({ length: p.followUps }, (_, i) => (!fu[i] ? `follow_up_${i + 1}` : "")).filter(Boolean);
+  if (missingFollowUps.length && !allowPartialFollowUps) {
+    return { ok: false, why: "follow up is not set", missingFollowUps, cost };
+  }
   // Only a real person's name Kestrel has for this lead, never the company name (19 Nov 2026).
   parts.first_name = trustedFirstName(parts.first_name, {
     name: (data as { name?: string }).name, email: l.email ?? (data as { email?: string }).email,
     contacts: (data as { contacts?: { name?: string }[] }).contacts
   });
-  const outreach = { ...makeDraft(parts, p.offer, p.sender, p.provider, p.seq, fu, l.id, p.voiceNotes), ...(p.by ? { by: p.by } : {}) };
+  let outreach = { ...makeDraft(parts, p.offer, p.sender, p.provider, p.seq, fu, l.id, p.voiceNotes), ...(p.by ? { by: p.by } : {}) };
+  let partialNote: string | undefined;
+  if (missingFollowUps.length && allowPartialFollowUps) {
+    const nums = missingFollowUps.map((f) => f.replace("follow_up_", "")).join(", ");
+    partialNote = `Follow-up ${nums} couldn't be written, add it or retry.`;
+    if (Array.isArray(outreach.steps)) {
+      outreach = {
+        ...outreach,
+        steps: outreach.steps.filter((s) => !/\[FOLLOW_UP\]/.test(String(s.body || ""))),
+      };
+    }
+    outreach = {
+      ...outreach,
+      qc: { status: "hold", issues: [partialNote], rounds: 1, at: Date.now() },
+    };
+  }
   // Never save a draft that would send a visible [FIELD] (e.g. no booking link set) or price / trial / money words.
   const emails = (outreach.steps ?? [{ body: outreach.body, subject: outreach.subject }]).filter((x) => !("kind" in x) || !x.kind || x.kind === "email");
   const unfilled = emails.map((x) => `${x.subject} ${x.body}`.match(/\[([A-Z][A-Z_]{2,})\]/)?.[1]).find(Boolean);
-  if (unfilled) return { ok: false, why: `${unfilled.replace(/_/g, " ").toLowerCase()} is not set`, cost };
-  if (outreach.flags?.length || emails.some((x) => MONEY.test(`${x.subject} ${x.body}`))) return { ok: false, why: "price or payment words", cost };
+  if (unfilled) {
+    return { ok: false, why: `${unfilled.replace(/_/g, " ").toLowerCase()} is not set`, retryIssue: `Remove the unfilled placeholder [${unfilled}] and rewrite.`, cost };
+  }
+  const moneyMatches = emails.flatMap((x) => `${x.subject} ${x.body}`.match(new RegExp(MONEY.source, "gi")) ?? []);
+  if (outreach.flags?.length || moneyMatches.length) {
+    const tripped = [...new Set([...(outreach.flags ?? []), ...moneyMatches])];
+    console.log(`[ai-code-check] lead=${l.id} price/payment tripped=${JSON.stringify(tripped)} subject=${JSON.stringify(outreach.subject)} body=${JSON.stringify(outreach.body)} followUps=${JSON.stringify(fu)}`);
+    return { ok: false, why: "price or payment words", retryIssue: `Remove price/payment/banned words (${tripped.join(", ") || "price/payment"}) and rewrite without them.`, cost };
+  }
   // The database's own check (email_steps_problem), so a draft that Start would skip is caught now, with the reason.
   const problem = emailStepsProblem(emails as { subject?: string; body?: string; kind?: string }[]);
-  if (problem) return { ok: false, why: `${problem}: rewrite it`, cost };
+  if (problem) {
+    console.log(`[ai-code-check] lead=${l.id} step_problem=${JSON.stringify(problem)} subject=${JSON.stringify(outreach.subject)} body=${JSON.stringify(outreach.body)} followUps=${JSON.stringify(fu)}`);
+    return { ok: false, why: `${problem}: rewrite it`, retryIssue: `${problem}. Rewrite to fix it.`, cost };
+  }
 
   const chosenAngle = pickAngle(data, p.offer, p.about ?? null, (data as Record<string, unknown>).buying_trigger as string | null);
   const patch: Record<string, unknown> = {
+    ...(partialNote ? { outreach_approved: false } : {}),
     data: {
       ...data,
+      ...(partialNote ? { outreach_approved: false } : {}),
       outreach,
       angle: chosenAngle.angle,
       angle_reason: chosenAngle.why,
@@ -311,16 +349,19 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
       angle: chosenAngle.angle,
       angle_reason: chosenAngle.why,
       angle_principles: chosenAngle.principles,
+      ...(partialNote ? { warning: partialNote } : {}),
     },
-    cost
+    cost,
+    ...(partialNote ? { warning: partialNote } : {}),
   };
 }
 
 // ---------- QC (Phase 4C): the QC bot checks a written email; the Writer fixes it with QC's notes.
 export type QcEvent = { who: "qc" | "writer"; kind: "issue" | "fix" | "pass" | "hold"; text: string };
-export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ ok: true; pass: boolean; issues: string[]; cost: number | null } | { ok: false; fatal?: string; cost: number | null; stop?: boolean }> {
+export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ ok: true; pass: boolean; issues: string[]; codeChecksOnly?: boolean; cost: number | null } | { ok: false; fatal?: string; cost: number | null; stop?: boolean }> {
   try {
-    const fullDraftText = `${draft.subject || ""}\n\n${draft.body || ""}\n\n${(draft.steps || []).map((s) => s.body).join("\n\n")}`;
+    const emailSteps = (draft.steps || []).filter((s) => !("kind" in s) || (s as { kind?: string }).kind === "email").map((s) => s.body);
+    const stepBodies = emailSteps.length ? emailSteps : [draft.body || ""];
     if (p.sb && p.teamId) {
       const res = await runAiTask({
         sb: p.sb,
@@ -330,22 +371,25 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
         system: p.system,
         user: `<check>${JSON.stringify(qcPayload(data, draft))}</check>`,
         schema: p.schema,
-        maxTokens: 700,
+        maxTokens: 1500,
         effort: p.effort,
         deadlineMs: p.deadlineMs,
         // The tick worker has no signed-in user: QC needs the same server context as the writer, or it fails closed.
         serverSecret: p.serverSecret,
         serverTeamAi: p.serverTeamAi,
+        providerFn: p.providerFn,
         onCodeChecksOnly: () => {
-          const codeQc = cleanQc({ pass: true, issues: [] }, fullDraftText, p.voiceNotes);
-          return (codeQc ?? { pass: true, issues: [] }) as Record<string, unknown>;
+          const codeQc = cleanQc({ pass: true, issues: [] }, stepBodies[0], p.voiceNotes, stepBodies);
+          return { ...(codeQc ?? { pass: true, issues: [] }), codeChecksOnly: true } as Record<string, unknown>;
         },
       });
       if (!res.ok) {
         return { ok: false, cost: res.cost_usd ?? null, fatal: res.error, stop: KESTREL_STOP_CODES.has(String(res.lastError ?? "")) };
       }
-      const q = cleanQc(readJson(res.text), fullDraftText, p.voiceNotes);
-      return q ? { ok: true, ...q, cost: res.cost_usd } : { ok: false, cost: res.cost_usd };
+      const parsed = readJson(res.text);
+      const codeChecksOnly = Boolean((parsed as { codeChecksOnly?: boolean } | null)?.codeChecksOnly);
+      const q = cleanQc(parsed, stepBodies[0], p.voiceNotes, stepBodies);
+      return q ? { ok: true, ...q, ...(codeChecksOnly ? { codeChecksOnly: true } : {}), cost: res.cost_usd } : { ok: false, cost: res.cost_usd };
     }
     return { ok: false, cost: 0, fatal: "Database connection not provided." };
   } catch (e) {
@@ -356,43 +400,119 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
 export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc: DncIndex, rounds = 2, more: () => boolean = () => true):
   Promise<AiResult & { events?: QcEvent[] }> {
   let r = await aiOne(w, l, dnc);
-  if (!r.ok || !qc) return r;
-  const events: QcEvent[] = [];
   let cost = r.cost, round = 0, fixed: string[] = [];
   const add = (c: number | null) => { cost = cost === null || c === null ? null : cost + c; };
+  while (!r.ok && r.retryIssue) {
+    const canRetry = round < rounds && more();
+    console.log(`[writeChecked] lead=${l.id} round=${round} code_check_fail=${JSON.stringify(r.retryIssue)} stop_reason=${canRetry ? "rewriting" : round >= rounds ? "round_limit" : "more_false"}`);
+    if (!canRetry) return { ...r, cost };
+    const issue = r.retryIssue;
+    round++;
+    fixed = [...fixed, issue].slice(0, 8);
+    r = await aiOne(w, l, dnc, [issue]);
+    add(r.cost);
+  }
+  if (!r.ok || !qc) {
+    if (!r.ok) console.log(`[writeChecked] lead=${l.id} round=${round} stop_reason=initial_write_failed(${r.why})`);
+    return { ...r, cost };
+  }
+  const events: QcEvent[] = [];
   const draftOf = (x: AiResult) => ((x as unknown as { patch: { data: { outreach: Draft } } }).patch.data.outreach);
   const leadData = { ...(l.data ?? {}), email: l.email ?? (l.data as { email?: string } | null)?.email } as LeadData;
   let qcState: Qc = { status: "unchecked", issues: [], rounds: 0, at: Date.now() };
   while (true) {
     const q = await qcOne(qc, leadData, draftOf(r));
     add(q.cost);
+    let pass = false;
+    let issues: string[] = [];
     if (!q.ok) {
-      if (q.fatal) return { ok: false, why: q.stop ? q.fatal : "error", cost, fatal: q.fatal, stop: q.stop };
-      const curDraft = draftOf(r);
-      const codeQc = cleanQc({ pass: true, issues: [] }, `${curDraft.subject || ""} ${curDraft.body || ""}`, w.voiceNotes);
-      if (codeQc && !codeQc.pass) {
-        qcState = { status: "hold", issues: codeQc.issues, rounds: round, at: Date.now() };
-        events.push({ who: "qc", kind: "hold", text: codeQc.issues.join(" ") });
-      } else {
-        qcState = { status: "passed", issues: [], rounds: round, at: Date.now() };
-        events.push({ who: "qc", kind: "pass", text: "Passed code-level QC check." });
+      if (q.fatal) {
+        console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=[] stop_reason=qc_fatal(${q.fatal})`);
+        return { ok: false, why: q.stop ? q.fatal : "error", cost, fatal: q.fatal, stop: q.stop };
       }
+      const curDraft = draftOf(r);
+      const emailSteps = (curDraft.steps || []).filter((s) => !("kind" in s) || (s as { kind?: string }).kind === "email").map((s) => s.body);
+      const stepBodies = emailSteps.length ? emailSteps : [curDraft.body || ""];
+      const codeQc = cleanQc({ pass: true, issues: [] }, stepBodies[0], w.voiceNotes, stepBodies);
+      if (codeQc && !codeQc.pass) {
+        pass = false;
+        issues = codeQc.issues;
+      } else {
+        const msg = "AI check didn't run, review before sending.";
+        console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify([msg])} stop_reason=code_checks_only_hold`);
+        qcState = { status: "hold", issues: [msg], rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) };
+        events.push({ who: "qc", kind: "hold", text: msg });
+        break;
+      }
+    } else if (q.codeChecksOnly && q.pass) {
+      const msg = "AI check didn't run, review before sending.";
+      console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify([msg])} stop_reason=code_checks_only_hold`);
+      qcState = { status: "hold", issues: [msg], rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) };
+      events.push({ who: "qc", kind: "hold", text: msg });
+      break;
+    } else {
+      pass = q.pass;
+      issues = q.issues;
+    }
+    if (pass) {
+      console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=[] stop_reason=passed`);
+      qcState = { status: "passed", issues: [], rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) };
+      events.push({ who: "qc", kind: "pass", text: round ? `Passed after ${round} fix${round === 1 ? "" : "es"}.` : "Passed." });
       break;
     }
-    if (q.pass) { qcState = { status: "passed", issues: [], rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) }; events.push({ who: "qc", kind: "pass", text: round ? `Passed after ${round} fix${round === 1 ? "" : "es"}.` : "Passed." }); break; }
-    if (round >= rounds || !more()) { qcState = { status: "hold", issues: q.issues, rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) }; events.push({ who: "qc", kind: "hold", text: q.issues.join(" ") }); break; }
-    events.push({ who: "qc", kind: "issue", text: q.issues.join(" ") });
-    const again = await aiOne(w, l, dnc, q.issues);
+    if (round >= rounds || !more()) {
+      const whyStop = round >= rounds ? "round_limit" : "more_false";
+      console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=${whyStop}`);
+      qcState = { status: "hold", issues, rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) };
+      events.push({ who: "qc", kind: "hold", text: issues.join(" ") });
+      break;
+    }
+    console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=rewriting`);
+    events.push({ who: "qc", kind: "issue", text: issues.join(" ") });
+    let again = await aiOne(w, l, dnc, issues);
     add(again.cost);
-    if (!again.ok) { if (again.fatal) return { ok: false, why: again.stop ? again.fatal : "error", cost, fatal: again.fatal, stop: again.stop }; qcState = { status: "hold", issues: q.issues, rounds: round, at: Date.now() }; events.push({ who: "qc", kind: "hold", text: q.issues.join(" ") }); break; }
-    r = again; round++; fixed = [...fixed, ...q.issues].slice(0, 8);
+    if (!again.ok && /busy/i.test(again.why) && more()) {
+      console.log(`[writeChecked] lead=${l.id} round=${round} rewrite_rate_limited -> waiting 10s to retry`);
+      await new Promise((res) => setTimeout(res, 10_000));
+      if (more()) {
+        again = await aiOne(w, l, dnc, issues);
+        add(again.cost);
+      }
+    }
+    if (!again.ok) {
+      if (again.fatal) {
+        console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=rewrite_fatal(${again.fatal})`);
+        return { ok: false, why: again.stop ? again.fatal : "error", cost, fatal: again.fatal, stop: again.stop };
+      }
+      if (again.retryIssue && round + 1 < rounds && more()) {
+        round++;
+        const nextIssues = [...issues, again.retryIssue];
+        fixed = [...fixed, ...nextIssues].slice(0, 8);
+        console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(nextIssues)} stop_reason=rewrite_code_check_retrying`);
+        const retryAgain = await aiOne(w, l, dnc, nextIssues);
+        add(retryAgain.cost);
+        if (retryAgain.ok) {
+          r = retryAgain; round++;
+          events.push({ who: "writer", kind: "fix", text: "Rewrote it with QC's notes." });
+          continue;
+        }
+      }
+      console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=rewrite_failed(${again.why})`);
+      qcState = { status: "hold", issues, rounds: round, at: Date.now() };
+      events.push({ who: "qc", kind: "hold", text: issues.join(" ") });
+      break;
+    }
+    r = again; round++; fixed = [...fixed, ...issues].slice(0, 8);
     events.push({ who: "writer", kind: "fix", text: "Rewrote it with QC's notes." });
   }
   const d = draftOf(r);
-  const outreach = { ...d, qc: qcState };
+  const finalQc: Qc = d.qc?.status === "hold" && d.qc.issues.length
+    ? { ...qcState, status: "hold", issues: [...new Set([...d.qc.issues, ...qcState.issues])] }
+    : qcState;
+  const outreach = { ...d, qc: finalQc };
   const done = r as Extract<AiResult, { ok: true }>;
   const patch = { ...done.patch, data: { ...(done.patch.data as Record<string, unknown>), outreach } };
-  return { ok: true, patch, result: { ...done.result, draft: outreach, qc: qcState }, cost, events };
+  return { ok: true, patch, result: { ...done.result, draft: outreach, qc: finalQc }, cost, events };
 }
 
 // ---------- Find emails: Hunter, then Apollo / Findymail for a named person

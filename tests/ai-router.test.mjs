@@ -4,7 +4,7 @@ import fs from "node:fs";
 import http from "node:http";
 
 // Import REAL source modules using tsx TypeScript & @/ alias support
-import { aiLeadError, aiAnswer, aiOne, NEEDS_RESEARCH } from "@/lib/lead-steps";
+import { aiLeadError, aiAnswer, aiOne, writeChecked, NEEDS_RESEARCH } from "@/lib/lead-steps";
 import { runAiTask, AI_TASKS, checkKestrelAllowance } from "@/lib/ai-router";
 import { runDueAiJobs, executeClaimedJob } from "@/lib/ai-jobs";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
@@ -95,7 +95,7 @@ describe("AI Router Configuration & Logic", () => {
     assert.equal(AI_TASKS.write.retries, 1);
     assert.equal(AI_TASKS.write.fallback, "nest");
 
-    assert.equal(AI_TASKS.qc.slot, "swift");
+    assert.equal(AI_TASKS.qc.slot, "talon");
     assert.equal(AI_TASKS.qc.timeoutMs, 15_000);
     assert.equal(AI_TASKS.qc.retries, 1);
     assert.equal(AI_TASKS.qc.fallback, "code_checks_only");
@@ -945,7 +945,7 @@ describe("AI-4a Kestrel-Paid AI & Monthly Allowance", () => {
     assert.equal(logged[0].source, "kestrel");
   });
 
-  it("write on Kestrel -> uses Swift slot model, not Talon/Sonnet", async () => {
+  it("write on Kestrel -> uses Talon slot model, not Swift", async () => {
     let calledModel = "";
     const requestedSlots = [];
     const sb = {
@@ -964,7 +964,7 @@ describe("AI-4a Kestrel-Paid AI & Monthly Allowance", () => {
             return { data: { slot: "swift", provider: "groq", model: "llama-swift-fast", key: "kestrel-swift-key", enabled: true }, error: null };
           }
           if (args?.p_slot === "talon") {
-            return { data: { slot: "talon", provider: "anthropic", model: "claude-sonnet-5-5", key: "kestrel-talon-key", enabled: true }, error: null };
+            return { data: { slot: "talon", provider: "groq", model: "openai/gpt-oss-120b", key: "kestrel-talon-key", enabled: true }, error: null };
           }
         }
         if (fn === "ai_usage_this_month") return { data: 0, error: null };
@@ -988,10 +988,9 @@ describe("AI-4a Kestrel-Paid AI & Monthly Allowance", () => {
 
     assert.equal(res.ok, true);
     assert.equal(res.source, "kestrel");
-    assert.equal(res.slot, "swift");
-    assert.equal(requestedSlots[0], "swift");
-    assert.equal(requestedSlots.includes("talon"), false);
-    assert.equal(calledModel, "llama-swift-fast");
+    assert.equal(res.slot, "talon");
+    assert.equal(requestedSlots[0], "talon");
+    assert.equal(calledModel, "openai/gpt-oss-120b");
   });
 });
 
@@ -1376,5 +1375,298 @@ describe("Assistant: sortBestLeads", () => {
     assert.equal(looksLikeInlineColdEmail("Hi {{FIRST_NAME}},\n\nI saw your site.\n\nBest,\nAffan"), true);
     assert.equal(looksLikeInlineColdEmail("Hi Jane,\n\nQuick question about your app.\n\nBest,\n[Your Name]"), true);
     assert.equal(looksLikeInlineColdEmail("1. You have 2 draft campaigns.\n2. Open Campaigns to test them."), false);
+  });
+
+  it("aiOne retries once on missing follow_up_2, then saves partial draft marked needs review", async () => {
+    let calls = 0;
+    const seenPrompts = [];
+    const sbMock = { rpc: async () => ({ data: null, error: null }) };
+    const plan = {
+      task: "emails",
+      provider: "groq",
+      key: "gsk_test",
+      model: "openai/gpt-oss-20b",
+      offer: { id: "o1", name: "Offer", offer: "Web speed", customer: "SaaS", good: "g", bad: "b", criteria: "", strictness: "balanced", one_line: "We speed up Next.js apps." },
+      sender: { ...EMPTY_SENDER, sender_name: "Affan", business: "Norven", address: "123 St", signature: "Best,\nAffan" },
+      hash: "h1",
+      system: "sys",
+      schema: {},
+      followUps: 3,
+      seq: { steps: [
+        { day: 0, subject: "Quick question", body: "Hi {{FIRST_NAME}},\n\n{{ICEBREAKER}}\n\n{{ONE_LINE}}\n\n{{QUESTION}}\n\nIf this isn't relevant, just reply no.\n\nBest,\n{{SENDER_NAME}}" },
+        { day: 4, subject: "", body: "Hi {{FIRST_NAME}},\n\n{{FOLLOW_UP}}\n\nBest,\n{{SENDER_NAME}}" },
+        { day: 8, subject: "", body: "Hi {{FIRST_NAME}},\n\n{{FOLLOW_UP}}\n\nBest,\n{{SENDER_NAME}}" },
+        { day: 14, subject: "", body: "Hi {{FIRST_NAME}},\n\n{{FOLLOW_UP}}\n\nBest,\n{{SENDER_NAME}}" },
+      ] },
+      sb: sbMock,
+      teamId: "t1",
+      serverSecret: process.env.MAIL_SERVER_SECRET,
+      serverTeamAi: { provider: "groq", model: "openai/gpt-oss-20b", key: "gsk_test" },
+      providerFn: async (params) => {
+        calls++;
+        seenPrompts.push(params.user);
+        return {
+          text: JSON.stringify({
+            first_name: "there",
+            subject: "Linear speed",
+            icebreaker: "I saw your site says \"The product development system for teams and agents\".",
+            one_line: "We speed up Next.js apps.",
+            question: "Is frontend speed on your roadmap this year for your marketing and docs pages?",
+            follow_up_1: "Thought I would share a quick note on your product pages.",
+            follow_up_2: "",
+            follow_up_3: "Last note from me—let me know if timing is off.",
+          }),
+          usage: { input_tokens: 100, output_tokens: 80 },
+        };
+      },
+    };
+    const lead = {
+      id: "l1",
+      email: "hello@linear.app",
+      outreach_approved: true,
+      data: {
+        name: "Linear",
+        outreach_approved: true,
+        research: { observations: [{ fact: "System", quote: "The product development system for teams and agents" }] },
+      },
+    };
+    const res = await aiOne(plan, lead, { emails: new Set(), domains: new Set() });
+    assert.equal(calls, 2);
+    assert.match(seenPrompts[1], /follow_up_2/);
+    assert.equal(res.ok, true);
+    assert.equal(res.warning, "Follow-up 2 couldn't be written, add it or retry.");
+    assert.equal(res.patch.outreach_approved, false);
+    const outreach = res.patch.data.outreach;
+    assert.equal(outreach.qc.status, "hold");
+    assert.ok(outreach.body.includes("product development system"));
+    assert.ok(outreach.body.startsWith("Hi,\n"));
+    assert.equal(outreach.steps.some((s) => /\[FOLLOW_UP\]/.test(s.body)), false);
+  });
+
+  it("emailSystem instructs follow-ups to use only research.observations or offer and open with Hi when no name", () => {
+    const sys = emailSystem(
+      { id: "o1", name: "O", offer: "Next.js", customer: "SaaS", good: "g", bad: "b", criteria: "", strictness: "balanced", one_line: "We build Next.js apps." },
+      { ...EMPTY_SENDER, sender_name: "Affan", business: "Norven", address: "123 St" },
+      [{ day: 0, subject: "s", body: "Hi {{FIRST_NAME}},\n\n{{ICEBREAKER}}" }, { day: 5, subject: "", body: "Hi {{FIRST_NAME}},\n\n{{FOLLOW_UP}}" }]
+    );
+    assert.match(sys, /Only reference verified research\.observations/i);
+    assert.match(sys, /opens with "Hi," and no name/i);
+  });
+
+  it("cleanQc checks each email separately: 4 emails of 60 words each passes", () => {
+    const first = "Hi,\n\nI saw your site says teams and agents build faster here. We build custom Next.js web apps for B2B SaaS teams. Is frontend web speed something you plan to work on this year? Best, Affan. Not relevant? Reply \"no\" and I won't write again. " + Array(14).fill("word").join(" ");
+    const twelve = "Short plain sentence with twelve clear words for this follow up email.";
+    const fu = `Hi,\n\n${twelve} ${twelve} ${twelve} ${twelve}\n\nBest,\nAffan\nNot relevant? Reply "no" and I won't write again.`;
+    const words = (s) => s.trim().split(/\s+/).filter(Boolean).length;
+    assert.ok(words(first) >= 50 && words(first) <= 90, `first=${words(first)}`);
+    assert.ok(words(fu) <= 60, `fu=${words(fu)}`);
+    const qc = cleanQc({ pass: true, issues: [] }, first, undefined, [first, fu, fu, fu]);
+    assert.equal(qc?.pass, true, `Expected pass, got issues: ${qc?.issues.join("; ")}`);
+  });
+
+  it("cleanQc flags a follow-up pitching a product fix like 'speed up your UI'", () => {
+    const first = "Hi,\n\nI saw your site says teams and agents build faster here. We build custom Next.js web apps for B2B SaaS teams. Is frontend web speed something you plan to work on this year? Best, Affan. Not relevant? Reply \"no\" and I won't write again. " + Array(14).fill("word").join(" ");
+    const badFu = "Hi,\n\nWe could speed up your UI and streamline your Triage Intelligence labeling process.\n\nBest,\nAffan";
+    const qc = cleanQc({ pass: true, issues: [] }, first, undefined, [first, badFu]);
+    assert.equal(qc?.pass, false);
+    assert.ok(qc?.issues.some((i) => /Follow-up 1 pitches a fix/i.test(i)));
+  });
+
+  it("writeChecked runs 1 rewrite round when QC fails then passes (rounds === 1)", async () => {
+    let wCalls = 0;
+    let qcCalls = 0;
+    const sbMock = { rpc: async () => ({ data: null, error: null }) };
+    const seq = { steps: [
+      { day: 0, subject: "Quick question", body: "Hi {{FIRST_NAME}},\n\n{{ICEBREAKER}}\n\n{{ONE_LINE}}\n\n{{QUESTION}}\n\nIf this isn't relevant, just reply no.\n\nBest,\n{{SENDER_NAME}}" },
+      { day: 5, subject: "", body: "Hi {{FIRST_NAME}},\n\n{{FOLLOW_UP}}\n\nBest,\n{{SENDER_NAME}}" },
+    ] };
+    const basePlan = {
+      provider: "groq",
+      key: "gsk_test",
+      model: "openai/gpt-oss-120b",
+      offer: { id: "o1", name: "Offer", offer: "Next.js", customer: "SaaS", good: "g", bad: "b", criteria: "", strictness: "balanced", one_line: "We build Next.js apps." },
+      sender: { ...EMPTY_SENDER, sender_name: "Affan", business: "Norven", address: "123 St", signature: "Best,\nAffan" },
+      hash: "h1",
+      system: "sys",
+      schema: {},
+      followUps: 1,
+      seq,
+      sb: sbMock,
+      teamId: "t1",
+      serverSecret: process.env.MAIL_SERVER_SECRET,
+      serverTeamAi: { provider: "groq", model: "openai/gpt-oss-120b", key: "gsk_test" },
+    };
+    const wPlan = {
+      ...basePlan,
+      task: "emails",
+      providerFn: async () => {
+        wCalls++;
+        return {
+          text: JSON.stringify({
+            first_name: "",
+            subject: "next.js apps",
+            icebreaker: "I saw your site says \"The product development system for teams and agents\" in your hero.",
+            one_line: "We build custom Next.js web apps for SaaS teams.",
+            question: "Is Next.js web app development something you are planning this year for your site?",
+            follow_up_1: "Thought I would share a quick note on our Next.js work.",
+          }),
+          usage: { input_tokens: 100, output_tokens: 80 },
+        };
+      },
+    };
+    const qcPlan = {
+      ...basePlan,
+      task: "qc",
+      providerFn: async () => {
+        qcCalls++;
+        return {
+          text: qcCalls === 1
+            ? JSON.stringify({ pass: false, issues: ["Shorten the opener."] })
+            : JSON.stringify({ pass: true, issues: [] }),
+          usage: { input_tokens: 80, output_tokens: 20 },
+        };
+      },
+    };
+    const lead = {
+      id: "l1",
+      email: "hello@linear.app",
+      outreach_approved: true,
+      data: {
+        name: "Linear",
+        outreach_approved: true,
+        research: { observations: [{ fact: "System", quote: "The product development system for teams and agents" }] },
+      },
+    };
+    const res = await writeChecked(wPlan, qcPlan, lead, { emails: new Set(), domains: new Set() }, 2);
+    assert.equal(res.ok, true);
+    assert.equal(wCalls, 2);
+    assert.equal(qcCalls, 2);
+    assert.equal(res.result.qc.status, "passed");
+    assert.equal(res.result.qc.rounds, 1);
+    assert.deepEqual(res.events.map((e) => `${e.who}:${e.kind}`), ["qc:issue", "writer:fix", "qc:pass"]);
+  });
+
+  it("writeChecked retries when code-check fails (price or payment words) and only skips after last round fails", async () => {
+    const fakeSb = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async () => ({ data: 0, error: null }),
+    };
+    let calls = 0;
+    const goodBody = {
+      first_name: "",
+      subject: "next js site",
+      icebreaker: "I saw your site says \"Fast issue tracking\" on your homepage for engineering teams.",
+      one_line: "We build fast custom Next.js web apps for growing B2B SaaS teams.",
+      question: "Quick question: is building a Next.js web app part of your plans this year?",
+    };
+    const badBody = {
+      ...goodBody,
+      question: "Quick question: want a free discount on Next.js work?",
+    };
+    const plan = {
+      task: "emails",
+      provider: "groq",
+      key: "gsk-test",
+      model: "openai/gpt-oss-120b",
+      offer: { id: "o1", name: "Web", offer: "Next.js web apps", customer: "B2B SaaS", one_line: "We build fast Next.js web apps." },
+      sender: { sender_name: "Affan", address: "London, UK" },
+      hash: "h",
+      system: "sys",
+      schema: {},
+      followUps: 0,
+      sb: fakeSb,
+      teamId: "t1",
+      userId: "u1",
+      serverSecret: process.env.MAIL_SERVER_SECRET,
+      serverTeamAi: { provider: "groq", model: "openai/gpt-oss-120b", key: "gsk_test" },
+      providerFn: async () => {
+        calls++;
+        return { text: JSON.stringify(calls === 1 ? badBody : goodBody), usage: { input_tokens: 10, output_tokens: 10 } };
+      },
+    };
+    const qcPlan = {
+      ...plan,
+      task: "qc",
+      providerFn: async () => ({ text: JSON.stringify({ pass: true, issues: [] }), usage: { input_tokens: 10, output_tokens: 10 } }),
+    };
+    const lead = {
+      id: "l-price-retry",
+      email: "a@example.com",
+      outreach_approved: true,
+      data: { website: "https://example.com", research: { observations: [{ url: "example.com", fact: "Fast", quote: "Fast issue tracking" }] } },
+    };
+    const dnc = { emails: new Set(), domains: new Set() };
+
+    // 1. First draft trips price/payment -> rewrite round succeeds -> passes with rounds === 1
+    const res1 = await writeChecked(plan, qcPlan, lead, dnc, 2);
+    assert.equal(res1.ok, true);
+    assert.equal(res1.result.qc.status, "passed");
+    assert.equal(res1.result.qc.rounds, 1);
+    assert.equal(calls, 2);
+
+    // 2. Always trips price/payment -> skips only after rounds === 2 (3 total attempts: initial + 2 rewrites)
+    let alwaysBadCalls = 0;
+    const badPlan = {
+      ...plan,
+      providerFn: async () => {
+        alwaysBadCalls++;
+        return { text: JSON.stringify(badBody), usage: { input_tokens: 10, output_tokens: 10 } };
+      },
+    };
+    const res2 = await writeChecked(badPlan, qcPlan, lead, dnc, 2);
+    assert.equal(res2.ok, false);
+    assert.equal(res2.why, "price or payment words");
+    assert.equal(alwaysBadCalls, 3);
+  });
+
+  it("writeChecked holds (never passes) when QC hits 429 and falls back to code_checks_only", async () => {
+    const fakeSb = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async () => ({ data: 0, error: null }),
+    };
+    const goodBody = {
+      first_name: "",
+      subject: "next js site",
+      icebreaker: "I saw your site says \"Fast issue tracking\" on your homepage for engineering teams.",
+      one_line: "We build fast custom Next.js web apps for growing B2B SaaS teams.",
+      question: "Quick question: is building a Next.js web app part of your plans this year?",
+    };
+    const wPlan = {
+      task: "emails",
+      provider: "groq",
+      key: "gsk-test",
+      model: "openai/gpt-oss-120b",
+      offer: { id: "o1", name: "Web", offer: "Next.js web apps", customer: "B2B SaaS", one_line: "We build fast Next.js web apps." },
+      sender: { sender_name: "Affan", address: "London, UK" },
+      hash: "h",
+      system: "sys",
+      schema: {},
+      followUps: 0,
+      sb: fakeSb,
+      teamId: "t1",
+      userId: "u1",
+      serverSecret: process.env.MAIL_SERVER_SECRET,
+      serverTeamAi: { provider: "groq", model: "openai/gpt-oss-120b", key: "gsk_test" },
+      providerFn: async () => ({ text: JSON.stringify(goodBody), usage: { input_tokens: 10, output_tokens: 10 } }),
+    };
+    const qcPlan = {
+      ...wPlan,
+      task: "qc",
+      providerFn: async () => {
+        const err = new Error("rate_limited");
+        err.status = 429;
+        throw err;
+      },
+    };
+    const lead = {
+      id: "l-qc-429",
+      email: "a@example.com",
+      outreach_approved: true,
+      data: { website: "https://example.com", research: { observations: [{ url: "example.com", fact: "Fast", quote: "Fast issue tracking" }] } },
+    };
+    const res = await writeChecked(wPlan, qcPlan, lead, { emails: new Set(), domains: new Set() }, 2);
+    assert.equal(res.ok, true);
+    assert.equal(res.result.qc.status, "hold");
+    assert.deepEqual(res.result.qc.issues, ["AI check didn't run, review before sending."]);
   });
 });

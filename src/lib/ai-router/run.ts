@@ -361,7 +361,7 @@ export async function resolveModelForSlot(
   } else if (secret.length < 32) {
     return { error: "Server secret is not set.", isDbError: true };
   }
-  return resolveKestrelSlot(sb, "swift");
+  return resolveKestrelSlot(sb, slot);
 }
 
 // Log one attempt to supabase public.ai_runs via log_ai_run RPC
