@@ -1,4 +1,4 @@
-import { aiOne, aiPlan, writeChecked, type LeadIn } from "./lead-steps";
+import { aiOne, aiPlan, writeChecked, type AiPlan, type LeadIn } from "./lead-steps";
 import { cleanAbout, aboutForAi } from "./about";
 import { dncBlocks, dncIndex } from "./dnc";
 import type { Offer } from "./ai";
@@ -97,7 +97,8 @@ export async function executeClaimedJob(
   sb: RpcLike,
   job: ClaimedAiJob,
   deadlineMs: number,
-  secret = ""
+  secret = "",
+  providerFn?: AiPlan["providerFn"]
 ): Promise<JobStepOutcome> {
   if (!job.lead_id) return { status: "skipped", error: "Missing lead_id" };
   if (job.kind === "find_emails") return { status: "skipped", error: "find_emails runs via lead finder" };
@@ -166,7 +167,20 @@ export async function executeClaimedJob(
     userId: job.user_id,
     deadlineMs,
     ...(secret ? { serverSecret: secret, serverTeamAi } : {}),
+    ...(providerFn ? { providerFn } : {}),
   };
+  const qcRaw = task === "emails" ? aiPlan("qc", ctx.offer, settings, key, null, [], cleanAb?.voice_notes, cleanAb) : null;
+  const qcPlan = qcRaw && !("error" in qcRaw)
+    ? {
+        ...qcRaw,
+        sb: sb as never,
+        teamId: job.team_id,
+        userId: job.user_id,
+        deadlineMs,
+        ...(secret ? { serverSecret: secret, serverTeamAi } : {}),
+        ...(providerFn ? { providerFn } : {}),
+      }
+    : null;
 
   const preparedLead: LeadIn =
     task === "research" && lead.website && !(lead.data as { website?: string } | null)?.website
@@ -175,7 +189,7 @@ export async function executeClaimedJob(
 
   const res =
     task === "emails"
-      ? await writeChecked(plan, null, preparedLead, dnc, 1, () => Date.now() < deadlineMs - 2_000)
+      ? await writeChecked(plan, qcPlan, preparedLead, dnc, 2, () => Date.now() < deadlineMs - 2_000)
       : await aiOne(plan, preparedLead, dnc);
 
   if (!res.ok) {
@@ -185,15 +199,25 @@ export async function executeClaimedJob(
       : { status: "retry", error: why, retryAfterSec: 60 };
   }
 
+  const qcStatus = (res.result as { qc?: { status?: string } } | undefined)?.qc?.status;
+  const heldForReview = task === "emails" && qcStatus === "hold";
+  const savePatch = heldForReview
+    ? {
+        ...res.patch,
+        outreach_approved: false,
+        data: { ...((res.patch.data as Record<string, unknown>) ?? {}), outreach_approved: false },
+      }
+    : res.patch;
+
   const { error: updErr } = await sb.rpc("ai_job_save_lead", {
     server_secret: secret,
     p_team_id: job.team_id,
     p_lead_id: lead.id,
-    p_patch: res.patch,
+    p_patch: savePatch,
   });
   if (updErr) return { status: "retry", error: updErr.message || "Could not save lead patch", retryAfterSec: 60 };
 
-  return { status: "done", summary: `${job.kind} completed` };
+  return { status: "done", summary: heldForReview ? `${job.kind} completed (needs review)` : `${job.kind} completed` };
 }
 
 /**
