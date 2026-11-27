@@ -1294,6 +1294,79 @@ describe("AI-4b: runDueAiJobs & serverSecret allowance", () => {
     assert.equal(outcome.status, "skipped");
     assert.match(outcome.error, /Research this lead first/i);
   });
+
+  it("executeClaimedJob write runs QC via writeChecked and stores outreach.qc (hold marks needs review, job done)", async () => {
+    const savedPatches = [];
+    const sb = {
+      from: (table) => { throw new Error(`Anon client blocked on ${table}`); },
+      rpc: async (fn, args) => {
+        if (fn === "ai_job_context") {
+          return {
+            data: {
+              lead: {
+                id: "lead-qc-worker",
+                team_id: "t1",
+                email: "hello@linear.app",
+                website: "https://linear.app",
+                outreach_approved: true,
+                data: {
+                  name: "Linear",
+                  outreach_approved: true,
+                  research: { observations: [{ url: "linear.app", fact: "Product system", quote: "The product development system for teams and agents" }] },
+                },
+              },
+              offer: { id: "o1", name: "Web", offer: "Next.js web apps", customer: "B2B SaaS", good: "SaaS", bad: "None", one_line: "We build fast custom Next.js web apps." },
+              sequence: null,
+              settings: { provider: "groq", model: "openai/gpt-oss-120b", sender_name: "Affan", business: "Norven", address: "London, UK", signature: "Best" },
+              about: null,
+              team_plan: { plan: "pro" },
+              key: "gsk-test",
+              dnc_too_long: false,
+              dnc: [],
+            },
+            error: null,
+          };
+        }
+        if (fn === "ai_job_save_lead") savedPatches.push(args.p_patch);
+        return { data: null, error: null };
+      },
+    };
+
+    const draftJson = JSON.stringify({
+      first_name: "",
+      subject: "next js site",
+      icebreaker: "I saw your site says \"The product development system for teams and agents\" on your homepage.",
+      one_line: "We build fast custom Next.js web apps for growing B2B SaaS teams.",
+      question: "Quick question: is building a Next.js web app part of your plans this year?",
+    });
+
+    // 1. QC passes -> outreach.qc.status === "passed", job done
+    let passCalls = 0;
+    const job = { id: "j-w1", team_id: "t1", user_id: null, lead_id: "lead-qc-worker", offer_id: "o1", sequence_id: null, kind: "write", attempts: 1, max_attempts: 3, payload: {} };
+    const out1 = await executeClaimedJob(sb, job, Date.now() + 20_000, "srv-sec", async () => {
+      passCalls++;
+      return {
+        text: passCalls === 1 ? draftJson : JSON.stringify({ pass: true, issues: [] }),
+        usage: { input_tokens: 10, output_tokens: 10 },
+      };
+    });
+    assert.equal(out1.status, "done");
+    assert.equal(savedPatches[0]?.data?.outreach?.qc?.status, "passed");
+
+    // 2. QC holds (always fails) -> job still done (not skipped), outreach.qc.status === "hold", outreach_approved === false
+    let holdCalls = 0;
+    const out2 = await executeClaimedJob(sb, job, Date.now() + 20_000, "srv-sec", async () => {
+      holdCalls++;
+      return {
+        text: holdCalls % 2 === 1 ? draftJson : JSON.stringify({ pass: false, issues: ["Generic opener."] }),
+        usage: { input_tokens: 10, output_tokens: 10 },
+      };
+    });
+    assert.equal(out2.status, "done");
+    assert.equal(savedPatches[1]?.data?.outreach?.qc?.status, "hold");
+    assert.equal(savedPatches[1]?.outreach_approved, false);
+    assert.equal(savedPatches[1]?.data?.outreach_approved, false);
+  });
 });
 
 // ── Chat find_leads best-lead sorting ──────────────────────────────────
