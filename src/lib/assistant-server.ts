@@ -52,12 +52,16 @@ export type Resolved = {
 export type Prefs = { source: "included" | "team"; provider: Provider | null; model: string | null; about: string; style: string };
 const COMPANY: Record<Provider, string> = { anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini", openrouter: "OpenRouter", groq: "Groq", nvidia: "NVIDIA" };
 
-export async function resolveAssistant(sb: Sb, prefs: Prefs | null, question: string, turns: number): Promise<Resolved | { error: string }> {
+export async function resolveAssistant(sb: Sb, prefs: Prefs | null, question: string, turns: number): Promise<Resolved | { error: string; rawError?: string }> {
   const secret = serverSecret();
   if (prefs?.source === "team" && prefs.provider) {
     if (secret.length < 32) return { error: "The server secret is missing on Vercel (MAIL_SERVER_SECRET)." };
     const { data, error } = await sb.rpc("assistant_team_key", { server_secret: secret, service: prefs.provider });
-    if (error) return { error: /plan has ended/.test(error.message) ? "Your plan has ended, so your team key can't be used here. Switch to Kestrel's own AI in Kestrel AI → Personalize." : "Your role can't use the team's AI keys. Switch to Kestrel's own AI in Kestrel AI → Personalize." };
+    if (error) {
+      if (/plan has ended/i.test(error.message)) return { error: "Your plan has ended, so your team key can't be used here. Switch to Kestrel's own AI in Kestrel AI → Personalize." };
+      if (/role|permission|owner|manager|only the/i.test(error.message)) return { error: "Your role can't use the team's AI keys. Switch to Kestrel's own AI in Kestrel AI → Personalize." };
+      return { error: "Kestrel AI hit an error, try again.", rawError: `assistant_team_key: ${error.message}` };
+    }
     if (!data) return { error: `Your team has no ${COMPANY[prefs.provider]} key yet. Add it in Connections, or switch to Kestrel's AI in Kestrel AI → Personalize.` };
     if (prefs.provider === "anthropic") { const p = assistantModel(prefs.model || AUTO, question, turns); return { provider: "anthropic", key: data as string, ...p, included: false, label: `Claude (your team's key)` }; }
     if (!prefs.model) return { error: `Choose a ${COMPANY[prefs.provider]} model in Kestrel AI → Personalize.` };

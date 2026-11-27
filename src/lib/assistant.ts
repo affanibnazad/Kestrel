@@ -102,3 +102,13 @@ export function fillStepDefaults(raw: unknown[]): { day: number; subject: string
     };
   });
 }
+
+export function looksLikeInlineColdEmail(text: string): boolean {
+  const t = String(text || "");
+  if (!t.trim()) return false;
+  if (/\{\{(FIRST_NAME|ICEBREAKER|QUESTION|FOLLOW_UP)\}\}/.test(t)) return true;
+  const hasGreeting = /(?:^|\n)\s*hi\s+[^\n,]{1,40},/im.test(t);
+  const hasSignOff = /(?:^|\n)\s*(?:best|cheers|regards|thanks|sincerely)[,.]?\s*(?:\n|$)/im.test(t);
+  const hasSubject = /(?:^|\n)\s*subject:\s+\S+/im.test(t);
+  return (hasGreeting && (hasSignOff || hasSubject)) || (hasSubject && hasSignOff);
+}
