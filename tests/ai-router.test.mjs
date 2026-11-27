@@ -1377,4 +1377,69 @@ describe("Assistant: sortBestLeads", () => {
     assert.equal(looksLikeInlineColdEmail("Hi Jane,\n\nQuick question about your app.\n\nBest,\n[Your Name]"), true);
     assert.equal(looksLikeInlineColdEmail("1. You have 2 draft campaigns.\n2. Open Campaigns to test them."), false);
   });
+
+  it("aiOne retries once on missing follow_up_2, then saves partial draft marked needs review", async () => {
+    let calls = 0;
+    const seenPrompts = [];
+    const sbMock = { rpc: async () => ({ data: null, error: null }) };
+    const plan = {
+      task: "emails",
+      provider: "groq",
+      key: "gsk_test",
+      model: "openai/gpt-oss-20b",
+      offer: { id: "o1", name: "Offer", offer: "Web speed", customer: "SaaS", good: "g", bad: "b", criteria: "", strictness: "balanced", one_line: "We speed up Next.js apps." },
+      sender: { ...EMPTY_SENDER, sender_name: "Affan", business: "Norven", address: "123 St", signature: "Best,\nAffan" },
+      hash: "h1",
+      system: "sys",
+      schema: {},
+      followUps: 3,
+      seq: { steps: [
+        { day: 0, subject: "Quick question", body: "Hi {{FIRST_NAME}},\n\n{{ICEBREAKER}}\n\n{{ONE_LINE}}\n\n{{QUESTION}}\n\nIf this isn't relevant, just reply no.\n\nBest,\n{{SENDER_NAME}}" },
+        { day: 4, subject: "", body: "Hi {{FIRST_NAME}},\n\n{{FOLLOW_UP}}\n\nBest,\n{{SENDER_NAME}}" },
+        { day: 8, subject: "", body: "Hi {{FIRST_NAME}},\n\n{{FOLLOW_UP}}\n\nBest,\n{{SENDER_NAME}}" },
+        { day: 14, subject: "", body: "Hi {{FIRST_NAME}},\n\n{{FOLLOW_UP}}\n\nBest,\n{{SENDER_NAME}}" },
+      ] },
+      sb: sbMock,
+      teamId: "t1",
+      serverSecret: process.env.MAIL_SERVER_SECRET,
+      serverTeamAi: { provider: "groq", model: "openai/gpt-oss-20b", key: "gsk_test" },
+      providerFn: async (params) => {
+        calls++;
+        seenPrompts.push(params.user);
+        return {
+          text: JSON.stringify({
+            first_name: "there",
+            subject: "Linear speed",
+            icebreaker: "I saw your site says \"The product development system for teams and agents\".",
+            one_line: "We speed up Next.js apps.",
+            question: "Is frontend speed on your roadmap this year for your marketing and docs pages?",
+            follow_up_1: "Thought I would share a quick note on your product pages.",
+            follow_up_2: "",
+            follow_up_3: "Last note from me—let me know if timing is off.",
+          }),
+          usage: { input_tokens: 100, output_tokens: 80 },
+        };
+      },
+    };
+    const lead = {
+      id: "l1",
+      email: "hello@linear.app",
+      outreach_approved: true,
+      data: {
+        name: "Linear",
+        outreach_approved: true,
+        research: { observations: [{ fact: "System", quote: "The product development system for teams and agents" }] },
+      },
+    };
+    const res = await aiOne(plan, lead, { emails: new Set(), domains: new Set() });
+    assert.equal(calls, 2);
+    assert.match(seenPrompts[1], /follow_up_2/);
+    assert.equal(res.ok, true);
+    assert.equal(res.warning, "Follow-up 2 couldn't be written, add it or retry.");
+    assert.equal(res.patch.outreach_approved, false);
+    const outreach = res.patch.data.outreach;
+    assert.equal(outreach.qc.status, "hold");
+    assert.ok(outreach.body.includes("product development system"));
+    assert.equal(outreach.steps.some((s) => /\[FOLLOW_UP\]/.test(s.body)), false);
+  });
 });

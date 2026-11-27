@@ -71,11 +71,11 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
 
 export type LeadIn = { id: string; email: string | null; data: LeadData | null; outreach_approved?: boolean };
 export type AiResult =
-  | { ok: true; patch: Record<string, unknown>; result: Record<string, unknown>; cost: number | null }
-  | { ok: false; why: string; cost: number | null; fatal?: string; stop?: boolean };
+  | { ok: true; patch: Record<string, unknown>; result: Record<string, unknown>; cost: number | null; warning?: string }
+  | { ok: false; why: string; cost: number | null; fatal?: string; stop?: boolean; missingFollowUps?: string[] };
 
 // One lead: asks the AI and returns the database change to save (or why it was skipped). A key or quota problem is "fatal".
-export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] = []): Promise<AiResult> {
+export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] = [], allowPartial = false): Promise<AiResult> {
   const data = l.data ?? {};
   if (p.task === "emails" && !l.email) return { ok: false, why: "no email", cost: 0 };
   if (p.task === "emails" && !hasObservations(data)) return { ok: false, why: NEEDS_RESEARCH, cost: 0 };
@@ -130,7 +130,14 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
       if (!json) {
         return { ok: false, why: "AI answer was broken. Try again.", cost: res.cost_usd ?? 0 };
       }
-      return aiAnswer(p, l, json, res.cost_usd, site?.host, site?.text);
+      const ans = aiAnswer(p, l, json, res.cost_usd, site?.host, site?.text, allowPartial);
+      if (!ans.ok && ans.missingFollowUps?.length && !allowPartial && fix.length === 0) {
+        const retryNote = `Missing required fields: ${ans.missingFollowUps.join(", ")}. You MUST output every one of ${ans.missingFollowUps.join(", ")}.`;
+        const again = await aiOne(p, l, dnc, [retryNote], true);
+        const totalCost = ans.cost === null || again.cost === null ? null : ans.cost + again.cost;
+        return { ...again, cost: totalCost };
+      }
+      return ans;
     }
     return { ok: false, why: "error", cost: 0, fatal: "Database connection not provided." };
   } catch (e) {
@@ -203,7 +210,7 @@ export function aiLeadError(res: {
 // An AI answer (already parsed JSON) → the database change, with every check of the App's own AI: a readable fit, a full
 // email and follow-ups, no [FIELD] left, no price or payment words. Used for the team's AI and for Kestrel MCP (the person's
 // own Claude Code or Codex plan). Do-not-contact is checked by the caller before (aiOne, /api/mcp/ai-save).
-export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null = 0, host = "", siteText = ""): AiResult {
+export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null = 0, host = "", siteText = "", allowPartialFollowUps = false): AiResult {
   const data = l.data ?? {};
   const answer = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
   const by = p.by ?? p.provider;
@@ -275,12 +282,31 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
   }
   const parts = cleanParts(answer), fu = cleanFollowUps(answer, p.followUps);
   if (!parts) return { ok: false, why: "AI answer was broken. Try again.", cost };
+  const missingFollowUps = Array.from({ length: p.followUps }, (_, i) => (!fu[i] ? `follow_up_${i + 1}` : "")).filter(Boolean);
+  if (missingFollowUps.length && !allowPartialFollowUps) {
+    return { ok: false, why: "follow up is not set", missingFollowUps, cost };
+  }
   // Only a real person's name Kestrel has for this lead, never the company name (19 Nov 2026).
   parts.first_name = trustedFirstName(parts.first_name, {
     name: (data as { name?: string }).name, email: l.email ?? (data as { email?: string }).email,
     contacts: (data as { contacts?: { name?: string }[] }).contacts
   });
-  const outreach = { ...makeDraft(parts, p.offer, p.sender, p.provider, p.seq, fu, l.id, p.voiceNotes), ...(p.by ? { by: p.by } : {}) };
+  let outreach = { ...makeDraft(parts, p.offer, p.sender, p.provider, p.seq, fu, l.id, p.voiceNotes), ...(p.by ? { by: p.by } : {}) };
+  let partialNote: string | undefined;
+  if (missingFollowUps.length && allowPartialFollowUps) {
+    const nums = missingFollowUps.map((f) => f.replace("follow_up_", "")).join(", ");
+    partialNote = `Follow-up ${nums} couldn't be written, add it or retry.`;
+    if (Array.isArray(outreach.steps)) {
+      outreach = {
+        ...outreach,
+        steps: outreach.steps.filter((s) => !/\[FOLLOW_UP\]/.test(String(s.body || ""))),
+      };
+    }
+    outreach = {
+      ...outreach,
+      qc: { status: "hold", issues: [partialNote], rounds: 1, at: Date.now() },
+    };
+  }
   // Never save a draft that would send a visible [FIELD] (e.g. no booking link set) or price / trial / money words.
   const emails = (outreach.steps ?? [{ body: outreach.body, subject: outreach.subject }]).filter((x) => !("kind" in x) || !x.kind || x.kind === "email");
   const unfilled = emails.map((x) => `${x.subject} ${x.body}`.match(/\[([A-Z][A-Z_]{2,})\]/)?.[1]).find(Boolean);
@@ -292,8 +318,10 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
 
   const chosenAngle = pickAngle(data, p.offer, p.about ?? null, (data as Record<string, unknown>).buying_trigger as string | null);
   const patch: Record<string, unknown> = {
+    ...(partialNote ? { outreach_approved: false } : {}),
     data: {
       ...data,
+      ...(partialNote ? { outreach_approved: false } : {}),
       outreach,
       angle: chosenAngle.angle,
       angle_reason: chosenAngle.why,
@@ -311,8 +339,10 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
       angle: chosenAngle.angle,
       angle_reason: chosenAngle.why,
       angle_principles: chosenAngle.principles,
+      ...(partialNote ? { warning: partialNote } : {}),
     },
-    cost
+    cost,
+    ...(partialNote ? { warning: partialNote } : {}),
   };
 }
 
@@ -389,10 +419,13 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
     events.push({ who: "writer", kind: "fix", text: "Rewrote it with QC's notes." });
   }
   const d = draftOf(r);
-  const outreach = { ...d, qc: qcState };
+  const finalQc: Qc = d.qc?.status === "hold" && d.qc.issues.length
+    ? { ...qcState, status: "hold", issues: [...new Set([...d.qc.issues, ...qcState.issues])] }
+    : qcState;
+  const outreach = { ...d, qc: finalQc };
   const done = r as Extract<AiResult, { ok: true }>;
   const patch = { ...done.patch, data: { ...(done.patch.data as Record<string, unknown>), outreach } };
-  return { ok: true, patch, result: { ...done.result, draft: outreach, qc: qcState }, cost, events };
+  return { ok: true, patch, result: { ...done.result, draft: outreach, qc: finalQc }, cost, events };
 }
 
 // ---------- Find emails: Hunter, then Apollo / Findymail for a named person
