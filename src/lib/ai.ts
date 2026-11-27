@@ -339,14 +339,14 @@ ${voiceNotes
 - Words avoided: ${voiceNotes.words_avoided?.join(", ") || "(none)"}\n`
       : ""
     }
-Fail it for any of the following problems:
+Fail it for any of the following problems (check EVERY email: first email AND every follow-up 1..3):
 1. A fact about the lead that the lead fields or evidence.observations do not support: an invented client, project, city, award, number, tool or service. unverified_notes are guesses and never count as support. Also fail any claim that the lead lacks something (no website, not hiring, no team). Also fail any claim about the sender (skill, client, result, years, tool) that the seller's offer or one line does not say.
 2. A place mentioned in the message body that falsely claims to be the lead's location. (The sender's own postal address in the signature footer, such as London, UK, is the sender's address and is allowed).
 3. The greeting greets the company (e.g. "Hi Social,") or a name that is not in the lead data. When no contact person is named, "Hi," (or "Hi there," on older drafts) is the correct greeting. Do NOT fail "Hi,".
 4. The first line is generic: it would fit any business of this kind.
-5. Price, packages, trials, free work, discounts, payment, guarantees, hype or AI-style words (leverage, elevate, seamless, unlock, tailored, delve, robust).
+5. Price, packages, trials, free work, discounts, payment, guarantees, hype, compliments ("impressed me", "love your"), filler ("indeed"), or AI-style words (leverage, elevate, seamless, unlock, tailored, delve, robust).
 6. The question is vague, asks for a meeting straight away, assumes a tool, tech stack, traffic level or problem the lead data does not show, or asks about something the seller's offer has nothing to do with. A neutral question that only asks whether the seller's kind of work is on the lead's plans (e.g. "is X something you are planning this year?") assumes nothing and is valid: do NOT fail it.
-7. A follow-up repeats the first email or another follow-up, or says "just following up" / "circling back".
+7. A follow-up repeats the first email or another follow-up, says "just following up" / "circling back", guesses the lead's internal problems/workflows, or pitches a fix to the lead's own product features (e.g. "speed up your UI", "streamline your...").
 8. Fake urgency or artificial deadlines: "only today", "last chance", "expires today", "offer ends", "limited time", "don't miss out", "before tomorrow".
 9. Fake scarcity or artificial exclusivity: "only taking 2 clients", "only 1 spot left", "almost booked up", "exclusive access".
 10. Invented proof, metrics, percentages, or numbers not present in the verified proof points.
@@ -418,6 +418,9 @@ export function cleanQc(d: Record<string, unknown> | null, draftText = "", voice
     const fuWords = bodies[i].trim().split(/\s+/).filter(Boolean).length;
     if (fuWords > 60) {
       issues.push(`Follow-up ${i} is too long (${fuWords} words). Follow-ups must be 60 words or under.`);
+    }
+    if (/\b(?:speed up|streamline|optimize|fix|simplify)\s+your\b|\bmake\s+(?:your|it)\s+snappier\b|\bhow\s+does\b[^.?]{0,60}\bhandle\b|\btechnical\s+constraints\b|\bmanage\s+the\s+workflow\b/i.test(bodies[i])) {
+      issues.push(`Follow-up ${i} pitches a fix or guesses internal product details not in the offer.`);
     }
   }
 
@@ -617,7 +620,7 @@ function followUpRules(steps?: Step[]) {
 
 Follow-ups (the same lead, sent only if they did not reply; each one comes after "Hi," or "Hi <first_name>,", so never greet again)
 ${jobs}
-- Only reference verified research.observations (evidence.observations) or the seller's offer; NEVER guess or assume the lead's internal problems, workflows, or technical constraints.
+- Only reference verified research.observations (evidence.observations) or the seller's offer; NEVER guess or assume the lead's internal problems, workflows, or technical constraints, and NEVER pitch fixes to the lead's own product features (no "streamline your...", "speed up your UI", "simplify your...").
 - Each follow-up: 1 or 2 short sentences, under 40 words, about this lead's own work. Each one says something new.
 - Never mention price, packages, trials, free work, discounts or payment. Never say "just following up", "bumping this", "circling back" or "touch base".
 - Plain words, no AI-style words, no links, no capitals for emphasis, no exclamation marks.`;
@@ -662,7 +665,7 @@ Rules (Strict Stage D Writing Quality):
   * Never mention price, dollar amounts, currencies, packages, trials, free work, discounts, payment, or schedule calls.
   * NO fake urgency ("only today", "last chance", "expires today", "offer ends", "limited time").
   * NO fake scarcity ("only taking 2 clients", "only 1 spot left", "almost booked up").
-  * Plain, everyday English. No marketing or AI-style words (leverage, elevate, seamless, unlock, tailored, delve, robust), no spam words, nothing that looks like phishing.
+  * Plain, everyday English. No marketing or AI-style words (leverage, elevate, seamless, unlock, tailored, delve, robust), no compliments ("impressed me", "impressive", "love your"), no filler ("indeed", "actually"), no spam words, nothing that looks like phishing.
   * Never invent clients, results, numbers or testimonials.
 - Facts only (STRICT):
   * About the lead, state only what the lead fields (name, category, location, contact_name, contact_role, hiring_for, rating, reviews) or evidence.observations say.

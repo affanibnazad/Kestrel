@@ -4,7 +4,7 @@ import fs from "node:fs";
 import http from "node:http";
 
 // Import REAL source modules using tsx TypeScript & @/ alias support
-import { aiLeadError, aiAnswer, aiOne, NEEDS_RESEARCH } from "@/lib/lead-steps";
+import { aiLeadError, aiAnswer, aiOne, writeChecked, NEEDS_RESEARCH } from "@/lib/lead-steps";
 import { runAiTask, AI_TASKS, checkKestrelAllowance } from "@/lib/ai-router";
 import { runDueAiJobs, executeClaimedJob } from "@/lib/ai-jobs";
 import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/providers";
@@ -1462,5 +1462,87 @@ describe("Assistant: sortBestLeads", () => {
     assert.ok(words(fu) <= 60, `fu=${words(fu)}`);
     const qc = cleanQc({ pass: true, issues: [] }, first, undefined, [first, fu, fu, fu]);
     assert.equal(qc?.pass, true, `Expected pass, got issues: ${qc?.issues.join("; ")}`);
+  });
+
+  it("cleanQc flags a follow-up pitching a product fix like 'speed up your UI'", () => {
+    const first = "Hi,\n\nI saw your site says teams and agents build faster here. We build custom Next.js web apps for B2B SaaS teams. Is frontend web speed something you plan to work on this year? Best, Affan. Not relevant? Reply \"no\" and I won't write again. " + Array(14).fill("word").join(" ");
+    const badFu = "Hi,\n\nWe could speed up your UI and streamline your Triage Intelligence labeling process.\n\nBest,\nAffan";
+    const qc = cleanQc({ pass: true, issues: [] }, first, undefined, [first, badFu]);
+    assert.equal(qc?.pass, false);
+    assert.ok(qc?.issues.some((i) => /Follow-up 1 pitches a fix/i.test(i)));
+  });
+
+  it("writeChecked runs 1 rewrite round when QC fails then passes (rounds === 1)", async () => {
+    let wCalls = 0;
+    let qcCalls = 0;
+    const sbMock = { rpc: async () => ({ data: null, error: null }) };
+    const seq = { steps: [
+      { day: 0, subject: "Quick question", body: "Hi {{FIRST_NAME}},\n\n{{ICEBREAKER}}\n\n{{ONE_LINE}}\n\n{{QUESTION}}\n\nIf this isn't relevant, just reply no.\n\nBest,\n{{SENDER_NAME}}" },
+      { day: 5, subject: "", body: "Hi {{FIRST_NAME}},\n\n{{FOLLOW_UP}}\n\nBest,\n{{SENDER_NAME}}" },
+    ] };
+    const basePlan = {
+      provider: "groq",
+      key: "gsk_test",
+      model: "openai/gpt-oss-120b",
+      offer: { id: "o1", name: "Offer", offer: "Next.js", customer: "SaaS", good: "g", bad: "b", criteria: "", strictness: "balanced", one_line: "We build Next.js apps." },
+      sender: { ...EMPTY_SENDER, sender_name: "Affan", business: "Norven", address: "123 St", signature: "Best,\nAffan" },
+      hash: "h1",
+      system: "sys",
+      schema: {},
+      followUps: 1,
+      seq,
+      sb: sbMock,
+      teamId: "t1",
+      serverSecret: process.env.MAIL_SERVER_SECRET,
+      serverTeamAi: { provider: "groq", model: "openai/gpt-oss-120b", key: "gsk_test" },
+    };
+    const wPlan = {
+      ...basePlan,
+      task: "emails",
+      providerFn: async () => {
+        wCalls++;
+        return {
+          text: JSON.stringify({
+            first_name: "",
+            subject: "next.js apps",
+            icebreaker: "I saw your site says \"The product development system for teams and agents\" in your hero.",
+            one_line: "We build custom Next.js web apps for SaaS teams.",
+            question: "Is Next.js web app development something you are planning this year for your site?",
+            follow_up_1: "Thought I would share a quick note on our Next.js work.",
+          }),
+          usage: { input_tokens: 100, output_tokens: 80 },
+        };
+      },
+    };
+    const qcPlan = {
+      ...basePlan,
+      task: "qc",
+      providerFn: async () => {
+        qcCalls++;
+        return {
+          text: qcCalls === 1
+            ? JSON.stringify({ pass: false, issues: ["Shorten the opener."] })
+            : JSON.stringify({ pass: true, issues: [] }),
+          usage: { input_tokens: 80, output_tokens: 20 },
+        };
+      },
+    };
+    const lead = {
+      id: "l1",
+      email: "hello@linear.app",
+      outreach_approved: true,
+      data: {
+        name: "Linear",
+        outreach_approved: true,
+        research: { observations: [{ fact: "System", quote: "The product development system for teams and agents" }] },
+      },
+    };
+    const res = await writeChecked(wPlan, qcPlan, lead, { emails: new Set(), domains: new Set() }, 2);
+    assert.equal(res.ok, true);
+    assert.equal(wCalls, 2);
+    assert.equal(qcCalls, 2);
+    assert.equal(res.result.qc.status, "passed");
+    assert.equal(res.result.qc.rounds, 1);
+    assert.deepEqual(res.events.map((e) => `${e.who}:${e.kind}`), ["qc:issue", "writer:fix", "qc:pass"]);
   });
 });

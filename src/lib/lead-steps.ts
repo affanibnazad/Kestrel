@@ -367,6 +367,7 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
         // The tick worker has no signed-in user: QC needs the same server context as the writer, or it fails closed.
         serverSecret: p.serverSecret,
         serverTeamAi: p.serverTeamAi,
+        providerFn: p.providerFn,
         onCodeChecksOnly: () => {
           const codeQc = cleanQc({ pass: true, issues: [] }, stepBodies[0], p.voiceNotes, stepBodies);
           return (codeQc ?? { pass: true, issues: [] }) as Record<string, unknown>;
