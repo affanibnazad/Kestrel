@@ -94,7 +94,7 @@ describe("AI Router Configuration & Logic", () => {
     assert.equal(AI_TASKS.write.slot, "talon");
     assert.equal(AI_TASKS.write.timeoutMs, 40_000);
     assert.equal(AI_TASKS.write.retries, 1);
-    assert.equal(AI_TASKS.write.fallback, "nest");
+    assert.equal(AI_TASKS.write.fallback, "skip");
 
     assert.equal(AI_TASKS.qc.slot, "talon");
     assert.equal(AI_TASKS.qc.timeoutMs, 15_000);
@@ -1607,6 +1607,87 @@ describe("AI-4b: runDueAiJobs & serverSecret allowance", () => {
     });
     assert.equal(out.status, "done");
     assert.deepEqual(seenModels, ["openai/gpt-oss-120b", "openai/gpt-oss-120b", "openai/gpt-oss-120b"]);
+  });
+
+  it("write 429 -> job requeued (retry), no nest fallback call; successful write stores qc.writer_model", async () => {
+    const rpcCalls = [];
+    const savedPatches = [];
+    const sb = {
+      from: (table) => { throw new Error(`Anon client blocked on ${table}`); },
+      rpc: async (fn, args) => {
+        rpcCalls.push({ fn, args });
+        if (fn === "ai_slot_for_server") {
+          return {
+            data: {
+              slot: args.p_slot,
+              provider: "groq",
+              model: args.p_slot === "talon" ? "openai/gpt-oss-120b" : "qwen/qwen3.8-27b",
+              key: "gsk-kestrel",
+              enabled: true,
+            },
+            error: null,
+          };
+        }
+        if (fn === "ai_usage_this_month") return { data: 0, error: null };
+        if (fn === "ai_job_context") {
+          return {
+            data: {
+              lead: {
+                id: "lead-429-requeue",
+                team_id: "t1",
+                email: "hello@linear.app",
+                website: "https://linear.app",
+                outreach_approved: true,
+                data: { name: "Linear", outreach_approved: true, research: { observations: [{ url: "linear.app", fact: "System", quote: "The product development system for teams and agents" }] } },
+              },
+              offer: { id: "o1", name: "Web", offer: "Next.js web apps", customer: "B2B SaaS", good: "SaaS", bad: "None", one_line: "We build Next.js web apps." },
+              sequence: null,
+              settings: { sender_name: "Affan", business: "Norven", address: "London, UK", signature: "Best" },
+              about: null,
+              team_plan: { plan: "pro" },
+              key: null,
+              dnc_too_long: false,
+              dnc: [],
+            },
+            error: null,
+          };
+        }
+        if (fn === "ai_job_save_lead") savedPatches.push(args.p_patch);
+        return { data: null, error: null };
+      },
+    };
+    const seenModels = [];
+    const job = { id: "j-429", team_id: "t1", user_id: null, lead_id: "lead-429-requeue", offer_id: "o1", sequence_id: null, kind: "write", attempts: 1, max_attempts: 3, payload: {} };
+    const outcome = await executeClaimedJob(sb, job, Date.now() + 60_000, "srv-sec", async (p) => {
+      seenModels.push(p.model);
+      const err = new Error("rate_limited");
+      err.status = 429;
+      throw err;
+    });
+    assert.equal(outcome.status, "retry");
+    assert.match(outcome.error, /busy|can't answer/i);
+    assert.ok(!seenModels.includes("qwen/qwen3.8-27b"), `Must not fall back to nest, saw: ${JSON.stringify(seenModels)}`);
+    assert.ok(!rpcCalls.some((c) => c.fn === "ai_slot_for_server" && c.args.p_slot === "nest"), "Nest slot must not be resolved for write");
+
+    // Also verify writer_model is stored in outreach.qc when write succeeds
+    let calls = 0;
+    const okOutcome = await executeClaimedJob(sb, job, Date.now() + 60_000, "srv-sec", async () => {
+      calls++;
+      return {
+        text: calls === 1
+          ? JSON.stringify({
+              first_name: "",
+              subject: "next js web app",
+              icebreaker: "I saw your site says \"The product development system for teams and agents\" on your homepage.",
+              one_line: "We build fast custom Next.js web apps for growing B2B SaaS teams.",
+              question: "Quick question: is building a Next.js web app part of your plans this year?",
+            })
+          : JSON.stringify({ pass: true, issues: [] }),
+        usage: { input_tokens: 10, output_tokens: 10 },
+      };
+    });
+    assert.equal(okOutcome.status, "done");
+    assert.equal(savedPatches[0]?.data?.outreach?.qc?.writer_model, "openai/gpt-oss-120b");
   });
 });
 

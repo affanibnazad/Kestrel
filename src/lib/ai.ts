@@ -74,7 +74,7 @@ export type Draft = {
 };   // Phase 4C: what the QC bot found
 // The QC bot's check of one written email (Phase 4C, 19 Nov 2026). "hold": QC could not get it right in the fix rounds, so
 // campaigns leave it out until a person approves it ("approved") or it is rewritten. "unchecked": no time or no AI left.
-export type Qc = { status: "passed" | "hold" | "approved" | "unchecked"; issues: string[]; rounds: number; at: number; fixed?: string[] };
+export type Qc = { status: "passed" | "hold" | "approved" | "unchecked"; issues: string[]; rounds: number; at: number; fixed?: string[]; writer_model?: string };
 export type SeqParts = Parts & { follow_ups: string[] };
 
 export const EMPTY_OFFER: Offer = {

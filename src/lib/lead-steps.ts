@@ -71,7 +71,7 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
 
 export type LeadIn = { id: string; email: string | null; data: LeadData | null; outreach_approved?: boolean };
 export type AiResult =
-  | { ok: true; patch: Record<string, unknown>; result: Record<string, unknown>; cost: number | null; warning?: string }
+  | { ok: true; patch: Record<string, unknown>; result: Record<string, unknown>; cost: number | null; warning?: string; writerModel?: string }
   | { ok: false; why: string; cost: number | null; fatal?: string; stop?: boolean; missingFollowUps?: string[]; retryIssue?: string };
 
 // One lead: asks the AI and returns the database change to save (or why it was skipped). A key or quota problem is "fatal".
@@ -137,7 +137,7 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
         const totalCost = ans.cost === null || again.cost === null ? null : ans.cost + again.cost;
         return { ...again, cost: totalCost };
       }
-      return ans;
+      return ans.ok ? { ...ans, writerModel: res.model } : ans;
     }
     return { ok: false, why: "error", cost: 0, fatal: "Database connection not provided." };
   } catch (e) {
@@ -506,9 +506,11 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
     events.push({ who: "writer", kind: "fix", text: "Rewrote it with QC's notes." });
   }
   const d = draftOf(r);
-  const finalQc: Qc = d.qc?.status === "hold" && d.qc.issues.length
+  const writerModel = (r as Extract<AiResult, { ok: true }>).writerModel;
+  const baseQc: Qc = d.qc?.status === "hold" && d.qc.issues.length
     ? { ...qcState, status: "hold", issues: [...new Set([...d.qc.issues, ...qcState.issues])] }
     : qcState;
+  const finalQc: Qc = writerModel ? { ...baseQc, writer_model: writerModel } : baseQc;
   const outreach = { ...d, qc: finalQc };
   const done = r as Extract<AiResult, { ok: true }>;
   const patch = { ...done.patch, data: { ...(done.patch.data as Record<string, unknown>), outreach } };

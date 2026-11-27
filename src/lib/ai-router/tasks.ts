@@ -30,7 +30,7 @@ export const AI_TASKS: Record<AiTaskName, TaskConfig> = {
   explain: { slot: "swift", timeoutMs: 10_000, retries: 1, fallback: "skip", maxTokens: 500, maxConcurrent: 3 },
   voice: { slot: "swift", timeoutMs: 20_000, retries: 1, fallback: "nest", maxTokens: 800, maxConcurrent: 3 },
   score: { slot: "swift", timeoutMs: 20_000, retries: 1, fallback: "nest", maxTokens: 1500, maxConcurrent: 3 },
-  write: { slot: "talon", timeoutMs: 40_000, retries: 1, fallback: "nest", maxTokens: 2500, maxConcurrent: 3 },
+  write: { slot: "talon", timeoutMs: 40_000, retries: 1, fallback: "skip", maxTokens: 2500, maxConcurrent: 3 },
   qc: { slot: "talon", timeoutMs: 15_000, retries: 1, fallback: "code_checks_only", maxTokens: 1500, maxConcurrent: 3 },
   reply_suggest: { slot: "talon", timeoutMs: 20_000, retries: 1, fallback: "nest", maxTokens: 900, maxConcurrent: 3 },
   reply_label: { slot: "swift", timeoutMs: 20_000, retries: 1, fallback: "nest", maxTokens: 300, maxConcurrent: 3 },
