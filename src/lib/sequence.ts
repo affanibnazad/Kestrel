@@ -87,12 +87,14 @@ export function footer(s: SenderBits) {
   return [[sign, String(s.address || "").trim()].filter(Boolean).join("\n"), OPT_OUT].filter(Boolean).join("\n\n");
 }
 
-const tidy = (text: string) => text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+const tidy = (text: string) => text.replace(/\b(Hi|Hey|Hello)\s+,/gi, "$1,").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 
 // One step with the merge fields filled. Fields with no value stay visible as [FIELD] and are listed in `missing`.
 export function renderStep(step: Step, index: number, parts: Partial<SequenceParts>, oneLine: string, s: SenderBits, threadSubject = "", variant = 0): Rendered {
+  const rawFirst = greetName(parts.first_name);
+  const firstVal = rawFirst && rawFirst.toLowerCase() !== "there" ? rawFirst : "";
   const values: Record<string, string> = {
-    FIRST_NAME: greetName(parts.first_name), SUBJECT: parts.subject || "", ICEBREAKER: parts.icebreaker || "", QUESTION: parts.question || "",
+    FIRST_NAME: firstVal, SUBJECT: parts.subject || "", ICEBREAKER: parts.icebreaker || "", QUESTION: parts.question || "",
     // ONE_LINE: the AI's new wording for this email, else the offer's line. (19 Nov 2026: FOLLOW_UP had been lost behind
     // this comment on the same line, so every follow-up showed "[FOLLOW_UP]" and writing with a sequence failed.)
     ONE_LINE: String(parts.one_line || oneLine || "").trim(),
@@ -102,6 +104,7 @@ export function renderStep(step: Step, index: number, parts: Partial<SequencePar
   const missing = new Set<string>();
   const fill = (text: string) => String(text || "").replace(FIELD_RE, (_m, f: string) => {
     const k = f.toUpperCase();
+    if (k === "FIRST_NAME") return values.FIRST_NAME;
     if (values[k]) return values[k];
     if (k in values) missing.add(k); // unknown fields are flagged by the spam check instead
     return `[${k}]`;

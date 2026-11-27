@@ -1440,6 +1440,17 @@ describe("Assistant: sortBestLeads", () => {
     const outreach = res.patch.data.outreach;
     assert.equal(outreach.qc.status, "hold");
     assert.ok(outreach.body.includes("product development system"));
+    assert.ok(outreach.body.startsWith("Hi,\n"));
     assert.equal(outreach.steps.some((s) => /\[FOLLOW_UP\]/.test(s.body)), false);
+  });
+
+  it("emailSystem instructs follow-ups to use only research.observations or offer and open with Hi when no name", () => {
+    const sys = emailSystem(
+      { id: "o1", name: "O", offer: "Next.js", customer: "SaaS", good: "g", bad: "b", criteria: "", strictness: "balanced", one_line: "We build Next.js apps." },
+      { ...EMPTY_SENDER, sender_name: "Affan", business: "Norven", address: "123 St" },
+      [{ day: 0, subject: "s", body: "Hi {{FIRST_NAME}},\n\n{{ICEBREAKER}}" }, { day: 5, subject: "", body: "Hi {{FIRST_NAME}},\n\n{{FOLLOW_UP}}" }]
+    );
+    assert.match(sys, /Only reference verified research\.observations/i);
+    assert.match(sys, /opens with "Hi," and no name/i);
   });
 });

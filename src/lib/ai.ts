@@ -342,7 +342,7 @@ ${voiceNotes
 Fail it for any of the following problems:
 1. A fact about the lead that the lead fields or evidence.observations do not support: an invented client, project, city, award, number, tool or service. unverified_notes are guesses and never count as support. Also fail any claim that the lead lacks something (no website, not hiring, no team). Also fail any claim about the sender (skill, client, result, years, tool) that the seller's offer or one line does not say.
 2. A place mentioned in the message body that falsely claims to be the lead's location. (The sender's own postal address in the signature footer, such as London, UK, is the sender's address and is allowed).
-3. The greeting greets the company (e.g. "Hi Social,") or a name that is not in the lead data. When no contact person is named, "Hi there," is the correct greeting matching "Hi {name},". Do NOT fail "Hi there,".
+3. The greeting greets the company (e.g. "Hi Social,") or a name that is not in the lead data. When no contact person is named, "Hi," (or "Hi there," on older drafts) is the correct greeting. Do NOT fail "Hi,".
 4. The first line is generic: it would fit any business of this kind.
 5. Price, packages, trials, free work, discounts, payment, guarantees, hype or AI-style words (leverage, elevate, seamless, unlock, tailored, delve, robust).
 6. The question is vague, asks for a meeting straight away, assumes a tool, tech stack, traffic level or problem the lead data does not show, or asks about something the seller's offer has nothing to do with. A neutral question that only asks whether the seller's kind of work is on the lead's plans (e.g. "is X something you are planning this year?") assumes nothing and is valid: do NOT fail it.
@@ -601,8 +601,9 @@ function followUpRules(steps?: Step[]) {
   const jobs = followUpPurposes(n).map((p, i) => `- follow_up_${i + 1} (sent on day ${fus[i].day} if they have not replied): ${p}`).join("\n");
   return `
 
-Follow-ups (the same lead, sent only if they did not reply; each one comes after "Hi <first_name>," so never greet again)
+Follow-ups (the same lead, sent only if they did not reply; each one comes after "Hi," or "Hi <first_name>,", so never greet again)
 ${jobs}
+- Only reference verified research.observations (evidence.observations) or the seller's offer; NEVER guess or assume the lead's internal problems, workflows, or technical constraints.
 - Each follow-up: 1 or 2 short sentences, under 40 words, about this lead's own work. Each one says something new.
 - Never mention price, packages, trials, free work, discounts or payment. Never say "just following up", "bumping this", "circling back" or "touch base".
 - Plain words, no AI-style words, no links, no capitals for emphasis, no exclamation marks.`;
@@ -627,10 +628,10 @@ Rules (Strict Stage D Writing Quality):
 - Grammar & Fluency: Every sentence must be natural, correct, fluent English. No broken grammar, no awkward phrasing like "showing your user focus great" or "help ... significantly and performance today?".
 - Sentence length: Every sentence must be strictly under 20 words (ideal: 12 to 18 words).
 - Voice & Tone:
-  * Do not write the greeting or sign-off yourself: Kestrel adds the sender's greeting ("Hi <first_name>,") and sign-off. Only fill the JSON fields.
+  * Do not write the greeting or sign-off yourself: Kestrel adds the sender's greeting ("Hi," or "Hi <first_name>,") and sign-off. Only fill the JSON fields.
   * You may use the sender's usual words where they fit, but never to make a claim. A true sentence matters more than using a voice word.
   * NEVER use any words from the sender's avoided words (${voiceNotes?.words_avoided?.join(", ") || "none"}).
-- first_name: the person's real first name ONLY when explicitly provided in contact_name or name_from_email. Otherwise, you MUST set first_name to exactly "there" (the email will begin "Hi there,"). NEVER invent names, roles, or titles like "Founders", "Team", "Owner", "Friend", or company names.
+- first_name: the person's real first name ONLY when explicitly provided in contact_name or name_from_email. Otherwise, you MUST set first_name to "" (empty string, so the email opens with "Hi," and no name, never "Hi there"). NEVER invent names, roles, or titles like "Founders", "Team", "Owner", "Friend", or company names.
 - icebreaker: one sentence, 14 to 19 words, quoting ONE specific verified observation quote from the lead's website research. The sentence MUST quote the exact words from evidence.observations (e.g. I saw your site says "<exact quote>"...). Every "I saw / I noticed" line must come directly from one of those quotes. If there are no observations, write a plain, true sentence using only the lead's name, category or location, with no "I saw / I noticed". Never invent, assume, or hallucinate facts (e.g. do not claim they are hiring or migrating unless a verified observation quote explicitly proves it).
 - chosen angle: Frame the message around the chosen angle (${chosenAngle ? chosenAngle.angle : "evidence"}):
   * timing: tie the opener directly to the verified buying trigger event.
@@ -793,21 +794,23 @@ export function assemble(p: Parts, o: Offer, s: Sender, voiceNotes?: VoiceNotes)
   const senderName = (s.sender_name?.trim() || s.signature?.trim() || "").split("\n")[0].trim();
   const address = s.address?.trim() || "";
   const signBlock = [signOff, senderName, address].filter(Boolean).join("\n");
-  let greeting = `Hi ${greetName(p.first_name)},`;
+  const gName = greetName(p.first_name);
+  const hasName = Boolean(gName && gName.toLowerCase() !== "there");
+  let greeting = hasName ? `Hi ${gName},` : "Hi,";
   // The voice greeting's name slot, in any form people or the voice AI write it: {name}, {{name}}, {first_name},
   // {{FIRST_NAME}}. Only {name} was understood before, so "Hey {{name}}," came out as "Hey {Sam},".
   const NAME_SLOT = /\{\{?\s*(?:first_?name|name)\s*\}?\}/gi;
   if (voiceNotes?.greeting?.trim()) {
     const vnG = voiceNotes.greeting.trim();
     if (vnG.search(NAME_SLOT) >= 0) {
-      greeting = vnG.replace(NAME_SLOT, greetName(p.first_name));
-    } else if (p.first_name && p.first_name !== "there") {
-      greeting = `${vnG.replace(/,\s*$/, "")} ${greetName(p.first_name)},`;
+      greeting = (hasName ? vnG.replace(NAME_SLOT, gName) : vnG.replace(/\s*\{\{?\s*(?:first_?name|name)\s*\}?\}/gi, "")).replace(/\s+,/g, ",");
+    } else if (hasName) {
+      greeting = `${vnG.replace(/,\s*$/, "")} ${gName},`;
     } else {
-      greeting = "Hi there,";
+      greeting = "Hi,";
     }
     // Any other {field} left in a saved greeting would be sent as it is: fall back to the plain greeting.
-    if (/[{}]/.test(greeting)) greeting = `Hi ${greetName(p.first_name)},`;
+    if (/[{}]/.test(greeting)) greeting = hasName ? `Hi ${gName},` : "Hi,";
   }
   // The AI's wording of the one line, unless it uses a word the sender avoids: then the sender's own line, as written.
   // (Swapping the word for "high-performance" used to add a claim the sender never made.)
