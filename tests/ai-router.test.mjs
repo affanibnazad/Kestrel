@@ -11,6 +11,7 @@ import { callProvider, ProviderCallError, costOf } from "@/lib/ai-router/provide
 import { readJson, EMPTY_SENDER, assemble, emailSystem, emailPayload, qcSystem, cleanParts, cleanQc, hasObservations, cleanResearch, numbersNotInQuote } from "@/lib/ai";
 import { sortBestLeads, fillStepDefaults, looksLikeInlineColdEmail } from "@/lib/assistant";
 import { CHAT_SYSTEM, CHAT_TOOLS } from "@/lib/assistant-prompt";
+import { renderAll } from "@/lib/sequence";
 
 // Ensure server secret is valid for standalone test runner
 process.env.MAIL_SERVER_SECRET = "1234567890123456789012345678901234";
@@ -1366,6 +1367,45 @@ describe("AI-4b: runDueAiJobs & serverSecret allowance", () => {
     assert.equal(savedPatches[1]?.data?.outreach?.qc?.status, "hold");
     assert.equal(savedPatches[1]?.outreach_approved, false);
     assert.equal(savedPatches[1]?.data?.outreach_approved, false);
+  });
+
+  it("renderAll keeps writer's {{SUBJECT}} instead of overriding with sequence variants", () => {
+    const steps = [
+      {
+        day: 0,
+        subject: "{{SUBJECT}}",
+        variants: ["video editing overflow for {{FIRST_NAME}}", "quick question on your client video work"],
+        body: "Hi {{FIRST_NAME}},\n\n{{ICEBREAKER}}\n\n{{ONE_LINE}}\n\n{{QUESTION}}",
+      },
+    ];
+    const rendered = renderAll(
+      steps,
+      { first_name: "there", subject: "next.js web app inquiry", icebreaker: "Saw your site.", question: "Planning Next.js this year?" },
+      "We build Next.js apps.",
+      { sender_name: "Affan", address: "London, UK", signature: "Best" },
+      2 // variant C
+    );
+    assert.equal(rendered[0].subject, "next.js web app inquiry");
+    assert.equal(rendered[0].variant, undefined);
+  });
+
+  it("cleanQc passes 'Is full-stack Next.js development on your roadmap?' without splitting Next.js at the dot", () => {
+    const body = [
+      "Hi,",
+      "",
+      "Your site says Linear is a product development system for teams and agents.",
+      "",
+      "We build fast, scalable Next.js web apps for B2B SaaS companies and growing tech teams.",
+      "",
+      "Quick question: Is full-stack Next.js development on your roadmap for this year?",
+      "",
+      "Best,",
+      "Affan",
+      "",
+      "Not relevant? Reply \"no\" and I won't write again.",
+    ].join("\n");
+    const res = cleanQc({ pass: true, issues: [] }, body);
+    assert.equal(res?.pass, true, `Expected pass, got issues: ${JSON.stringify(res?.issues)}`);
   });
 });
 

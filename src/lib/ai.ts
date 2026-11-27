@@ -447,7 +447,7 @@ export function cleanQc(d: Record<string, unknown> | null, draftText = "", voice
   if (firstEmail) {
     // Verify question relates to the matched service (e.g. Next.js, web apps, frontend, UI, dashboard, speed, performance, site)
     const bodyWithoutFooter = firstEmail.replace(/not relevant\?\s*reply\s+"?no"?[\s\S]*/i, "");
-    const questionMatch = bodyWithoutFooter.match(/([^\n.!?]+\?)/g);
+    const questionMatch = bodyWithoutFooter.match(/((?:[^\n.!?]|\.(?=\S))+\?)/g);
     const questionText = questionMatch ? questionMatch[questionMatch.length - 1].trim() : "";
     if (questionText && !/\b(next\.?js|web|app|frontend|site|dashboard|ui|interface|speed|performance|loading|load time)\b/i.test(questionText)) {
       issues.push(`The question must ask about our matched service (Next.js web application/frontend performance) rather than the lead's internal backend operations.`);
