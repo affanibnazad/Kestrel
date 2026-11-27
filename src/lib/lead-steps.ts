@@ -72,7 +72,7 @@ export function aiPlan(task: "score" | "emails" | "research" | "qc", offer: Offe
 export type LeadIn = { id: string; email: string | null; data: LeadData | null; outreach_approved?: boolean };
 export type AiResult =
   | { ok: true; patch: Record<string, unknown>; result: Record<string, unknown>; cost: number | null; warning?: string }
-  | { ok: false; why: string; cost: number | null; fatal?: string; stop?: boolean; missingFollowUps?: string[] };
+  | { ok: false; why: string; cost: number | null; fatal?: string; stop?: boolean; missingFollowUps?: string[]; retryIssue?: string };
 
 // One lead: asks the AI and returns the database change to save (or why it was skipped). A key or quota problem is "fatal".
 export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] = [], allowPartial = false): Promise<AiResult> {
@@ -310,11 +310,21 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
   // Never save a draft that would send a visible [FIELD] (e.g. no booking link set) or price / trial / money words.
   const emails = (outreach.steps ?? [{ body: outreach.body, subject: outreach.subject }]).filter((x) => !("kind" in x) || !x.kind || x.kind === "email");
   const unfilled = emails.map((x) => `${x.subject} ${x.body}`.match(/\[([A-Z][A-Z_]{2,})\]/)?.[1]).find(Boolean);
-  if (unfilled) return { ok: false, why: `${unfilled.replace(/_/g, " ").toLowerCase()} is not set`, cost };
-  if (outreach.flags?.length || emails.some((x) => MONEY.test(`${x.subject} ${x.body}`))) return { ok: false, why: "price or payment words", cost };
+  if (unfilled) {
+    return { ok: false, why: `${unfilled.replace(/_/g, " ").toLowerCase()} is not set`, retryIssue: `Remove the unfilled placeholder [${unfilled}] and rewrite.`, cost };
+  }
+  const moneyMatches = emails.flatMap((x) => `${x.subject} ${x.body}`.match(new RegExp(MONEY.source, "gi")) ?? []);
+  if (outreach.flags?.length || moneyMatches.length) {
+    const tripped = [...new Set([...(outreach.flags ?? []), ...moneyMatches])];
+    console.log(`[ai-code-check] lead=${l.id} price/payment tripped=${JSON.stringify(tripped)} subject=${JSON.stringify(outreach.subject)} body=${JSON.stringify(outreach.body)} followUps=${JSON.stringify(fu)}`);
+    return { ok: false, why: "price or payment words", retryIssue: `Remove price/payment/banned words (${tripped.join(", ") || "price/payment"}) and rewrite without them.`, cost };
+  }
   // The database's own check (email_steps_problem), so a draft that Start would skip is caught now, with the reason.
   const problem = emailStepsProblem(emails as { subject?: string; body?: string; kind?: string }[]);
-  if (problem) return { ok: false, why: `${problem}: rewrite it`, cost };
+  if (problem) {
+    console.log(`[ai-code-check] lead=${l.id} step_problem=${JSON.stringify(problem)} subject=${JSON.stringify(outreach.subject)} body=${JSON.stringify(outreach.body)} followUps=${JSON.stringify(fu)}`);
+    return { ok: false, why: `${problem}: rewrite it`, retryIssue: `${problem}. Rewrite to fix it.`, cost };
+  }
 
   const chosenAngle = pickAngle(data, p.offer, p.about ?? null, (data as Record<string, unknown>).buying_trigger as string | null);
   const patch: Record<string, unknown> = {
@@ -388,10 +398,23 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
 export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc: DncIndex, rounds = 2, more: () => boolean = () => true):
   Promise<AiResult & { events?: QcEvent[] }> {
   let r = await aiOne(w, l, dnc);
-  if (!r.ok || !qc) return r;
-  const events: QcEvent[] = [];
   let cost = r.cost, round = 0, fixed: string[] = [];
   const add = (c: number | null) => { cost = cost === null || c === null ? null : cost + c; };
+  while (!r.ok && r.retryIssue) {
+    const canRetry = round < rounds && more();
+    console.log(`[writeChecked] lead=${l.id} round=${round} code_check_fail=${JSON.stringify(r.retryIssue)} stop_reason=${canRetry ? "rewriting" : round >= rounds ? "round_limit" : "more_false"}`);
+    if (!canRetry) return { ...r, cost };
+    const issue = r.retryIssue;
+    round++;
+    fixed = [...fixed, issue].slice(0, 8);
+    r = await aiOne(w, l, dnc, [issue]);
+    add(r.cost);
+  }
+  if (!r.ok || !qc) {
+    if (!r.ok) console.log(`[writeChecked] lead=${l.id} round=${round} stop_reason=initial_write_failed(${r.why})`);
+    return { ...r, cost };
+  }
+  const events: QcEvent[] = [];
   const draftOf = (x: AiResult) => ((x as unknown as { patch: { data: { outreach: Draft } } }).patch.data.outreach);
   const leadData = { ...(l.data ?? {}), email: l.email ?? (l.data as { email?: string } | null)?.email } as LeadData;
   let qcState: Qc = { status: "unchecked", issues: [], rounds: 0, at: Date.now() };
@@ -401,7 +424,10 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
     let pass = false;
     let issues: string[] = [];
     if (!q.ok) {
-      if (q.fatal) return { ok: false, why: q.stop ? q.fatal : "error", cost, fatal: q.fatal, stop: q.stop };
+      if (q.fatal) {
+        console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=[] stop_reason=qc_fatal(${q.fatal})`);
+        return { ok: false, why: q.stop ? q.fatal : "error", cost, fatal: q.fatal, stop: q.stop };
+      }
       const curDraft = draftOf(r);
       const emailSteps = (curDraft.steps || []).filter((s) => !("kind" in s) || (s as { kind?: string }).kind === "email").map((s) => s.body);
       const stepBodies = emailSteps.length ? emailSteps : [curDraft.body || ""];
@@ -410,6 +436,7 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
         pass = false;
         issues = codeQc.issues;
       } else {
+        console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=[] stop_reason=passed_code_qc`);
         qcState = { status: "passed", issues: [], rounds: round, at: Date.now() };
         events.push({ who: "qc", kind: "pass", text: "Passed code-level QC check." });
         break;
@@ -418,12 +445,46 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
       pass = q.pass;
       issues = q.issues;
     }
-    if (pass) { qcState = { status: "passed", issues: [], rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) }; events.push({ who: "qc", kind: "pass", text: round ? `Passed after ${round} fix${round === 1 ? "" : "es"}.` : "Passed." }); break; }
-    if (round >= rounds || !more()) { qcState = { status: "hold", issues, rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) }; events.push({ who: "qc", kind: "hold", text: issues.join(" ") }); break; }
+    if (pass) {
+      console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=[] stop_reason=passed`);
+      qcState = { status: "passed", issues: [], rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) };
+      events.push({ who: "qc", kind: "pass", text: round ? `Passed after ${round} fix${round === 1 ? "" : "es"}.` : "Passed." });
+      break;
+    }
+    if (round >= rounds || !more()) {
+      const whyStop = round >= rounds ? "round_limit" : "more_false";
+      console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=${whyStop}`);
+      qcState = { status: "hold", issues, rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) };
+      events.push({ who: "qc", kind: "hold", text: issues.join(" ") });
+      break;
+    }
+    console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=rewriting`);
     events.push({ who: "qc", kind: "issue", text: issues.join(" ") });
     const again = await aiOne(w, l, dnc, issues);
     add(again.cost);
-    if (!again.ok) { if (again.fatal) return { ok: false, why: again.stop ? again.fatal : "error", cost, fatal: again.fatal, stop: again.stop }; qcState = { status: "hold", issues, rounds: round, at: Date.now() }; events.push({ who: "qc", kind: "hold", text: issues.join(" ") }); break; }
+    if (!again.ok) {
+      if (again.fatal) {
+        console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=rewrite_fatal(${again.fatal})`);
+        return { ok: false, why: again.stop ? again.fatal : "error", cost, fatal: again.fatal, stop: again.stop };
+      }
+      if (again.retryIssue && round + 1 < rounds && more()) {
+        round++;
+        const nextIssues = [...issues, again.retryIssue];
+        fixed = [...fixed, ...nextIssues].slice(0, 8);
+        console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(nextIssues)} stop_reason=rewrite_code_check_retrying`);
+        const retryAgain = await aiOne(w, l, dnc, nextIssues);
+        add(retryAgain.cost);
+        if (retryAgain.ok) {
+          r = retryAgain; round++;
+          events.push({ who: "writer", kind: "fix", text: "Rewrote it with QC's notes." });
+          continue;
+        }
+      }
+      console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=rewrite_failed(${again.why})`);
+      qcState = { status: "hold", issues, rounds: round, at: Date.now() };
+      events.push({ who: "qc", kind: "hold", text: issues.join(" ") });
+      break;
+    }
     r = again; round++; fixed = [...fixed, ...issues].slice(0, 8);
     events.push({ who: "writer", kind: "fix", text: "Rewrote it with QC's notes." });
   }

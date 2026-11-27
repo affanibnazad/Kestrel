@@ -1545,4 +1545,77 @@ describe("Assistant: sortBestLeads", () => {
     assert.equal(res.result.qc.rounds, 1);
     assert.deepEqual(res.events.map((e) => `${e.who}:${e.kind}`), ["qc:issue", "writer:fix", "qc:pass"]);
   });
+
+  it("writeChecked retries when code-check fails (price or payment words) and only skips after last round fails", async () => {
+    const fakeSb = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async () => ({ data: 0, error: null }),
+    };
+    let calls = 0;
+    const goodBody = {
+      first_name: "",
+      subject: "next js site",
+      icebreaker: "I saw your site says \"Fast issue tracking\" on your homepage for engineering teams.",
+      one_line: "We build fast custom Next.js web apps for growing B2B SaaS teams.",
+      question: "Quick question: is building a Next.js web app part of your plans this year?",
+    };
+    const badBody = {
+      ...goodBody,
+      question: "Quick question: want a free discount on Next.js work?",
+    };
+    const plan = {
+      task: "emails",
+      provider: "groq",
+      key: "gsk-test",
+      model: "openai/gpt-oss-120b",
+      offer: { id: "o1", name: "Web", offer: "Next.js web apps", customer: "B2B SaaS", one_line: "We build fast Next.js web apps." },
+      sender: { sender_name: "Affan", address: "London, UK" },
+      hash: "h",
+      system: "sys",
+      schema: {},
+      followUps: 0,
+      sb: fakeSb,
+      teamId: "t1",
+      userId: "u1",
+      serverSecret: process.env.MAIL_SERVER_SECRET,
+      serverTeamAi: { provider: "groq", model: "openai/gpt-oss-120b", key: "gsk_test" },
+      providerFn: async () => {
+        calls++;
+        return { text: JSON.stringify(calls === 1 ? badBody : goodBody), usage: { input_tokens: 10, output_tokens: 10 } };
+      },
+    };
+    const qcPlan = {
+      ...plan,
+      task: "qc",
+      providerFn: async () => ({ text: JSON.stringify({ pass: true, issues: [] }), usage: { input_tokens: 10, output_tokens: 10 } }),
+    };
+    const lead = {
+      id: "l-price-retry",
+      email: "a@example.com",
+      outreach_approved: true,
+      data: { website: "https://example.com", research: { observations: [{ url: "example.com", fact: "Fast", quote: "Fast issue tracking" }] } },
+    };
+    const dnc = { emails: new Set(), domains: new Set() };
+
+    // 1. First draft trips price/payment -> rewrite round succeeds -> passes with rounds === 1
+    const res1 = await writeChecked(plan, qcPlan, lead, dnc, 2);
+    assert.equal(res1.ok, true);
+    assert.equal(res1.result.qc.status, "passed");
+    assert.equal(res1.result.qc.rounds, 1);
+    assert.equal(calls, 2);
+
+    // 2. Always trips price/payment -> skips only after rounds === 2 (3 total attempts: initial + 2 rewrites)
+    let alwaysBadCalls = 0;
+    const badPlan = {
+      ...plan,
+      providerFn: async () => {
+        alwaysBadCalls++;
+        return { text: JSON.stringify(badBody), usage: { input_tokens: 10, output_tokens: 10 } };
+      },
+    };
+    const res2 = await writeChecked(badPlan, qcPlan, lead, dnc, 2);
+    assert.equal(res2.ok, false);
+    assert.equal(res2.why, "price or payment words");
+    assert.equal(alwaysBadCalls, 3);
+  });
 });
