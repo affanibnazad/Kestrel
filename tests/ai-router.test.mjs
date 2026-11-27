@@ -1469,7 +1469,83 @@ describe("AI-4b: runDueAiJobs & serverSecret allowance", () => {
       };
     });
     assert.equal(out.status, "done");
-    assert.deepEqual(seenModels, ["openai/gpt-oss-120b", "openai/gpt-oss-120b"]);
+    assert.equal(seenModels[0], "openai/gpt-oss-120b");
+    assert.equal(seenModels[1], "openai/gpt-oss-120b");
+  });
+
+  it("cleanQc never returns pass: false with empty issues[]", () => {
+    const body = [
+      "Hi,",
+      "",
+      "Your site says Linear is a product development system for teams and agents.",
+      "",
+      "We build fast, scalable Next.js web apps for B2B SaaS companies.",
+      "",
+      "Quick question: is full-stack Next.js development on your roadmap this year?",
+      "",
+      "Best,",
+      "Affan",
+      "",
+      "Not relevant? Reply \"no\" and I won't write again.",
+    ].join("\n");
+    const res = cleanQc({ pass: false, issues: [] }, body);
+    assert.equal(res?.pass, true);
+    assert.deepEqual(res?.issues, []);
+  });
+
+  it("writeChecked completes at least 1 rewrite round when QC finds a fixable issue", async () => {
+    const fakeSb = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async () => ({ data: 0, error: null }),
+    };
+    const draftJson = JSON.stringify({
+      first_name: "",
+      subject: "next js web app",
+      icebreaker: "I saw your site says \"The product development system for teams and agents\" on your homepage.",
+      one_line: "We build fast custom Next.js web apps for growing B2B SaaS teams.",
+      question: "Quick question: is building a Next.js web app part of your plans this year?",
+    });
+    const basePlan = {
+      task: "emails",
+      provider: "groq",
+      key: "gsk-test",
+      model: "openai/gpt-oss-120b",
+      offer: { id: "o1", name: "Web", offer: "Next.js web apps", customer: "B2B SaaS", one_line: "We build Next.js web apps." },
+      sender: { sender_name: "Affan", address: "London, UK" },
+      hash: "h",
+      system: "sys",
+      schema: {},
+      followUps: 0,
+      sb: fakeSb,
+      teamId: "t1",
+      userId: "u1",
+      serverSecret: process.env.MAIL_SERVER_SECRET,
+      serverTeamAi: { provider: "groq", model: "openai/gpt-oss-120b", key: "gsk_test" },
+    };
+    let wCalls = 0;
+    const wPlan = {
+      ...basePlan,
+      providerFn: async () => {
+        wCalls++;
+        return { text: draftJson, usage: { input_tokens: 10, output_tokens: 10 } };
+      },
+    };
+    const qcPlan = {
+      ...basePlan,
+      task: "qc",
+      providerFn: async () => ({ text: JSON.stringify({ pass: false, issues: ["Shorten opener."] }), usage: { input_tokens: 10, output_tokens: 10 } }),
+    };
+    const lead = {
+      id: "l-rewrite-hold",
+      email: "a@example.com",
+      outreach_approved: true,
+      data: { website: "https://example.com", research: { observations: [{ url: "example.com", fact: "System", quote: "The product development system for teams and agents" }] } },
+    };
+    const res = await writeChecked(wPlan, qcPlan, lead, { emails: new Set(), domains: new Set() }, 2);
+    assert.equal(res.ok, true);
+    assert.equal(res.result.qc.status, "hold");
+    assert.ok(res.result.qc.rounds >= 1, `Expected rounds >= 1, got ${res.result.qc.rounds}`);
+    assert.ok(res.result.qc.issues.length > 0);
   });
 });
 
