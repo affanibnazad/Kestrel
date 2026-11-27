@@ -248,7 +248,10 @@ export async function runDueAiJobs(opts: {
 
   await Promise.allSettled(jobs.map(async (job) => {
     const startedAt = Date.now();
-    const jobDeadlineMs = startedAt + Math.min(12_000, Math.max(2_000, phaseEnd - startedAt));
+    const jobDeadlineMs =
+      job.kind === "write"
+        ? startedAt + 60_000
+        : startedAt + Math.min(12_000, Math.max(2_000, phaseEnd - startedAt));
     await logBrainEvent(opts.sb, opts.secret, job, "started", 0, `Running ${job.kind}`);
 
     let outcome: JobStepOutcome;

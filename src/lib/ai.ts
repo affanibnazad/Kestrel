@@ -352,7 +352,7 @@ Fail it for any of the following problems (check EVERY email: first email AND ev
 10. Invented proof, metrics, percentages, or numbers not present in the verified proof points.
 11. Pressure or aggressive push for calendar bookings.
 12. Any "I saw / I noticed" statement not backed by an exact quote in the verified observations.
-13. Grammar, readability, and word count: each sentence must be grammatical, natural, and strictly under 20 words. Total email body must be between 50 and 90 words. Fail any disjointed or ungrammatical phrases.
+13. Grammar, readability, and word count: each sentence must be grammatical, natural, and strictly under 20 words. Total email body must be under 90 words. Fail any disjointed or ungrammatical phrases.
 14. Voice adherence: greeting and sign-off must match the sender's voice profile, and use zero avoided words. Do NOT fail an email for leaving out the sender's usual words. (The sender signature footer like "Best,\nAffan\nLondon, UK" matches "Best,").
 Do not fail it for style you would merely write differently. Each issue says exactly what to change, in one short sentence.
 
@@ -408,9 +408,7 @@ export function cleanQc(d: Record<string, unknown> | null, draftText = "", voice
   // Per-email word count, sentence length & readability checks
   if (firstEmail) {
     const firstWords = firstEmail.trim().split(/\s+/).filter(Boolean).length;
-    if (firstWords < 50) {
-      issues.push(`Draft is too brief (${firstWords} words). Total email must be between 50 and 90 words.`);
-    } else if (firstWords > 90) {
+    if (firstWords > 90) {
       issues.push(`Draft is too long (${firstWords} words). Total email must be under 90 words.`);
     }
   }
@@ -641,7 +639,7 @@ ${voiceNotes.words_used?.length ? `- Words they often use (optional, only where 
     }
 Rules (Strict Stage D Writing Quality):
 - Required JSON fields: first_name, subject, icebreaker, one_line, question (and follow_up_1, follow_up_2, follow_up_3 if requested). Do NOT output a single "body" key. Output each individual field matching the schema.
-- Word count: The total email body must be between 50 and 90 words. Keep sentences under 20 words each (ideal: 12 to 18 words per sentence). Do not be overly brief (under 50 words) and never exceed 90 words.
+- Word count: The total email body must be under 90 words. Keep sentences under 20 words each (ideal: 12 to 18 words per sentence). Never exceed 90 words.
 - Grammar & Fluency: Every sentence must be natural, correct, fluent English. No broken grammar, no awkward phrasing like "showing your user focus great" or "help ... significantly and performance today?".
 - Sentence length: Every sentence must be strictly under 20 words (ideal: 12 to 18 words).
 - Voice & Tone:
