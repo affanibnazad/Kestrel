@@ -482,8 +482,8 @@ export function cleanQc(d: Record<string, unknown> | null, draftText = "", voice
     // The sender's usual words are not required: demanding "noticed" made the writer invent things it noticed.
   }
 
-  // "pass" with small notes still passes; a fail needs at least one concrete issue to fix.
-  const pass = rawPass && !issues.length;
+  // "pass" with small notes still passes; a fail needs at least one concrete issue to fix (never hold with []).
+  const pass = !issues.length;
   return { pass, issues: pass ? [] : issues.slice(0, 4) };
 }
 // What QC reads: the lead (as the Writer saw it) and every email step as it would be sent.

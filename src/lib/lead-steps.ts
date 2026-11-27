@@ -461,23 +461,23 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
       break;
     }
     if (round >= rounds || !more()) {
+      const safeIssues = issues.length ? issues : ["Needs review before sending."];
       const whyStop = round >= rounds ? "round_limit" : "more_false";
-      console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=${whyStop}`);
-      qcState = { status: "hold", issues, rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) };
-      events.push({ who: "qc", kind: "hold", text: issues.join(" ") });
+      console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(safeIssues)} stop_reason=${whyStop}`);
+      qcState = { status: "hold", issues: safeIssues, rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) };
+      events.push({ who: "qc", kind: "hold", text: safeIssues.join(" ") });
       break;
     }
     console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=rewriting`);
     events.push({ who: "qc", kind: "issue", text: issues.join(" ") });
     let again = await aiOne(w, l, dnc, issues);
     add(again.cost);
-    if (!again.ok && /busy/i.test(again.why) && more()) {
-      console.log(`[writeChecked] lead=${l.id} round=${round} rewrite_rate_limited -> waiting 10s to retry`);
-      await new Promise((res) => setTimeout(res, 10_000));
-      if (more()) {
-        again = await aiOne(w, l, dnc, issues);
-        add(again.cost);
-      }
+    for (let waitAttempt = 0; !again.ok && /busy/i.test(again.why) && more() && waitAttempt < 2; waitAttempt++) {
+      console.log(`[writeChecked] lead=${l.id} round=${round} rewrite_rate_limited -> waiting 15s to retry (${waitAttempt + 1}/2)`);
+      await new Promise((res) => setTimeout(res, 15_000));
+      if (!more()) break;
+      again = await aiOne(w, l, dnc, issues);
+      add(again.cost);
     }
     if (!again.ok) {
       if (again.fatal) {
