@@ -361,7 +361,7 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
         system: p.system,
         user: `<check>${JSON.stringify(qcPayload(data, draft))}</check>`,
         schema: p.schema,
-        maxTokens: 700,
+        maxTokens: 1500,
         effort: p.effort,
         deadlineMs: p.deadlineMs,
         // The tick worker has no signed-in user: QC needs the same server context as the writer, or it fails closed.

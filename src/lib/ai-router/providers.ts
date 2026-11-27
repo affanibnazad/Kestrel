@@ -701,6 +701,8 @@ async function callOpenAiStyle(params: ProviderCallParams): Promise<ProviderAnsw
   }
   if (provider === "nvidia") {
     body.reasoning_effort = "none";
+  } else if (provider === "groq" && /^openai\/gpt-oss-/i.test(model)) {
+    body.reasoning_effort = "low";
   }
 
   let res: Response;
