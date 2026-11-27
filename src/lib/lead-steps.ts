@@ -131,9 +131,9 @@ export async function aiOne(p: AiPlan, l: LeadIn, dnc: DncIndex, fix: string[] =
         return { ok: false, why: "AI answer was broken. Try again.", cost: res.cost_usd ?? 0 };
       }
       const ans = aiAnswer(p, l, json, res.cost_usd, site?.host, site?.text, allowPartial);
-      if (!ans.ok && ans.missingFollowUps?.length && !allowPartial && fix.length === 0) {
+      if (!ans.ok && ans.missingFollowUps?.length && !allowPartial) {
         const retryNote = `Missing required fields: ${ans.missingFollowUps.join(", ")}. You MUST output every one of ${ans.missingFollowUps.join(", ")}.`;
-        const again = await aiOne(p, l, dnc, [retryNote], true);
+        const again = await aiOne(p, l, dnc, [...fix, retryNote], true);
         const totalCost = ans.cost === null || again.cost === null ? null : ans.cost + again.cost;
         return { ...again, cost: totalCost };
       }
@@ -460,8 +460,16 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
     }
     console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=rewriting`);
     events.push({ who: "qc", kind: "issue", text: issues.join(" ") });
-    const again = await aiOne(w, l, dnc, issues);
+    let again = await aiOne(w, l, dnc, issues);
     add(again.cost);
+    if (!again.ok && /busy/i.test(again.why) && more()) {
+      console.log(`[writeChecked] lead=${l.id} round=${round} rewrite_rate_limited -> waiting 10s to retry`);
+      await new Promise((res) => setTimeout(res, 10_000));
+      if (more()) {
+        again = await aiOne(w, l, dnc, issues);
+        add(again.cost);
+      }
+    }
     if (!again.ok) {
       if (again.fatal) {
         console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify(issues)} stop_reason=rewrite_fatal(${again.fatal})`);
