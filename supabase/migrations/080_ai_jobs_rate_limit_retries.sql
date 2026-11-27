@@ -73,5 +73,5 @@ begin
   end if;
 end $$;
 
-revoke all on function public.finish_ai_job(text, uuid, text, text, integer, boolean) from public, anon, authenticated;
-grant execute on function public.finish_ai_job(text, uuid, text, text, integer, boolean) to service_role;
+revoke all on function public.finish_ai_job(text, uuid, text, text, integer, boolean) from public;
+grant execute on function public.finish_ai_job(text, uuid, text, text, integer, boolean) to anon, authenticated, service_role;
