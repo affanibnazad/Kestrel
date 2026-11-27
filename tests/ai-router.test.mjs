@@ -95,7 +95,7 @@ describe("AI Router Configuration & Logic", () => {
     assert.equal(AI_TASKS.write.retries, 1);
     assert.equal(AI_TASKS.write.fallback, "nest");
 
-    assert.equal(AI_TASKS.qc.slot, "swift");
+    assert.equal(AI_TASKS.qc.slot, "talon");
     assert.equal(AI_TASKS.qc.timeoutMs, 15_000);
     assert.equal(AI_TASKS.qc.retries, 1);
     assert.equal(AI_TASKS.qc.fallback, "code_checks_only");
@@ -945,7 +945,7 @@ describe("AI-4a Kestrel-Paid AI & Monthly Allowance", () => {
     assert.equal(logged[0].source, "kestrel");
   });
 
-  it("write on Kestrel -> uses Swift slot model, not Talon/Sonnet", async () => {
+  it("write on Kestrel -> uses Talon slot model, not Swift", async () => {
     let calledModel = "";
     const requestedSlots = [];
     const sb = {
@@ -964,7 +964,7 @@ describe("AI-4a Kestrel-Paid AI & Monthly Allowance", () => {
             return { data: { slot: "swift", provider: "groq", model: "llama-swift-fast", key: "kestrel-swift-key", enabled: true }, error: null };
           }
           if (args?.p_slot === "talon") {
-            return { data: { slot: "talon", provider: "anthropic", model: "claude-sonnet-5-5", key: "kestrel-talon-key", enabled: true }, error: null };
+            return { data: { slot: "talon", provider: "groq", model: "openai/gpt-oss-120b", key: "kestrel-talon-key", enabled: true }, error: null };
           }
         }
         if (fn === "ai_usage_this_month") return { data: 0, error: null };
@@ -988,10 +988,9 @@ describe("AI-4a Kestrel-Paid AI & Monthly Allowance", () => {
 
     assert.equal(res.ok, true);
     assert.equal(res.source, "kestrel");
-    assert.equal(res.slot, "swift");
-    assert.equal(requestedSlots[0], "swift");
-    assert.equal(requestedSlots.includes("talon"), false);
-    assert.equal(calledModel, "llama-swift-fast");
+    assert.equal(res.slot, "talon");
+    assert.equal(requestedSlots[0], "talon");
+    assert.equal(calledModel, "openai/gpt-oss-120b");
   });
 });
 
@@ -1452,5 +1451,16 @@ describe("Assistant: sortBestLeads", () => {
     );
     assert.match(sys, /Only reference verified research\.observations/i);
     assert.match(sys, /opens with "Hi," and no name/i);
+  });
+
+  it("cleanQc checks each email separately: 4 emails of 60 words each passes", () => {
+    const first = "Hi,\n\nI saw your site says teams and agents build faster here. We build custom Next.js web apps for B2B SaaS teams. Is frontend web speed something you plan to work on this year? Best, Affan. Not relevant? Reply \"no\" and I won't write again. " + Array(14).fill("word").join(" ");
+    const twelve = "Short plain sentence with twelve clear words for this follow up email.";
+    const fu = `Hi,\n\n${twelve} ${twelve} ${twelve} ${twelve}\n\nBest,\nAffan\nNot relevant? Reply "no" and I won't write again.`;
+    const words = (s) => s.trim().split(/\s+/).filter(Boolean).length;
+    assert.ok(words(first) >= 50 && words(first) <= 90, `first=${words(first)}`);
+    assert.ok(words(fu) <= 60, `fu=${words(fu)}`);
+    const qc = cleanQc({ pass: true, issues: [] }, first, undefined, [first, fu, fu, fu]);
+    assert.equal(qc?.pass, true, `Expected pass, got issues: ${qc?.issues.join("; ")}`);
   });
 });

@@ -350,7 +350,8 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
 export type QcEvent = { who: "qc" | "writer"; kind: "issue" | "fix" | "pass" | "hold"; text: string };
 export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ ok: true; pass: boolean; issues: string[]; cost: number | null } | { ok: false; fatal?: string; cost: number | null; stop?: boolean }> {
   try {
-    const fullDraftText = `${draft.subject || ""}\n\n${draft.body || ""}\n\n${(draft.steps || []).map((s) => s.body).join("\n\n")}`;
+    const emailSteps = (draft.steps || []).filter((s) => !("kind" in s) || (s as { kind?: string }).kind === "email").map((s) => s.body);
+    const stepBodies = emailSteps.length ? emailSteps : [draft.body || ""];
     if (p.sb && p.teamId) {
       const res = await runAiTask({
         sb: p.sb,
@@ -367,14 +368,14 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
         serverSecret: p.serverSecret,
         serverTeamAi: p.serverTeamAi,
         onCodeChecksOnly: () => {
-          const codeQc = cleanQc({ pass: true, issues: [] }, fullDraftText, p.voiceNotes);
+          const codeQc = cleanQc({ pass: true, issues: [] }, stepBodies[0], p.voiceNotes, stepBodies);
           return (codeQc ?? { pass: true, issues: [] }) as Record<string, unknown>;
         },
       });
       if (!res.ok) {
         return { ok: false, cost: res.cost_usd ?? null, fatal: res.error, stop: KESTREL_STOP_CODES.has(String(res.lastError ?? "")) };
       }
-      const q = cleanQc(readJson(res.text), fullDraftText, p.voiceNotes);
+      const q = cleanQc(readJson(res.text), stepBodies[0], p.voiceNotes, stepBodies);
       return q ? { ok: true, ...q, cost: res.cost_usd } : { ok: false, cost: res.cost_usd };
     }
     return { ok: false, cost: 0, fatal: "Database connection not provided." };
@@ -396,26 +397,33 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
   while (true) {
     const q = await qcOne(qc, leadData, draftOf(r));
     add(q.cost);
+    let pass = false;
+    let issues: string[] = [];
     if (!q.ok) {
       if (q.fatal) return { ok: false, why: q.stop ? q.fatal : "error", cost, fatal: q.fatal, stop: q.stop };
       const curDraft = draftOf(r);
-      const codeQc = cleanQc({ pass: true, issues: [] }, `${curDraft.subject || ""} ${curDraft.body || ""}`, w.voiceNotes);
+      const emailSteps = (curDraft.steps || []).filter((s) => !("kind" in s) || (s as { kind?: string }).kind === "email").map((s) => s.body);
+      const stepBodies = emailSteps.length ? emailSteps : [curDraft.body || ""];
+      const codeQc = cleanQc({ pass: true, issues: [] }, stepBodies[0], w.voiceNotes, stepBodies);
       if (codeQc && !codeQc.pass) {
-        qcState = { status: "hold", issues: codeQc.issues, rounds: round, at: Date.now() };
-        events.push({ who: "qc", kind: "hold", text: codeQc.issues.join(" ") });
+        pass = false;
+        issues = codeQc.issues;
       } else {
         qcState = { status: "passed", issues: [], rounds: round, at: Date.now() };
         events.push({ who: "qc", kind: "pass", text: "Passed code-level QC check." });
+        break;
       }
-      break;
+    } else {
+      pass = q.pass;
+      issues = q.issues;
     }
-    if (q.pass) { qcState = { status: "passed", issues: [], rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) }; events.push({ who: "qc", kind: "pass", text: round ? `Passed after ${round} fix${round === 1 ? "" : "es"}.` : "Passed." }); break; }
-    if (round >= rounds || !more()) { qcState = { status: "hold", issues: q.issues, rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) }; events.push({ who: "qc", kind: "hold", text: q.issues.join(" ") }); break; }
-    events.push({ who: "qc", kind: "issue", text: q.issues.join(" ") });
-    const again = await aiOne(w, l, dnc, q.issues);
+    if (pass) { qcState = { status: "passed", issues: [], rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) }; events.push({ who: "qc", kind: "pass", text: round ? `Passed after ${round} fix${round === 1 ? "" : "es"}.` : "Passed." }); break; }
+    if (round >= rounds || !more()) { qcState = { status: "hold", issues, rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) }; events.push({ who: "qc", kind: "hold", text: issues.join(" ") }); break; }
+    events.push({ who: "qc", kind: "issue", text: issues.join(" ") });
+    const again = await aiOne(w, l, dnc, issues);
     add(again.cost);
-    if (!again.ok) { if (again.fatal) return { ok: false, why: again.stop ? again.fatal : "error", cost, fatal: again.fatal, stop: again.stop }; qcState = { status: "hold", issues: q.issues, rounds: round, at: Date.now() }; events.push({ who: "qc", kind: "hold", text: q.issues.join(" ") }); break; }
-    r = again; round++; fixed = [...fixed, ...q.issues].slice(0, 8);
+    if (!again.ok) { if (again.fatal) return { ok: false, why: again.stop ? again.fatal : "error", cost, fatal: again.fatal, stop: again.stop }; qcState = { status: "hold", issues, rounds: round, at: Date.now() }; events.push({ who: "qc", kind: "hold", text: issues.join(" ") }); break; }
+    r = again; round++; fixed = [...fixed, ...issues].slice(0, 8);
     events.push({ who: "writer", kind: "fix", text: "Rewrote it with QC's notes." });
   }
   const d = draftOf(r);
