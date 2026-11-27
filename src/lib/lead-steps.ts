@@ -358,7 +358,7 @@ export function aiAnswer(p: AiPlan, l: LeadIn, raw: unknown, cost: number | null
 
 // ---------- QC (Phase 4C): the QC bot checks a written email; the Writer fixes it with QC's notes.
 export type QcEvent = { who: "qc" | "writer"; kind: "issue" | "fix" | "pass" | "hold"; text: string };
-export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ ok: true; pass: boolean; issues: string[]; cost: number | null } | { ok: false; fatal?: string; cost: number | null; stop?: boolean }> {
+export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ ok: true; pass: boolean; issues: string[]; codeChecksOnly?: boolean; cost: number | null } | { ok: false; fatal?: string; cost: number | null; stop?: boolean }> {
   try {
     const emailSteps = (draft.steps || []).filter((s) => !("kind" in s) || (s as { kind?: string }).kind === "email").map((s) => s.body);
     const stepBodies = emailSteps.length ? emailSteps : [draft.body || ""];
@@ -380,14 +380,16 @@ export async function qcOne(p: AiPlan, data: LeadData, draft: Draft): Promise<{ 
         providerFn: p.providerFn,
         onCodeChecksOnly: () => {
           const codeQc = cleanQc({ pass: true, issues: [] }, stepBodies[0], p.voiceNotes, stepBodies);
-          return (codeQc ?? { pass: true, issues: [] }) as Record<string, unknown>;
+          return { ...(codeQc ?? { pass: true, issues: [] }), codeChecksOnly: true } as Record<string, unknown>;
         },
       });
       if (!res.ok) {
         return { ok: false, cost: res.cost_usd ?? null, fatal: res.error, stop: KESTREL_STOP_CODES.has(String(res.lastError ?? "")) };
       }
-      const q = cleanQc(readJson(res.text), stepBodies[0], p.voiceNotes, stepBodies);
-      return q ? { ok: true, ...q, cost: res.cost_usd } : { ok: false, cost: res.cost_usd };
+      const parsed = readJson(res.text);
+      const codeChecksOnly = Boolean((parsed as { codeChecksOnly?: boolean } | null)?.codeChecksOnly);
+      const q = cleanQc(parsed, stepBodies[0], p.voiceNotes, stepBodies);
+      return q ? { ok: true, ...q, ...(codeChecksOnly ? { codeChecksOnly: true } : {}), cost: res.cost_usd } : { ok: false, cost: res.cost_usd };
     }
     return { ok: false, cost: 0, fatal: "Database connection not provided." };
   } catch (e) {
@@ -436,11 +438,18 @@ export async function writeChecked(w: AiPlan, qc: AiPlan | null, l: LeadIn, dnc:
         pass = false;
         issues = codeQc.issues;
       } else {
-        console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=[] stop_reason=passed_code_qc`);
-        qcState = { status: "passed", issues: [], rounds: round, at: Date.now() };
-        events.push({ who: "qc", kind: "pass", text: "Passed code-level QC check." });
+        const msg = "AI check didn't run, review before sending.";
+        console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify([msg])} stop_reason=code_checks_only_hold`);
+        qcState = { status: "hold", issues: [msg], rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) };
+        events.push({ who: "qc", kind: "hold", text: msg });
         break;
       }
+    } else if (q.codeChecksOnly && q.pass) {
+      const msg = "AI check didn't run, review before sending.";
+      console.log(`[writeChecked] lead=${l.id} round=${round} qc_issues=${JSON.stringify([msg])} stop_reason=code_checks_only_hold`);
+      qcState = { status: "hold", issues: [msg], rounds: round, at: Date.now(), ...(fixed.length ? { fixed } : {}) };
+      events.push({ who: "qc", kind: "hold", text: msg });
+      break;
     } else {
       pass = q.pass;
       issues = q.issues;

@@ -1618,4 +1618,55 @@ describe("Assistant: sortBestLeads", () => {
     assert.equal(res2.why, "price or payment words");
     assert.equal(alwaysBadCalls, 3);
   });
+
+  it("writeChecked holds (never passes) when QC hits 429 and falls back to code_checks_only", async () => {
+    const fakeSb = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+      rpc: async () => ({ data: 0, error: null }),
+    };
+    const goodBody = {
+      first_name: "",
+      subject: "next js site",
+      icebreaker: "I saw your site says \"Fast issue tracking\" on your homepage for engineering teams.",
+      one_line: "We build fast custom Next.js web apps for growing B2B SaaS teams.",
+      question: "Quick question: is building a Next.js web app part of your plans this year?",
+    };
+    const wPlan = {
+      task: "emails",
+      provider: "groq",
+      key: "gsk-test",
+      model: "openai/gpt-oss-120b",
+      offer: { id: "o1", name: "Web", offer: "Next.js web apps", customer: "B2B SaaS", one_line: "We build fast Next.js web apps." },
+      sender: { sender_name: "Affan", address: "London, UK" },
+      hash: "h",
+      system: "sys",
+      schema: {},
+      followUps: 0,
+      sb: fakeSb,
+      teamId: "t1",
+      userId: "u1",
+      serverSecret: process.env.MAIL_SERVER_SECRET,
+      serverTeamAi: { provider: "groq", model: "openai/gpt-oss-120b", key: "gsk_test" },
+      providerFn: async () => ({ text: JSON.stringify(goodBody), usage: { input_tokens: 10, output_tokens: 10 } }),
+    };
+    const qcPlan = {
+      ...wPlan,
+      task: "qc",
+      providerFn: async () => {
+        const err = new Error("rate_limited");
+        err.status = 429;
+        throw err;
+      },
+    };
+    const lead = {
+      id: "l-qc-429",
+      email: "a@example.com",
+      outreach_approved: true,
+      data: { website: "https://example.com", research: { observations: [{ url: "example.com", fact: "Fast", quote: "Fast issue tracking" }] } },
+    };
+    const res = await writeChecked(wPlan, qcPlan, lead, { emails: new Set(), domains: new Set() }, 2);
+    assert.equal(res.ok, true);
+    assert.equal(res.result.qc.status, "hold");
+    assert.deepEqual(res.result.qc.issues, ["AI check didn't run, review before sending."]);
+  });
 });
