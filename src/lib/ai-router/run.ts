@@ -764,6 +764,8 @@ export async function runAiTask<T = unknown>(params: RunAiTaskParams): Promise<R
       model: currentResolution.model,
       source: currentResolution.source,
       slot: currentSlot,
+      lastError: lastErrorMsg,
+      statusCode: lastStatusCode,
     };
   }
 

@@ -20,7 +20,7 @@ export type ClaimedAiJob = {
 
 export type JobStepOutcome =
   | { status: "done"; summary: string; aiRunId?: number | null }
-  | { status: "retry"; error: string; retryAfterSec?: number; aiRunId?: number | null }
+  | { status: "retry"; error: string; retryAfterSec?: number; rateLimited?: boolean; aiRunId?: number | null }
   | { status: "skipped"; error: string; aiRunId?: number | null };
 
 export type AiJobsSummary = {
@@ -194,9 +194,9 @@ export async function executeClaimedJob(
 
   if (!res.ok) {
     const why = res.why || "AI job failed";
-    return isPermanentJobError(why)
-      ? { status: "skipped", error: why }
-      : { status: "retry", error: why, retryAfterSec: 60 };
+    if (isPermanentJobError(why)) return { status: "skipped", error: why };
+    const rateLimited = /busy|rate.?limit|\b429\b/i.test(why);
+    return { status: "retry", error: why, retryAfterSec: 60, ...(rateLimited ? { rateLimited: true } : {}) };
   }
 
   const qcStatus = (res.result as { qc?: { status?: string } } | undefined)?.qc?.status;
@@ -286,13 +286,15 @@ export async function runDueAiJobs(opts: {
       await logBrainEvent(opts.sb, opts.secret, job, "skipped", ms, outcome.error, outcome.aiRunId ?? null);
       summary.skipped++;
     } else {
-      const willExhaust = job.attempts >= job.max_attempts;
+      const rateLimited = Boolean(outcome.rateLimited);
+      const willExhaust = !rateLimited && job.attempts >= job.max_attempts;
       await opts.sb.rpc("finish_ai_job", {
         server_secret: opts.secret,
         p_job_id: job.id,
         p_status: "retry",
         p_error: outcome.error,
         p_retry_after_sec: outcome.retryAfterSec ?? 60,
+        p_rate_limited: rateLimited,
       });
       await logBrainEvent(opts.sb, opts.secret, job, "error", ms, outcome.error, outcome.aiRunId ?? null);
       if (willExhaust) summary.error++;

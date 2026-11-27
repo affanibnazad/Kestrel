@@ -1665,9 +1665,31 @@ describe("AI-4b: runDueAiJobs & serverSecret allowance", () => {
       throw err;
     });
     assert.equal(outcome.status, "retry");
-    assert.match(outcome.error, /busy|can't answer/i);
+    assert.match(outcome.error, /busy/i);
+    assert.equal(outcome.rateLimited, true);
     assert.ok(!seenModels.includes("qwen/qwen3.8-27b"), `Must not fall back to nest, saw: ${JSON.stringify(seenModels)}`);
     assert.ok(!rpcCalls.some((c) => c.fn === "ai_slot_for_server" && c.args.p_slot === "nest"), "Nest slot must not be resolved for write");
+
+    // Verify runDueAiJobs passes p_rate_limited=true to finish_ai_job even when attempts === max_attempts
+    const finishCalls = [];
+    const rlSb = {
+      rpc: async (fn, args) => {
+        if (fn === "claim_ai_jobs") {
+          return { data: [{ id: "j-rl", team_id: "t1", user_id: null, lead_id: "l1", offer_id: "o1", sequence_id: null, kind: "write", attempts: 3, max_attempts: 3, payload: {} }], error: null };
+        }
+        if (fn === "finish_ai_job") finishCalls.push(args);
+        return { data: null, error: null };
+      },
+    };
+    const rlSummary = await runDueAiJobs({
+      sb: rlSb,
+      secret: "srv-sec",
+      phaseDeadlineMs: 15_000,
+      runStep: async () => ({ status: "retry", error: "Not done — AI busy, try again", retryAfterSec: 60, rateLimited: true }),
+    });
+    assert.equal(rlSummary.retried, 1);
+    assert.equal(rlSummary.error, 0);
+    assert.equal(finishCalls[0]?.p_rate_limited, true);
 
     // Also verify writer_model is stored in outreach.qc when write succeeds
     let calls = 0;
