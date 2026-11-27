@@ -113,7 +113,8 @@ export function renderStep(step: Step, index: number, parts: Partial<SequencePar
   // A follow-up without its own subject stays in the thread, so it never takes a variant subject.
   // A task step: only its instruction, filled in (no subject, no footer, never sent).
   if (isTaskStep(step)) return { step: index, day: step.day, subject: "", body: tidy(fill(step.body)), missing: [...missing], kind: step.kind };
-  const alts = index > 0 && !step.subject.trim() ? [] : (step.variants ?? []).filter((v) => v.trim());
+  const usesAiSubject = /\{\{SUBJECT\}\}/i.test(step.subject);
+  const alts = usesAiSubject || (index > 0 && !step.subject.trim()) ? [] : (step.variants ?? []).filter((v) => v.trim());
   const own = variant > 0 && alts[variant - 1] ? alts[variant - 1] : step.subject;
   // A follow-up with no subject of its own stays in the same thread: "Re: " + the first email's subject.
   const subject = index === 0 || own.trim() ? fill(own) : `Re: ${threadSubject}`.trim();
